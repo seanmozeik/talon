@@ -1,0 +1,75 @@
+[workspace]
+members = ["crates/talon-cli", "crates/talon-core"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/seanmozeik/talon"
+homepage = "https://github.com/seanmozeik/talon"
+documentation = "https://docs.rs/talon"
+readme = "README.md"
+
+[workspace.dependencies]
+anstream = "1.0.0"
+anstyle = "1.0.14"
+bpaf = { version = "0.9.25", features = ["derive", "color", "bright-color"] }
+color-eyre = "0.6.5"
+eyre = "0.6.12"
+fs-err = "3.3.0"
+indicatif = "0.18.4"
+rattles = "0.3.1"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+talon-core = { path = "crates/talon-core", version = "0.1.0" }
+thiserror = "2.0.17"
+time = { version = "0.3.44", features = ["formatting", "parsing", "macros", "serde"] }
+tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tokio-util = { version = "0.7.17", features = ["rt"] }
+toml = "0.9.8"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+
+[workspace.lints.rust]
+missing_debug_implementations = "warn"
+unsafe_code = "deny"
+unused_must_use = "deny"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }
+complexity = { level = "warn", priority = -1 }
+correctness = { level = "deny", priority = -1 }
+dbg_macro = "deny"
+expect_used = "warn"
+nursery = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+perf = { level = "warn", priority = -1 }
+print_stdout = "warn"
+style = { level = "warn", priority = -1 }
+suspicious = { level = "deny", priority = -1 }
+todo = "warn"
+unwrap_used = "deny"
+
+[workspace.lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "warn"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.bench]
+inherits = "release"
+debug = true
+strip = false
+
+[profile.dev]
+debug = 1
+
+[profile.dev.package."*"]
+opt-level = 3

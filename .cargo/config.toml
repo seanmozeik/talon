@@ -1,0 +1,6 @@
+[alias]
+check-all = "check --workspace --all-targets --all-features --locked"
+lint = "clippy --workspace --all-targets --all-features --locked -- -D warnings"
+docs = "doc --workspace --no-deps --all-features --locked"
+test-all = "test --workspace --all-features --locked"
+
