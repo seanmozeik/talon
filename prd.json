@@ -307,8 +307,8 @@
         "just verify passes"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-cli/src/mcp/{mod,protocol,transport}.rs with documented hand-rolled JSON-RPC choice. Transport uses line-delimited JSON-RPC 2.0 over generic BufRead/Write, supports initialize, initialized notification, tools/list, tools/call placeholder, and shutdown. Tests cover handshake round-trip and malformed-frame parse error envelope. just verify passes."
     },
     {
       "id": "US-015",
