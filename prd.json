@@ -17,8 +17,8 @@
         "just verify passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/expansion/{mod,client,types,error}.rs. ExpansionClient::new(base_url, model) + expand(query, n_variants) -> Result<Vec<String>, ExpansionError>. Posts /chat/completions with system prompt from local-llm.ts. Malformed JSON returns Ok(vec![]). HTTP errors map to ExpansionError::Http. PII redaction reuses inference::redact. Wiremock tests cover happy path, malformed-JSON fallback, and HTTP 5xx. 212 tests pass."
     },
     {
       "id": "US-002",

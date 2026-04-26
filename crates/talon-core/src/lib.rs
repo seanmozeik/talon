@@ -9,6 +9,7 @@ pub mod config;
 pub mod constants;
 pub mod embed;
 pub mod error;
+pub mod expansion;
 pub mod frontmatter;
 pub mod indexer;
 pub mod inference;
@@ -34,6 +35,7 @@ pub use config::{
     ScopeResolution, ScopesConfig, TalonConfig,
 };
 pub use error::{ErrorCode, TalonError, TalonResult};
+pub use expansion::{ExpansionClient, ExpansionError};
 pub use frontmatter::{
     FrontmatterEntry, FrontmatterExtract, FrontmatterReverseIndex, FrontmatterValue,
     FrontmatterValueType, ReverseSourceIndex, WikiLink, normalize_keyword, normalize_vault_path,
