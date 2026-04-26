@@ -11,6 +11,10 @@ pub fn start() {
 }
 
 #[cfg(windows)]
+#[expect(
+    unsafe_code,
+    reason = "configuring the Windows console codepage requires a Win32 API call"
+)]
 fn start_windows() {
     use windows_sys::Win32::System::Console::SetConsoleOutputCP;
     // SAFETY: `SetConsoleOutputCP` takes a codepage id and does not dereference pointers.

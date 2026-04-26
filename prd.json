@@ -374,8 +374,8 @@
         "just verify passes"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented cross-platform cargo-zigbuild packaging. Added DEVELOPMENT.md toolchain docs, scripts/build-platform-packages.sh, just cross-build recipes, ts/npm platform packages for darwin-arm64, darwin-x64, linux-arm64, linux-x64, and win32-x64 with package.json + bin/talon only. Script builds all five required targets, stages packages from Cargo's active target directory, enforces <30 MiB binary size, and supports target --version smoke via native runtime/qemu/wine. Added talon --version, fixed cross-target portability in sqlite-vec FFI and sync lock process liveness. Verification: scripts/build-platform-packages.sh completed with TALON_SKIP_SMOKE=1; package sizes 9.6-10.9 MB; linux-arm64 bin/talon --version returned 0.1.0; just verify passed; npm test passed."
     },
     {
       "id": "US-019",

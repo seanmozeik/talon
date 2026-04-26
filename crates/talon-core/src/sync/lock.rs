@@ -11,8 +11,15 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use fs_err as fs;
+#[cfg(not(windows))]
 use rustix::process::{Pid, test_kill_process};
 use serde::{Deserialize, Serialize};
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{CloseHandle, STILL_ACTIVE};
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::{
+    GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 
 /// On-disk representation of the lock file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,6 +159,7 @@ fn read_pid(path: &Path) -> Option<u32> {
     Some(metadata.pid)
 }
 
+#[cfg(not(windows))]
 fn is_process_alive(pid: u32) -> bool {
     let Ok(raw_pid) = i32::try_from(pid) else {
         return false;
@@ -160,6 +168,26 @@ fn is_process_alive(pid: u32) -> bool {
         return false;
     };
     test_kill_process(typed_pid).is_ok()
+}
+
+#[cfg(windows)]
+#[expect(
+    unsafe_code,
+    reason = "checking Windows process liveness requires Win32 handle APIs"
+)]
+fn is_process_alive(pid: u32) -> bool {
+    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+    if handle.is_null() {
+        return false;
+    }
+
+    let mut exit_code = 0;
+    let is_alive = unsafe { GetExitCodeProcess(handle, &mut exit_code) } != 0
+        && exit_code == u32::try_from(STILL_ACTIVE).unwrap_or(259);
+    unsafe {
+        CloseHandle(handle);
+    }
+    is_alive
 }
 
 #[cfg(test)]

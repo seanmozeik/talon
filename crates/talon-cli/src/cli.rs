@@ -11,6 +11,8 @@ pub struct CliArgs {
     pub mcp: McpFlag,
     /// Print embedded `SKILL.md`.
     pub skill: SkillFlag,
+    /// Print the Talon CLI version.
+    pub version: VersionFlag,
     /// Token-efficient JSON for agents. Disables human banner and spinner.
     pub agent: AgentFlag,
     /// Emit JSON output.
@@ -84,6 +86,7 @@ macro_rules! flag_type {
 
 flag_type!(McpFlag);
 flag_type!(SkillFlag);
+flag_type!(VersionFlag);
 flag_type!(AgentFlag);
 flag_type!(JsonFlag);
 flag_type!(RawFlag);
@@ -105,6 +108,10 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .help("Print embedded SKILL.md.")
         .switch()
         .map(SkillFlag::from);
+    let version = long("version")
+        .help("Print the Talon CLI version.")
+        .switch()
+        .map(VersionFlag::from);
     let agent = long("agent")
         .help("Emit compact JSON for agents and disable human CLI art.")
         .switch()
@@ -171,6 +178,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
     bpaf::construct!(CliArgs {
         mcp,
         skill,
+        version,
         agent,
         json,
         raw,

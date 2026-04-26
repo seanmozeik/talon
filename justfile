@@ -43,13 +43,22 @@ verify: fmt
     cargo test --workspace --all-targets --locked
 
 build-release:
-    cargo build --release --locked
+    cargo build -p talon-cli --release --locked
 
 build-release-linux-x64:
-    PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild --release --target x86_64-unknown-linux-gnu --locked
+    PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild -p talon-cli --release --target x86_64-unknown-linux-gnu --locked
 
 build-release-linux-arm64:
-    PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild --release --target aarch64-unknown-linux-gnu --locked
+    PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild -p talon-cli --release --target aarch64-unknown-linux-gnu --locked
+
+zigbuild-target target:
+    cargo zigbuild -p talon-cli --release --target {{ target }} --locked
+
+cross-build:
+    scripts/build-platform-packages.sh
+
+cross-build-no-smoke:
+    TALON_SKIP_SMOKE=1 scripts/build-platform-packages.sh
 
 install:
     cargo install --path crates/talon-cli --locked

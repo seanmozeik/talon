@@ -12,6 +12,7 @@
 //!   `vec_chunks` virtual table and resets vector state when dimensions
 //!   change, so swapping embedding models is a recoverable operation.
 
+use std::ffi::c_char;
 use std::sync::OnceLock;
 
 use rusqlite::{Connection, params};
@@ -56,7 +57,7 @@ fn register_via_ffi() -> Result<(), TalonError> {
     // statically-linked `sqlite-vec` C source (see `sqlite_vec` crate). We
     // transmute its address to the C `xEntryPoint` function pointer type that
     // `sqlite3_auto_extension` expects (Sqlite's loadable-extension entry
-    // signature: `(*mut sqlite3, *mut *mut u8, *const sqlite3_api_routines) -> i32`).
+    // signature: `(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32`).
     // `sqlite_vec` declares the upstream symbol with no parameters because
     // its rust binding predates the strict ffi typing in newer rusqlite; the
     // C ABI passes the same registers either way, so the call is sound.
@@ -64,7 +65,7 @@ fn register_via_ffi() -> Result<(), TalonError> {
     // which SQLite serializes internally.
     type EntryPoint = unsafe extern "C" fn(
         *mut rusqlite::ffi::sqlite3,
-        *mut *mut u8,
+        *mut *mut c_char,
         *const rusqlite::ffi::sqlite3_api_routines,
     ) -> i32;
     let rc = unsafe {

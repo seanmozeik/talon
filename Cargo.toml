@@ -24,7 +24,7 @@ glob = "0.3.3"
 indicatif = "0.18.4"
 rattles = "0.3.1"
 regex = "1.12.3"
-reqwest = { version = "0.13.2", default-features = false, features = ["rustls", "json", "blocking"] }
+reqwest = { version = "0.13.2", default-features = false, features = ["json", "blocking"] }
 rusqlite = { version = "0.32.1", features = ["bundled", "load_extension"] }
 sqlite-vec = "0.1.9"
 rustix = { version = "1.1.4", features = ["process"] }
@@ -45,6 +45,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 walkdir = "2.5.0"
 wiremock = "0.6.5"
+windows-sys = "0.61.2"
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"

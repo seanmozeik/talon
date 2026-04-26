@@ -1,0 +1,19 @@
+{
+  "name": "@seanmozeik/talon-darwin-arm64",
+  "version": "0.1.0",
+  "private": false,
+  "description": "Prebuilt Talon binary.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanmozeik/talon.git"
+  },
+  "os": ["darwin"],
+  "cpu": ["arm64"],
+  "files": [
+    "bin/talon"
+  ],
+  "bin": {
+    "talon": "bin/talon"
+  }
+}

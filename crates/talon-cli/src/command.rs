@@ -23,6 +23,12 @@ use talon_core::{
 ///
 /// Returns an error for invalid command input or not-yet-implemented behavior.
 pub async fn run(args: &CliArgs) -> Result<()> {
+    if args.version.enabled() {
+        use std::io::Write as _;
+        writeln!(io::stdout().lock(), "{}", env!("CARGO_PKG_VERSION"))?;
+        return Ok(());
+    }
+
     if args.mcp.enabled() {
         let stdin = io::stdin();
         let stdout = io::stdout();
