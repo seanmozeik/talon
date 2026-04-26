@@ -264,6 +264,37 @@
       "notes": "Ported 21 notes to crates/talon-core/tests/fixtures/vault/ (Atlas/*, Graph/*, Search/*, Filters/*, Lifecycle/*). Added fixture_vault.rs with 9 integration tests: sync counts all 21 notes, fulltext search (orchard/banana), title alias search (Cafe del Sol), hybrid search with mocked expansion+rerank, related graph traversal (Hub depth=2 finds Child/Side/Inbound/Grandchild), meta --where status=archived returns only Filters/Frontmatter.md, lint orphans excludes linked notes, status reports 21 active notes + 5-dim vectors. EmbedChunkedResponder dynamically returns N vectors per chunk to satisfy persist_multi_chunk. 298 tests pass."
     },
     {
+      "id": "US-013b",
+      "title": "Redesign chunker on text-splitter + tokenx-rs: strip frontmatter from embedding/BM25, semantic markdown chunking with token-aware sizing",
+      "description": "As Talon, I want chunking and indexing to match the canonical Obsidian-flavored-markdown contract — frontmatter is filter-only (via the existing note_frontmatter_fields / note_tags / note_aliases / notes.title surfaces), never participates in embeddings or BM25 body search; chunking is built on `text-splitter` (benbrandt's MarkdownSplitter — semantic markdown chunker with a multi-level fallback ladder: section → sentence → word → grapheme) with `tokenx-rs` as the pluggable length function (heuristic ~96% token-accuracy, no vocabulary files, no model binding); chunk size and overlap are user-configurable in talon.toml; Obsidian comments (%%...%%) are stripped pre-chunk; wikilink resolution still sees raw frontmatter (re-attach pattern from obsidian-hybrid-search). Reuses crate::frontmatter::parse_frontmatter (already returns body and frontmatter_raw). Standing rule: never silence clippy lints with #[allow] — real fixes only.",
+      "acceptanceCriteria": [
+        "New deps pinned to full semver: text-splitter, tokenx-rs (project convention is full pinning)",
+        "talon-core/src/chunker.rs rewritten: chunk_markdown receives body-only text (frontmatter stripped at indexer/wiring.rs:61 boundary by passing parsed.body instead of content)",
+        "Chunker built on text_splitter::MarkdownSplitter with a tokenx-rs-backed length function; configured via .with_chunk_size(chunk_tokens) and .with_chunk_overlap(chunk_overlap)",
+        "Obsidian comments stripped pre-chunk: inline %%...%% and block %%\\n...\\n%% removed from cleaned_body before handing to MarkdownSplitter",
+        "Block IDs (^block-id) preserved inline in chunk text; never the sole content of a chunk (skip-pattern post-filter handles this)",
+        "Skip-patterns drop trivial chunks post-split: heading-only line, separator-only, single wikilink line, single image-embed line, content below CHUNK_MIN_TOKENS",
+        "embedding_text prefix (Title:/Path:/Headings:) unchanged — applied per chunk after splitting",
+        "Wikilink resolution continues to see raw frontmatter: pass parsed.frontmatter_raw + \"\\n\" + parsed.body to resolve_wiki_links (matches obsidian-hybrid-search src/indexer.ts:132 pattern; resolves frontmatter values like `related: \"[[Other Note]]\"`)",
+        "User-configurable chunking knobs in talon.toml [indexer]: chunk_tokens (default 512), chunk_overlap (default 64), chunk_min_tokens (default 16); validated at config load time (chunk_overlap < chunk_tokens; chunk_min_tokens >= 0)",
+        "Constants in talon-core/src/search/constants.rs (or a new chunker module): EMBED_CHUNK_TOKENS_DEFAULT=512, EMBED_CHUNK_OVERLAP_DEFAULT=64, CHUNK_MIN_TOKENS_DEFAULT=16",
+        "No new schema and no other new dependencies: frontmatter is reachable only via existing channels (notes.frontmatter JSON, note_frontmatter_fields, note_tags, note_aliases, notes.title); reuses crate::frontmatter::parse_frontmatter",
+        "Existing chunker unit tests in chunker.rs (test_chunk_markdown_*) are updated, removed, and rewritten as needed — chunk shapes, line/char ranges, token counts, and chunk counts will all change with the new design; preserving old behavior is NOT a goal",
+        "Parser fidelity check: assert FrontmatterExtract.body is byte-faithful for a fixture file (== raw file with the leading ---\\n...\\n---\\n block removed; trailing newline behavior pinned), so chunker char/line offsets stay consistent with what the user sees on disk",
+        "Existing chunk hashes invalidated by the redesign; next talon sync re-chunks and re-embeds the whole vault — documented as a one-time cost in user-facing release notes (initial re-embed of a large vault may take 30+ minutes against a real TEI sidecar; this is acceptable)",
+        "Obsidian-callout fixture test: `> [!note]\\n> body line 1\\n> body line 2` survives chunking as one cohesive chunk (CommonMark treats callouts as blockquotes; text-splitter should preserve blockquote blocks — verify and document the result)",
+        "Math-block fixture test: `$$\\n\\frac{a}{b} = c\\n$$` is not split mid-equation. If text-splitter cuts mid-block (math blocks are not standard CommonMark), augment by wrapping math blocks in an HTML-block sentinel (e.g. <div class=\"math\">...</div>) before splitting and unwrapping after, OR pre-tokenizing math blocks as opaque atoms. Pick whichever keeps the implementation small.",
+        "Fenced code block fixture test: triple-backtick blocks (with and without language tags) are not split mid-fence",
+        "Frontmatter integration test (extends fixture_vault.rs from US-013): re-sync after redesign produces chunks with no YAML in chunk.text or embedding_text; meta --where on frontmatter still works; assert chunk.text for the first chunk of Filters/Frontmatter.md does not contain 'status:' or 'archived'",
+        "event_log writes continue to fire per-index call (the existing INSERT INTO event_log row in wiring.rs must not be removed by the refactor); existing change-tracking integration tests must still pass",
+        "US-022 (golden-set eval) will use post-US-013b chunker output as its calibration baseline — no action required in this story; this is a forward note for the loop, not a blocking dependency",
+        "just verify passes (the gate is `just verify`, which runs fmt + cargo check + clippy -D warnings + cargo test; never substitute `just check` which skips tests)"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
       "id": "US-014",
       "title": "Add MCP JSON-RPC stdio transport",
       "description": "As an MCP client, I want `talon --mcp` to speak JSON-RPC 2.0 over stdio so it can be embedded in MCP-aware agents.",
@@ -275,7 +306,7 @@
         "Tests: handshake echo round-trips; malformed frame returns proper JSON-RPC error envelope",
         "just verify passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": ""
     },
@@ -293,7 +324,7 @@
         "Tests: tools/list returns valid schema; each action's tools/call round-trips against the integration vault",
         "just verify passes"
       ],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": ""
     },
@@ -310,7 +341,7 @@
         "Manual smoke: `talon --mcp <<< '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}'` returns valid response",
         "just verify passes"
       ],
-      "priority": 18,
+      "priority": 19,
       "passes": false,
       "notes": ""
     },
@@ -326,7 +357,7 @@
         "Vitest tests for resolution logic with mocked platform/arch",
         "npm pack produces a valid tarball; npm test clean"
       ],
-      "priority": 19,
+      "priority": 20,
       "passes": false,
       "notes": ""
     },
@@ -342,7 +373,7 @@
         "Per-platform npm subpackage layout: package.json (name `@seanmozeik/talon-<platform>-<arch>`) + the prebuilt binary at bin/talon, no JS",
         "just verify passes"
       ],
-      "priority": 20,
+      "priority": 21,
       "passes": false,
       "notes": ""
     },
@@ -357,7 +388,7 @@
         "Dry-run mode (workflow_dispatch with input) goes through every step except publish",
         "Dry-run succeeds end-to-end on a clean checkout"
       ],
-      "priority": 21,
+      "priority": 22,
       "passes": false,
       "notes": ""
     },
@@ -372,7 +403,7 @@
         "Test: assert_cmd verifies non-empty output + exit 0",
         "just verify passes"
       ],
-      "priority": 22,
+      "priority": 23,
       "passes": false,
       "notes": ""
     },
@@ -388,23 +419,49 @@
         "Snapshot tests via insta (one snapshot per command's human output)",
         "just verify passes"
       ],
-      "priority": 23,
+      "priority": 24,
       "passes": false,
       "notes": ""
     },
     {
       "id": "US-022",
-      "title": "Add ranking regression test suite (parity bar §19 Phase 1)",
-      "description": "As a maintainer, I want golden expected ranks for canonical queries so silent ranking drift is caught in CI — meeting the spec §19 Phase 1 acceptance bar (path equality, score within tolerance, stable subset of meta fields).",
+      "title": "Add ranking quality regression suite (golden-set eval with absolute nDCG floor)",
+      "description": "As a maintainer, I want a golden-set evaluation suite with absolute nDCG@5/MRR/Hit@k/Recall@k metrics so silent ranking quality drift is caught in CI — meeting and exceeding spec §19 Phase 1, and giving Talon a quality floor that survives the eventual TS reference retirement. Adopts the eval-system pattern from /home/yolo/.opensrc/repos/github.com/flowing-abyss/obsidian-hybrid-search/master/eval/ (golden-set JSON of {query, expected_paths[]}, ~100-line metrics module for nDCG/MRR/Hit@k/Recall@k, runner + A/B compare tool). Attribution: README.md and inline comments credit obsidian-hybrid-search (MIT licensed) for the eval harness shape.",
       "acceptanceCriteria": [
-        "Port tests/services/talon/ranking-regression.test.ts to crates/talon-core/tests/ranking_regression.rs",
-        "Golden expected top-K paths for ~10 fixture queries — assert exact equality of data.results[*].path against the TS reference output",
-        "Score drift on data.results[*].score tolerated within 1e-3; rank order changes fail the test",
-        "Stable subset of envelope `meta` fields asserted (e.g. result_count, scope set, fast flag) — not the full meta blob",
-        "Any TS-vs-Rust intentional divergence documented in a comment with reason",
-        "Suite green; just verify passes"
+        "Port tests/services/talon/ranking-regression.test.ts to crates/talon-core/tests/ranking_regression.rs (TS-parity bar: top-K paths match TS reference within tolerance — kept as a sub-assertion, not the only floor)",
+        "Eval harness at crates/talon-core/tests/eval/: golden-set JSON (fixtures/golden-set.json) with 30-60 {query, expected_paths[]} pairs derived from the US-013 fixture vault; metrics module computes nDCG@5, nDCG@10, MRR, Hit@5, Hit@10, Recall@10 (port eval/metrics.ts logic, attribution in module docstring)",
+        "Eval runner (tests/eval_suite.rs) executes golden set against freshly-synced fixture vault and writes JSON results to tests/eval/results/ (gitignored except baseline.json)",
+        "Commit baseline file tests/eval/baseline.json (canonical reference); regression test asserts measured metrics never fall below FLOOR thresholds (e.g. nDCG@5 >= 0.65 — calibrated post-US-013b, raised never lowered)",
+        "Compare tool (justfile recipe `just eval-compare <a.json> <b.json>` or tests/eval/compare.rs) reports per-query nDCG delta between two runs — used during iteration on chunker / expansion / rerank changes",
+        "Documentation (DEVELOPMENT.md or tests/eval/README.md): how to run eval, how to update baseline (only when metrics genuinely improve), thresholds are raised never lowered",
+        "FLOOR thresholds calibrated against post-US-013b chunker output (this story lands after US-013b)",
+        "Score drift on data.results[*].score tolerated within 1e-3; rank order changes fail the parity sub-assertion",
+        "Stable subset of envelope meta fields asserted (result_count, scope set, fast flag) — not the full meta blob",
+        "Any TS-vs-Rust intentional divergence documented inline with reason",
+        "just verify passes"
       ],
-      "priority": 24,
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022a",
+      "title": "Rich match anchors API: previewAnchors with char offsets, DOM-matchable text, heading breadcrumb",
+      "description": "As a downstream Talon consumer (ultraclaw, future Obsidian plugin, agents), I want each search result to optionally carry up to two MatchAnchor entries (BM25 anchor + semantic anchor, deduped by match_text) plus a heading breadcrumb prepended to every snippet, so I can scroll-to and highlight the exact matching block in the rendered note — not just the matching note. Pattern lifted from /home/yolo/.opensrc/repos/github.com/flowing-abyss/obsidian-hybrid-search/master/src/searcher.ts (MatchAnchor type :40-46, heading-breadcrumb-prepended snippets :265-273, two-strategy heading lookup with content-scan fallback :460-515) and src/chunker.ts (buildMatchText DOM-matchable text builder :164-199). Attribution: README.md and module docstrings credit obsidian-hybrid-search (MIT licensed).",
+      "acceptanceCriteria": [
+        "New type MatchAnchor in talon-core/src/tool.rs: { kind: AnchorKind (Bm25 | Semantic), heading_path: Option<String>, match_text: String, char_start: Option<u32>, char_end: Option<u32> } — serialized in camelCase per existing envelope conventions",
+        "SearchResult gains preview_anchors: Option<Vec<MatchAnchor>>, populated only when SearchInput.anchors == Some(true) — opt-in to keep default response payload small",
+        "BM25 snippet path with anchors=true: attach Bm25 anchor with heading_path resolved via chunks.heading_path (Strategy 1: chunk lookup); fall back to content-scan reconstruction (Strategy 2: locate snippet text in notes.content, walk preceding lines to rebuild heading chain). Port searcher.ts:469-515 logic.",
+        "Semantic snippet path with anchors=true: attach Semantic anchor with the chunk's heading_path, char_start/char_end, and match_text built from chunk text",
+        "buildMatchText port (talon-core/src/search/match_text.rs): strips heading lines, fenced code, callout-only lines, HTML tags, footnote refs (`[^1]`), embed wikilinks (`![[...]]`), image embeds, regular wikilinks (resolve to alias|target), inline links (keep text), bold/italic, inline code, list markers, task checkboxes; returns first 80 chars of body — matches what textContent returns from a rendered Obsidian DOM block",
+        "Anchor dedup: when both BM25 and semantic anchors yield equal match_text (same block), keep only the BM25 anchor (heuristic: BM25 is positionally precise; matches reference behavior at searcher.ts:1227)",
+        "Heading breadcrumb prepended to snippets unconditionally (independent of anchors flag) — port searcher.ts:265-273; format `{heading_path}\\n{snippet}`. Search snippet rendering in CLI human output (output.rs::emit_search_human) shows the breadcrumb",
+        "MCP tool schema (US-015): SearchInput gains anchors: Option<bool>; output schema documents preview_anchors as optional",
+        "Unit tests: buildMatchText against fixture chunk texts (covers all syntax-stripping paths); anchors=true returns up to 2 anchors per result; dedup logic suppresses duplicate when chunks coincide; content-scan fallback works for whole-note chunks (no chunk-level heading_path granular enough)",
+        "Integration test: search with --anchors against fixture vault returns preview_anchors with char_start/char_end correctly indexing into source file body (post-US-013b body-relative offsets)",
+        "just verify passes"
+      ],
+      "priority": 26,
       "passes": false,
       "notes": ""
     },
@@ -419,7 +476,31 @@
         "Ports relevant assertions from tests/services/talon/cli.test.ts and contract.test.ts",
         "Suite green; just verify passes"
       ],
-      "priority": 25,
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023a",
+      "title": "Verification sweep: NFD paths, trigram FTS, vector norm, WAL, RRF normalization, per-note dedup, rerank tiers",
+      "description": "As a release engineer, I want a single sweep that verifies (and fixes if needed) a set of correctness/perf/relevance details that obsidian-hybrid-search gets right and that easily slip in a Rust port — before tagging v0.1.0. Most items are likely already correct; the goal is explicit verification with regression tests, not blanket re-implementation. References: /home/yolo/.opensrc/repos/github.com/flowing-abyss/obsidian-hybrid-search/master/src/db.ts and searcher.ts (MIT licensed; attribution in inline comments where logic is ported). Each item lists the verifier's evidence path.",
+      "acceptanceCriteria": [
+        "NFD path normalization: all paths in notes.path / links.from_path / links.to_path / scope filters are NFD-normalized via unicode-normalization crate (or std equivalent). Test: NFC and NFD forms of the same Unicode filename store under the same row. Reference: db.ts:443.",
+        "Trigram FTS for fuzzy title/alias: confirm Talon's search_title_parts uses SQLite's trigram tokenizer (tokenize='trigram'). Test: 'Cafe' matches 'Café'; Cyrillic substring search works without external collation. If not, switch and add migration. Reference: db.ts:368-411.",
+        "Short-alias exact-match fallback: aliases < 3 chars can't be trigram-tokenized. Confirm an alias_norm column (NFD + lowercased) supports a parallel exact-match path that runs first and dedupes against trigram results. Test: fixture note with 2-char alias is findable. Reference: searcher.ts:336-369.",
+        "Vector unit-norm: assert ||v|| ≈ 1.0 (within 1e-4) for sampled vec_chunks rows. If sidecar doesn't normalize, normalize at persist time (embed/persist.rs). Without unit norm, the cosine-from-L2 identity fails.",
+        "Cosine from L2 conversion: semantic search converts sqlite-vec L2 distance to cosine via similarity = max(0, 1 - distance² / 2) before scoring. Reference: searcher.ts:691. If using raw L2, switch.",
+        "WAL journal mode: rusqlite Connection sets PRAGMA journal_mode=WAL on open (so --mcp can read while talon sync writes). Reference: db.ts:472.",
+        "Per-note vector dedup: semantic-search SQL uses ROW_NUMBER() OVER (PARTITION BY note_id ORDER BY distance, chunk_index) WHERE row_num = 1 — one chunk per note in the candidate pool. Reference: searcher.ts:655-672. Test: a note with 5 overlapping near-duplicate chunks contributes a single result, not five.",
+        "Vector candidate pool sizing: semantic search retrieves k = limit * 5 candidates from sqlite-vec before per-note dedup. Document rationale inline (recall depends on it). Reference: searcher.ts:674.",
+        "RRF score normalization to [0,1]: fuse::reciprocal_rank_fusion divides final scores by max_possible = Σweights / (k+1). Test: hybrid score for the top result ≤ 1.0 within float epsilon. Reference: searcher.ts:748-759.",
+        "Position-aware rerank tier blend with min-max normalization: rerank_pipeline applies tiers (ranks 0-9: 0.75 hybrid + 0.25 rerank, 10-19: 0.6/0.4, 20+: 0.4/0.6) AND min-max normalizes hybrid scores within the candidate batch before blending with sigmoid(logit). Reference: searcher.ts:1299-1325. Without min-max, raw hybrid scores wash out the rerank contribution. Add a unit test that confirms the normalization step.",
+        "Cache key includes db_version + model_version: SearchCache key invalidates on schema migration AND embed-model change. Add db_version row to settings table if absent (cross-process invalidation). Reference: searcher.ts:982 + db.ts:249-250.",
+        "Prepared statement caching (do better than reference): hot-path SQL in upsert.rs / search modules uses Connection::prepare_cached, not Connection::prepare each call. Survey + switch where applicable. The reference re-prepares on every call (db.ts is full of `db.prepare(...)` inside functions); we deliberately don't.",
+        "Each item adds a regression test or cites the existing test that verifies it; no item marked done without explicit evidence in the user story notes field",
+        "just verify passes"
+      ],
+      "priority": 28,
       "passes": false,
       "notes": ""
     },
@@ -442,7 +523,64 @@
         "Parity bar §19 Phase 1: 5+ canonical search queries return matching data.results[*].path against TS reference (top-K order must match; data.results[*].score drift within 1e-3 allowed; stable subset of meta fields equal)",
         "v0.1.0 tag pushed; US-019 release workflow publishes successfully (dry-run first if uncertain)"
       ],
-      "priority": 26,
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "talon recall: vault-native context recall command for agent lifecycle hooks",
+      "description": "As an agent host's lifecycle hook (Hermes Memory Provider, hand-rolled wrappers), I want a single command `talon recall` that takes the user's recent message + a token budget + an exclude-paths list, and returns a structured Obsidian-native recall payload (active_notes, linked_context, frontmatter, recent_edits, fuzzy_anchors) plus a calibrated evidence_score, so I can splice high-quality vault context into the agent's prompt without a tool round-trip and without injecting low-confidence noise. Stateless per spec — caller owns turn state and exclusion lists. Talon's job is recall ONLY; retain (writing to vault) and reflect (synthesizing/pruning) are the agent host's job, performed via the user's existing editor or a separate cron-driven agent. We assume the Obsidian vault is bulletproof and authoritative — our job is to surface the most relevant context from it. Section schema is grounded in Talon's actual data surfaces, not imported biomimetic taxonomy: every section maps 1:1 to an existing query module. Scoring formulas are calibrated composites motivated by published patterns (MemoryBank Ebbinghaus decay, Mem0/Zep dual-signal composites, Confidence Gate pattern from RAG literature). Depends on US-013b (chunker redesign + tokenx-rs dep) being complete — token budget math reuses the same tokenx-rs estimator.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/query/recall.rs with run_recall(conn, inference, expansion, &RecallInput) -> RecallResponse",
+        "New CLI verb `talon recall <message...>` with flags: --prior-message <text>... (repeatable, last N user/assistant turns), --budget-tokens <N> (default 2000), --exclude <vault-path>... (repeatable), --scope <scope>... (repeatable; reuses ScopePriority), --since <ts> (default: 7 days ago), --format json|prompt-xml (default json), --depth <N> (default 1, max 3), --recency-half-life-days <N> (default 7), --min-confidence <0.0-1.0> (default 0.0; below this, return empty payload — see confidence-gate AC below), --fast",
+        "MCP action `recall` with RecallInput / RecallResponse added to TalonInput / TalonResponseData; tool surface advertises it in tools/list (US-015)",
+        "Internal pipeline reuses existing modules: hybrid_pipeline (active_notes), query::related at depth N with direction=Both (linked_context — both outgoing AND backlinks; differs from US-008's default of Outgoing because recall wants 360° context), query::meta + note_frontmatter_fields (frontmatter), query::changes since cutoff (recent_edits), search_title_parts + alias matching below the main score threshold (fuzzy_anchors); NO new retrieval algorithms",
+        "--prior-message behavior pinned: prior messages are concatenated with the user message and fed to the expansion LLM (when expansion is enabled / --fast is absent) to widen the implicit query. Prior messages are NOT fed directly to the search query — would dilute the BM25 signal. When --fast is set, prior messages are dropped entirely (latency-critical path skips expansion).",
+        "RecallResponse data shape: { vault_recall: { active_notes: Vec<NoteExcerpt>, linked_context: Vec<LinkedNote>, frontmatter: Vec<FrontmatterFact>, recent_edits: Vec<EditedNote>, fuzzy_anchors: Vec<FuzzyAnchor> } | null, evidence_score: f64, tokens_used: u32, excluded: Vec<String>, excluded_by_budget: Vec<String>, skipped: bool }. excluded carries paths suppressed via --exclude (caller's list); excluded_by_budget carries paths retrieved-but-not-included due to budget pressure (the inverse — caller can know what almost made it in).",
+        "evidence_score formula (pinned in talon-core/src/query/recall_scoring.rs): 0.45 * top_rerank_score + 0.20 * top_lexical_indicator + 0.15 * graph_density_bonus + 0.10 * recency_bonus + 0.10 * frontmatter_match_indicator. graph_density_bonus = min(1.0, top_result_link_count / 5). recency_bonus = exp(-days_since_top_result_modified / 14). All terms in [0,1]; result clamped to [0,1].",
+        "evidence_score edge cases pinned: when --fast skips rerank, top_rerank_score is substituted with the top hybrid_pipeline score (already in [0,1] since US-023a normalized RRF). When zero results return, evidence_score = 0.0 and skipped is automatically true (no formula evaluation).",
+        "evidence_score weights are v1 calibration — re-tuned later via US-022 eval suite. Document this in the recall_scoring.rs module docstring with attribution to MemoryBank/Mem0/Zep/Cognee literature; weights are NOT a config knob in v1.",
+        "Golden test fixture for recall_scoring.rs: at least 5 synthetic input triplets (top_rerank_score, lexical_hit, link_count, days_since_modified, frontmatter_hit) with their expected evidence_score values to within 1e-4. Include cases for: zero-result (expect 0.0), rerank-skipped (substitute hybrid score), all-signals-strong (expect ≥0.9), only-semantic-strong (expect ~0.45), only-frontmatter-match (expect ~0.10).",
+        "recent_edits ordering: recent_edits_score = 0.6 * topic_relevance + 0.4 * exp(-days_since_modified / recency_half_life_days). Within the --since window, results sorted by this composite, NOT chronologically. Items outside the window are dropped entirely (--since is the hard cutoff; the half-life is the weighting inside it).",
+        "Confidence gate behavior: when evidence_score < --min-confidence, response is { vault_recall: null, evidence_score, tokens_used: 0, excluded: [], excluded_by_budget: [], skipped: true }. In --format prompt-xml, skipped output is a single self-closing tag: <vault_recall skipped=\"true\" evidence_score=\"0.18\"/> — NO <active_notes> etc. children. Plugin layer can drop this entirely or pass it through; agent never sees polluted context either way.",
+        "Token budget enforced greedily across sections; section priority order: active_notes → linked_context → frontmatter → recent_edits → fuzzy_anchors. Per-section ranking keys for trimming: active_notes / linked_context use hybrid_score (post-RRF, post-rerank); frontmatter facts use a flat 0.5 (frontmatter is binary present/absent — preserved or dropped wholesale per matched note, not per fact); recent_edits use recent_edits_score; fuzzy_anchors use match_score. Trimming algorithm: while tokens_used > budget_tokens, drop the lowest-ranked item from the lowest-priority not-yet-empty section, recompute tokens_used, repeat. Items dropped during budget trimming go into excluded_by_budget.",
+        "--exclude applied to retrieval candidates BEFORE budget allocation — never spend budget on excluded paths",
+        "Token counting uses tokenx-rs (the same crate from US-013b) for the token cap math; full envelope target tokens_used <= budget_tokens within ±2% slack to account for estimator imprecision",
+        "--format prompt-xml renderer in talon-cli/src/output.rs emits a <vault_recall source=\"talon\" vault=\"...\" evidence_score=\"...\"> XML block with <active_notes>, <linked_context>, <frontmatter>, <recent_edits>, <fuzzy_anchors> children. Each child element shape is documented in docs/recall-schema.md with attribute and content rules; an example committed at examples/recall-output.xml. The doc and example are deliverables of this story, not future work.",
+        "Wraps response in the US-005b envelope ({action: \"recall\", version, ok, data, meta} on success; standard error envelope on failure). meta carries elapsed_ms, fast flag, scope set, result_count, evidence_score (duplicated from data for diagnostics when data is null due to confidence gate).",
+        "Integration test (extends fixture_vault.rs from US-013): full pipeline against fixture vault with mocked sidecar. Asserts: all five sections populate when applicable; --exclude suppresses paths and they appear in `excluded`; --budget-tokens 200 produces a proportionally smaller payload (no overshoot >2%) AND populates excluded_by_budget; --min-confidence 0.99 returns skipped=true for queries with no strong matches; --depth 0 produces empty linked_context; --fast skips expansion (verified by absence of expansion call to mocked sidecar); prompt-xml output validates against the documented schema.",
+        "Documentation: docs/recall.md explains the section semantics, the scoring formulas (with the literature attribution), and the integration patterns for Hermes / hand-rolled hooks. References docs/recall-schema.md for the prompt-xml shape.",
+        "NO latency benchmarks in Ralph-loop ACs: latency optimization is deferred — the LLM is the bottleneck per design, and benchmarks in CI cause more flakes than they prevent. A future story can add latency regression tests once usage patterns are clearer.",
+        "just verify passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Hermes Memory Provider plugin: hermes-talon-recall (light wrapper, unit-tested only)",
+      "description": "As a Hermes Agent user with an Obsidian vault, I want a Memory Provider plugin that wraps `talon recall --format prompt-xml` so my Hermes agent gets vault-native context recall on every turn without me writing glue code. The plugin is intentionally a thin shim — Talon's binary does the work; the plugin matches Hermes's documented Memory Provider plugin layout (plugin.yaml + Python module subclassing the abstract base in `agent/memory_provider.py` of the Hermes repo) and shells out to the talon binary discovered on PATH. Layout reference: study `plugins/memory/supermemory/` and `plugins/memory/honcho/` in the NousResearch/hermes-agent repo as canonical examples (in-tree built-in plugins use the same surface as third-party plugins). Hermes plugin docs: hermes-agent.nousresearch.com/docs/developer-guide/memory-provider-plugin/. Hermes plugin v0.11.x surface (April 23 2026): plugins drop into ~/.hermes/plugins/<name>/ with plugin.yaml manifest, register(ctx) callback wires hooks/tools/CLI commands. Empty-output behavior: when talon returns skipped=true or zero results, the plugin returns Hermes's no-recall envelope so the agent sees a clean context — never injects polluted output. Real end-to-end integration testing against a live Hermes install is OUT OF SCOPE for the Ralph loop (causes flakes; will be done manually post-loop). Ralph delivers: correct layout, manifest, subprocess wrapper, unit tests with mocked binary.",
+      "acceptanceCriteria": [
+        "New directory integrations/hermes-talon-recall/ in this repo (single-repo for v0.1; split to a separate repo later if release cadence diverges)",
+        "Layout matches Hermes plugin convention discovered from the canonical built-in plugins (study plugins/memory/supermemory/ in the NousResearch/hermes-agent repo before locking the layout): pyproject.toml, plugin.yaml, hermes_talon_recall/__init__.py, hermes_talon_recall/provider.py, tests/test_provider.py, README.md",
+        "plugin.yaml manifest at minimum: name=talon-recall, version=<lockstep-with-talon-cli>, provides_hooks (or provides_memory_provider — confirm the actual key by reading the Hermes plugin docs and a working plugin), description, author. The manifest schema is whatever the current Hermes v0.11.x plugin loader expects — match it exactly, do not invent fields.",
+        "Provider class subclasses the abstract Memory Provider base in agent/memory_provider.py of the Hermes repo. Implement all abstract methods the base class declares (recall, search, ingest if applicable, etc.). For methods Talon doesn't service (ingest / retain / reflect — Talon is recall-only), return Hermes's documented no-op envelope or raise the documented NotSupportedError, whichever the base class specifies. Read the base class to know which.",
+        "Binary discovery: shutil.which(\"talon\") on PATH. Fallback: TALON_BIN env var pointing at an absolute binary path. If neither resolves, raise a clear error during plugin init (NOT at recall-time) with a message pointing to Talon install instructions.",
+        "recall() implementation: shells out to `talon recall <user_message> --format prompt-xml --budget-tokens <N> [--prior-message <m>...] [--exclude <p>...] [--min-confidence <c>] [--fast if configured]`. Captures stdout, returns the XML directly to Hermes (no re-parsing, no re-formatting).",
+        "Empty-output handling: when the talon process returns skipped=true (detected via the <vault_recall skipped=\"true\" .../> self-closing tag), the plugin returns Hermes's no-recall envelope so the agent context stays clean. Same for zero-byte stdout or non-zero exit. Agent NEVER sees a malformed XML block, an error stack trace, or polluted context — failures are silent from the agent's perspective and logged to the plugin's logger only.",
+        "Configurable from Hermes plugin config (per Hermes config conventions): vault_path (passed to talon via --vault flag or TALON_VAULT env var), budget_tokens (default 2000), min_confidence (default 0.3), recency_half_life_days (default 7), fast (default false), prior_message_count (how many of the last N turns to feed via --prior-message; default 2)",
+        "Unit tests in tests/test_provider.py: mock subprocess.run to return canned talon stdout (good case, skipped case, error case, empty stdout, malformed XML). Assert the plugin's recall() method returns the right Hermes envelope shape in each case. NO live Hermes process required; NO live talon binary required.",
+        "README.md in integrations/hermes-talon-recall/: install instructions (drop directory into ~/.hermes/plugins/talon-recall/, OR pip install -e . for dev, OR pip install hermes-talon-recall once published), configuration example showing all knobs, troubleshooting section (binary not found → install talon and check PATH; vault path missing → set vault_path or TALON_VAULT; agent gets no context → check min_confidence threshold; agent gets stale context → reduce recency_half_life_days)",
+        "PyPI package metadata in pyproject.toml: name=hermes-talon-recall, license=MIT (matches Talon), description, author/contact, homepage = Talon repo URL. Version stays lockstep with talon-cli major.minor (verified by a script or pyproject.toml comment). Python >= 3.11 (matches Hermes's stated minimum)",
+        "Talon main README gains an `## Integrations` section linking to integrations/hermes-talon-recall/README.md; plugin's README links back to the talon recall reference docs from US-025",
+        "NO end-to-end integration test against a real Hermes install in the Ralph loop. The plugin's correctness is verified at the unit level only. Real Hermes integration testing is a manual step the user performs post-loop with `hermes plugins install <path>` and a vault.",
+        "NO latency benchmarks. LLM round-trip dominates; talon binary startup is sub-50ms in Rust release builds and is not the bottleneck.",
+        "A `release-plugin.yml` workflow OR a justfile recipe (whichever is simpler) that builds the Python package via `python -m build` and optionally publishes to PyPI on a `hermes-plugin-v*` tag — separate from the main Talon release tag so plugin releases don't fire on every Talon release",
+        "Verification deliverable in user story notes upon completion: paste the contents of plugin.yaml, the abstract method signatures the provider implements, and the result of `python -m pytest tests/` showing all unit tests pass. This makes the manual integration test post-loop a 5-minute exercise instead of a debugging session."
+      ],
+      "priority": 31,
       "passes": false,
       "notes": ""
     }
