@@ -581,8 +581,8 @@
         "Verification deliverable in user story notes upon completion: paste the contents of plugin.yaml, the abstract method signatures the provider implements, and the result of `python -m pytest tests/` showing all unit tests pass. This makes the manual integration test post-loop a 5-minute exercise instead of a debugging session."
       ],
       "priority": 31,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented integrations/hermes-talon-recall/ Python package: TalonRecallProvider subclasses Hermes MemoryProvider ABC. prefetch() shells out to `talon recall <query> --format prompt-xml --budget-tokens N --min-confidence N --recency-half-life-days N [--prior-message M]... [--fast]`, returns XML block or '' on all failure paths (skipped, error, empty stdout, non-zero exit). sync_turn() buffers recent turns for --prior-message. get_tool_schemas() returns []. initialize() raises RuntimeError if talon binary not found (TALON_BIN or PATH). save_config()/load_config() round-trip via $HERMES_HOME/talon-recall.json. plugin.yaml manifest, pyproject.toml (MIT, Python>=3.11, lockstep v0.1.0), README with install/config/troubleshooting. register(ctx) calls ctx.register_memory_provider(). Also added to Rust CLI: --format prompt-xml|json, --budget-tokens, --min-confidence, --recency-half-life-days, --prior-message (repeatable), --exclude (repeatable) flags; TALON_VAULT env var override in config::load_config. plugin.yaml: name=talon-recall, version=0.1.0. Abstract methods implemented: is_available, initialize, get_tool_schemas, prefetch, sync_turn, shutdown, get_config_schema, save_config. python -m pytest tests/ → 15 passed. just verify → 417 Rust tests pass."
     }
   ]
 }

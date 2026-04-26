@@ -45,6 +45,8 @@ pub struct CliArgs {
     pub anchors: AnchorsFlag,
     /// Meta-command specific flags.
     pub meta: MetaArgs,
+    /// Recall-command specific flags.
+    pub recall: RecallArgs,
     /// Positional command and command arguments.
     pub positionals: Vec<String>,
 }
@@ -58,6 +60,23 @@ pub struct MetaArgs {
     pub tag_counts: bool,
     /// Resolve reverse-source references for this path.
     pub sources: Option<String>,
+}
+
+/// Recall-command specific options.
+#[derive(Debug, Clone, Default)]
+pub struct RecallArgs {
+    /// Output format: json (default) or prompt-xml.
+    pub format: Option<String>,
+    /// Token budget for the recall context block.
+    pub budget_tokens: Option<u32>,
+    /// Minimum evidence score; below this, returns empty context.
+    pub min_confidence: Option<f64>,
+    /// Half-life in days for recency decay weighting.
+    pub recency_half_life_days: Option<u8>,
+    /// Prior turn messages to widen the query (repeatable).
+    pub prior_messages: Vec<String>,
+    /// Vault paths to exclude from recall candidates (repeatable).
+    pub exclude: Vec<String>,
 }
 
 macro_rules! flag_type {
@@ -175,6 +194,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .optional();
     let anchors = anchors_parser();
     let meta = meta_parser();
+    let recall = recall_parser();
     let positionals = positionals_parser();
 
     bpaf::construct!(CliArgs {
@@ -197,6 +217,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         since,
         anchors,
         meta,
+        recall,
         positionals
     })
     .to_options()
@@ -250,6 +271,41 @@ fn parse_direction(value: &str) -> Result<Direction, String> {
         "both" => Ok(Direction::Both),
         _ => Err("direction must be outgoing, backlinks, or both".to_string()),
     }
+}
+
+fn recall_parser() -> impl bpaf::Parser<RecallArgs> {
+    let format = long("format")
+        .help("Output format: json (default) or prompt-xml.")
+        .argument::<String>("FORMAT")
+        .optional();
+    let budget_tokens = long("budget-tokens")
+        .help("Token budget for the recall context block (default 2000).")
+        .argument::<u32>("N")
+        .optional();
+    let min_confidence = long("min-confidence")
+        .help("Minimum evidence score threshold 0.0-1.0 (default 0.0).")
+        .argument::<f64>("F")
+        .optional();
+    let recency_half_life_days = long("recency-half-life-days")
+        .help("Half-life in days for recency decay (default 7).")
+        .argument::<u8>("N")
+        .optional();
+    let prior_messages = long("prior-message")
+        .help("Prior turn message to widen the query (repeatable).")
+        .argument::<String>("TEXT")
+        .many();
+    let exclude = long("exclude")
+        .help("Vault path to exclude from recall (repeatable).")
+        .argument::<String>("PATH")
+        .many();
+    bpaf::construct!(RecallArgs {
+        format,
+        budget_tokens,
+        min_confidence,
+        recency_half_life_days,
+        prior_messages,
+        exclude,
+    })
 }
 
 /// Parses a `--where` string into a [`WhereClause`].

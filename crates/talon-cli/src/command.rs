@@ -599,31 +599,40 @@ async fn emit_lint(args: &CliArgs, rest: &[String]) -> Result<()> {
 }
 
 async fn emit_recall(args: &CliArgs, rest: &[String]) -> Result<()> {
+    use crate::output::format_recall_prompt_xml;
+    use talon_core::RecallResponse;
+
     if rest.is_empty() {
         bail!("recall requires a message; usage: talon recall <message...>");
     }
 
     let message = rest.join(" ");
     let fast = args.fast.enabled();
+    let prompt_xml = args.recall.format.as_deref() == Some("prompt-xml");
 
     let input = RecallInput {
         message,
-        prior_messages: Vec::new(),
-        budget_tokens: 2000,
-        exclude: Vec::new(),
+        prior_messages: args.recall.prior_messages.clone(),
+        budget_tokens: args.recall.budget_tokens.unwrap_or(2000),
+        exclude: args.recall.exclude.clone(),
         scope: Vec::new(),
         scope_only: Vec::new(),
         since: args.since.clone(),
-        format: talon_core::RecallFormat::Json,
+        format: if prompt_xml {
+            talon_core::RecallFormat::PromptXml
+        } else {
+            talon_core::RecallFormat::Json
+        },
         depth: args.depth.unwrap_or(1),
-        recency_half_life_days: 7,
-        min_confidence: 0.0,
+        recency_half_life_days: args.recall.recency_half_life_days.unwrap_or(7),
+        min_confidence: args.recall.min_confidence.unwrap_or(0.0),
         fast,
     };
 
     let started = Instant::now();
     let config = config::load_config(args.config_file.as_deref()).ok();
 
+    // Returns (recall_response, meta, vault_path_string) so formatting can happen outside.
     let work = async move {
         let db_path: PathBuf = config.as_ref().map_or_else(
             || PathBuf::from("~/.local/share/talon/index.sqlite"),
@@ -663,6 +672,9 @@ async fn emit_recall(args: &CliArgs, rest: &[String]) -> Result<()> {
             .vault_recall
             .as_ref()
             .map(|r| u32::try_from(r.active_notes.len()).unwrap_or(u32::MAX));
+        let vault = config
+            .as_ref()
+            .map_or_else(String::new, |c| c.vault_path.to_string_lossy().into_owned());
         let meta = ResponseMeta {
             duration_ms,
             result_count,
@@ -672,16 +684,22 @@ async fn emit_recall(args: &CliArgs, rest: &[String]) -> Result<()> {
                 .map(|c| c.default_scope_names().into_iter().cloned().collect()),
             since: input.since.clone(),
         };
-        let data = TalonResponseData::Recall(response);
-        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("recall", data, meta))
+        Ok::<(RecallResponse, ResponseMeta, String), eyre::Report>((response, meta, vault))
     };
 
-    let response = if should_spin(args) {
+    let (recall_resp, meta, vault) = if should_spin(args) && !prompt_xml {
         spinner::with_spinner("Recalling...".to_string(), work).await?
     } else {
         work.await?
     };
-    emit_response(&response, output_mode(args))
+
+    if prompt_xml {
+        format_recall_prompt_xml(&mut std::io::stdout(), &recall_resp, &vault)?;
+        return Ok(());
+    }
+
+    let envelope = TalonEnvelope::ok("recall", TalonResponseData::Recall(recall_resp), meta);
+    emit_response(&envelope, output_mode(args))
 }
 
 const fn output_mode(args: &CliArgs) -> OutputMode {

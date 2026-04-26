@@ -97,7 +97,15 @@ pub fn load_config(explicit_path: Option<&Path>) -> Result<TalonConfig> {
         );
     }
 
-    load_config_file(&path)
+    let mut config = load_config_file(&path)?;
+
+    // TALON_VAULT overrides vault_path so callers (e.g. Hermes plugin) can
+    // target a specific vault without modifying the config file.
+    if let Ok(vault_override) = std::env::var("TALON_VAULT") {
+        config.vault_path = PathBuf::from(vault_override);
+    }
+
+    Ok(config)
 }
 
 /// Initializes the config file at the default path.

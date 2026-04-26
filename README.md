@@ -40,3 +40,7 @@ chunk_min_tokens = 16
 ```
 
 The text-splitter/tokenx chunker strips frontmatter from BM25 and embedding text. Existing indexes will be re-chunked on the next `talon sync`, which also queues the new chunks for embedding. On a large vault, the first post-upgrade sync can spend 30+ minutes re-embedding against a real sidecar.
+
+## Integrations
+
+- [`integrations/hermes-talon-recall/`](integrations/hermes-talon-recall/README.md) — Hermes Agent Memory Provider plugin that wraps `talon recall --format prompt-xml` to inject vault-native context on every agent turn. Recall-only; agent host handles vault writes.
