@@ -1,6 +1,7 @@
 //! Stdout emission for CLI responses.
 
 use crate::exit_codes;
+use anstyle::{AnsiColor, Effects, Style};
 use eyre::Result;
 use serde::Serialize;
 use std::io::{self, Write};
@@ -18,6 +19,28 @@ pub enum OutputMode {
     JsonPretty,
     /// Compact token-efficient JSON for agents.
     Agent,
+}
+
+/// Options controlling human-readable rendering.
+#[derive(Debug, Clone, Copy)]
+pub struct RenderOptions {
+    /// Terminal column width used for wrapping.
+    pub width: u16,
+    /// Whether ANSI color codes should be emitted.
+    pub colors: bool,
+}
+
+impl RenderOptions {
+    /// Detects the current terminal width and color support.
+    #[must_use]
+    pub fn for_terminal() -> Self {
+        use terminal_size::{Width, terminal_size};
+        let width = terminal_size().map_or(80, |(Width(w), _)| w);
+        Self {
+            width,
+            colors: crate::platform::stdout_is_tty() && crate::platform::user_accepts_ansi_color(),
+        }
+    }
 }
 
 /// Writes bytes to stdout.
@@ -46,15 +69,20 @@ pub fn emit_response(envelope: &TalonEnvelope, mode: OutputMode) -> Result<()> {
 }
 
 fn emit_human(envelope: &TalonEnvelope) -> Result<()> {
+    let opts = RenderOptions::for_terminal();
     match envelope.data.as_ref() {
-        Some(TalonResponseData::Search(resp)) => emit_search_human(resp)?,
-        Some(TalonResponseData::Sync(resp)) => emit_sync_human(resp)?,
-        Some(TalonResponseData::Status(resp)) => emit_status_human(resp)?,
+        Some(TalonResponseData::Search(resp)) => {
+            format_search_human(&mut io::stdout(), resp, opts)?;
+        }
+        Some(TalonResponseData::Sync(resp)) => format_sync_human(&mut io::stdout(), resp)?,
+        Some(TalonResponseData::Status(resp)) => {
+            format_status_human(&mut io::stdout(), resp)?;
+        }
         Some(TalonResponseData::Read(resp)) => emit_read_human(resp)?,
         Some(TalonResponseData::Related(resp)) => emit_related_human(resp)?,
         Some(TalonResponseData::Meta(resp)) => emit_meta_human(resp)?,
         Some(TalonResponseData::Changes(resp)) => emit_changes_human(resp)?,
-        Some(TalonResponseData::Lint(resp)) => emit_lint_human(resp)?,
+        Some(TalonResponseData::Lint(resp)) => format_lint_human(&mut io::stdout(), resp)?,
         None => {
             if let Some(err) = &envelope.error {
                 writeln!(io::stderr(), "Error [{}]: {}", err.code, err.message)?;
@@ -64,36 +92,145 @@ fn emit_human(envelope: &TalonEnvelope) -> Result<()> {
     Ok(())
 }
 
-fn emit_search_human(resp: &talon_core::SearchResponse) -> Result<()> {
-    let q = resp.query.as_deref().unwrap_or("(empty)");
-    writeln!(io::stdout(), "Search: {q}")?;
-    writeln!(
-        io::stdout(),
-        "Mode: {:?}  Fast: {}  Reranked: {}",
-        resp.mode,
-        resp.fast,
-        resp.reranked
-    )?;
-    writeln!(io::stdout(), "Results: {}", resp.total)?;
-    writeln!(io::stdout())?;
-    for (i, r) in resp.results.iter().enumerate() {
-        writeln!(
-            io::stdout(),
-            "  {}. {} (score: {:.3})",
-            i + 1,
-            r.vault_path.as_str(),
-            r.score
-        )?;
-        if !r.snippet.is_empty() {
-            writeln!(io::stdout(), "     {}", r.snippet)?;
+// ── helpers ───────────────────────────────────────────────────────────────────
+
+/// Returns a style or the no-op style depending on whether colors are enabled.
+const fn cs(colors: bool, s: Style) -> Style {
+    if colors { s } else { Style::new() }
+}
+
+/// Word-wraps `text` into lines of at most `max_width` chars.
+fn wrap_words(text: &str, max_width: usize) -> Vec<String> {
+    if max_width == 0 || text.len() <= max_width {
+        return vec![text.to_string()];
+    }
+    let mut lines: Vec<String> = Vec::new();
+    let mut current = String::new();
+    for word in text.split_whitespace() {
+        if !current.is_empty() {
+            if current.len() + 1 + word.len() <= max_width {
+                current.push(' ');
+            } else {
+                lines.push(current.clone());
+                current.clear();
+            }
         }
+        current.push_str(word);
+    }
+    if !current.is_empty() {
+        lines.push(current);
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+// ── search ────────────────────────────────────────────────────────────────────
+
+/// Formats search results as compact cards for human reading.
+///
+/// # Errors
+///
+/// Returns an error if writing to `w` fails.
+pub fn format_search_human(
+    w: &mut impl Write,
+    resp: &talon_core::SearchResponse,
+    opts: RenderOptions,
+) -> Result<()> {
+    let heading = cs(
+        opts.colors,
+        Style::new().bold().fg_color(Some(AnsiColor::Cyan.into())),
+    );
+    let bold = cs(opts.colors, Style::new().effects(Effects::BOLD));
+    let dim = cs(opts.colors, Style::new().effects(Effects::DIMMED));
+
+    let q = resp.query.as_deref().unwrap_or("(empty)");
+    let mode_str = format!("{:?}", resp.mode).to_lowercase();
+    let mut meta_parts: Vec<String> = vec![mode_str];
+    if resp.fast {
+        meta_parts.push("fast".to_string());
+    }
+    if resp.expanded {
+        meta_parts.push("expanded".to_string());
+    }
+    if resp.reranked {
+        meta_parts.push("reranked".to_string());
+    }
+    let result_word = if resp.total == 1 { "result" } else { "results" };
+    let meta = meta_parts.join("  ·  ");
+
+    writeln!(
+        w,
+        "{heading}Search{heading:#}  {bold}\"{q}\"{bold:#}  ·  {dim}{meta}{dim:#}  ·  {} {result_word}",
+        resp.total
+    )?;
+
+    if resp.results.is_empty() {
+        writeln!(w)?;
+        writeln!(w, "  {dim}No results found.{dim:#}")?;
+        return Ok(());
+    }
+
+    writeln!(w)?;
+    for (i, r) in resp.results.iter().enumerate() {
+        format_search_card(w, i + 1, r, opts, &bold, &dim)?;
     }
     Ok(())
 }
 
-fn emit_sync_human(resp: &SyncResponse) -> Result<()> {
+fn format_search_card(
+    w: &mut impl Write,
+    rank: usize,
+    r: &SearchResult,
+    opts: RenderOptions,
+    bold: &Style,
+    dim: &Style,
+) -> Result<()> {
+    let path = r.vault_path.as_str();
+    let kind_str = match r.match_kind {
+        talon_core::MatchKind::Fulltext => "fulltext",
+        talon_core::MatchKind::Semantic => "semantic",
+        talon_core::MatchKind::Title => "title",
+        talon_core::MatchKind::Alias => "alias",
+        talon_core::MatchKind::Related => "related",
+    };
+
+    // Line 1: rank + path (+ scope if set)
+    let scope_suffix = r
+        .scope
+        .as_deref()
+        .map_or_else(String::new, |s| format!("  ·  {s}"));
     writeln!(
-        io::stdout(),
+        w,
+        " {bold}{rank:>2}{bold:#}  {bold}{path}{bold:#}{dim}{scope_suffix}{dim:#}"
+    )?;
+
+    // Line 2: kind + score
+    writeln!(w, "     {dim}{kind_str}  ·  {:.3}{dim:#}", r.score)?;
+
+    // Line 3+: wrapped snippet
+    let indent = "     ";
+    let available = (opts.width as usize).saturating_sub(indent.len());
+    if !r.snippet.is_empty() {
+        for line in wrap_words(&r.snippet, available) {
+            writeln!(w, "{indent}{line}")?;
+        }
+    }
+    writeln!(w)?;
+    Ok(())
+}
+
+// ── sync ──────────────────────────────────────────────────────────────────────
+
+/// Formats a sync response for human reading.
+///
+/// # Errors
+///
+/// Returns an error if writing to `w` fails.
+pub fn format_sync_human(w: &mut impl Write, resp: &SyncResponse) -> Result<()> {
+    writeln!(
+        w,
         "Sync: {} ({} indexed, {} skipped, {} deleted) in {}ms",
         if resp.completed { "OK" } else { "partial" },
         resp.indexed,
@@ -110,35 +247,70 @@ fn emit_sync_human(resp: &SyncResponse) -> Result<()> {
             "OK"
         };
         writeln!(
-            io::stdout(),
+            w,
             "Embed: {embed_label} ({}/{} succeeded, {} failed)",
             resp.embedded,
             resp.embedded + resp.embed_failed,
             resp.embed_failed
         )?;
         if let Some(remediation) = resp.embed_remediation.as_deref() {
-            writeln!(io::stdout(), "  ! {remediation}")?;
+            writeln!(w, "  ! {remediation}")?;
         }
         for line in resp.embed_diagnostics.iter().take(5) {
-            writeln!(io::stdout(), "  - {line}")?;
+            writeln!(w, "  - {line}")?;
         }
     }
     Ok(())
 }
 
-fn emit_status_human(resp: &talon_core::StatusResponse) -> Result<()> {
-    writeln!(io::stdout(), "Status: {:?}", resp.state)?;
+// ── status ────────────────────────────────────────────────────────────────────
+
+/// Formats a status response for human reading.
+///
+/// # Errors
+///
+/// Returns an error if writing to `w` fails.
+pub fn format_status_human(w: &mut impl Write, resp: &talon_core::StatusResponse) -> Result<()> {
+    writeln!(w, "Status: {:?}", resp.state)?;
     if let Some(reason) = &resp.reason {
-        writeln!(io::stdout(), "  Reason: {reason}")?;
+        writeln!(w, "  Reason: {reason}")?;
     }
     writeln!(
-        io::stdout(),
-        "  Notes: {}  Chunks: {}",
-        resp.index.active_notes,
-        resp.index.chunk_count
+        w,
+        "  Notes: {}  Chunks: {}  Failed: {}",
+        resp.index.active_notes, resp.index.chunk_count, resp.index.failed_embeddings,
     )?;
+    if let Some(dims) = resp.index.vector_dimensions {
+        writeln!(w, "  Dimensions: {dims}")?;
+    }
     Ok(())
 }
+
+// ── lint ──────────────────────────────────────────────────────────────────────
+
+/// Formats a lint response for human reading.
+///
+/// # Errors
+///
+/// Returns an error if writing to `w` fails.
+pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> {
+    writeln!(
+        w,
+        "Lint ({:?}): {} findings",
+        resp.check,
+        resp.findings.len()
+    )?;
+    for f in resp.findings.iter().take(20) {
+        if let Some(line) = f.line {
+            writeln!(w, "  - {}:{} {}", f.path.as_str(), line, f.message)?;
+        } else {
+            writeln!(w, "  - {} {}", f.path.as_str(), f.message)?;
+        }
+    }
+    Ok(())
+}
+
+// ── remaining human emitters (unchanged logic) ────────────────────────────────
 
 fn emit_read_human(resp: &ReadResponse) -> Result<()> {
     for result in &resp.results {
@@ -204,29 +376,6 @@ fn emit_changes_human(resp: &talon_core::ChangesResponse) -> Result<()> {
         resp.modified.len(),
         resp.deleted.len()
     )?;
-    Ok(())
-}
-
-fn emit_lint_human(resp: &LintResponse) -> Result<()> {
-    writeln!(
-        io::stdout(),
-        "Lint ({:?}): {} findings",
-        resp.check,
-        resp.findings.len()
-    )?;
-    for f in resp.findings.iter().take(20) {
-        if let Some(line) = f.line {
-            writeln!(
-                io::stdout(),
-                "  - {}:{} {}",
-                f.path.as_str(),
-                line,
-                f.message
-            )?;
-        } else {
-            writeln!(io::stdout(), "  - {} {}", f.path.as_str(), f.message)?;
-        }
-    }
     Ok(())
 }
 

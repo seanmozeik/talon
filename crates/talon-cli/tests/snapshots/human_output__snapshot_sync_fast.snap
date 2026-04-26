@@ -1,0 +1,5 @@
+---
+source: crates/talon-cli/tests/human_output.rs
+expression: "String::from_utf8(buf).unwrap()"
+---
+Sync: OK (5 indexed, 16 skipped, 0 deleted) in 42ms

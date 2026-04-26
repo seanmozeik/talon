@@ -420,8 +420,8 @@
         "just verify passes"
       ],
       "priority": 24,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added terminal_size + insta deps. Introduced RenderOptions { width, colors } and public format_search_human/format_sync_human/format_status_human/format_lint_human(w: &mut impl Write, ...) for testability. Search renders compact cards: bold path, dim kind·score, word-wrapped snippet at detected terminal width. Colors gated on stdout_is_tty + NO_COLOR. Spinner for search was already wired. 6 insta snapshot tests added. 323 tests pass."
     },
     {
       "id": "US-022",

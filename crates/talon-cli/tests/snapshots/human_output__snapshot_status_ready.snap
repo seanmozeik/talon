@@ -1,0 +1,7 @@
+---
+source: crates/talon-cli/tests/human_output.rs
+expression: "String::from_utf8(buf).unwrap()"
+---
+Status: Ready
+  Notes: 21  Chunks: 63  Failed: 0
+  Dimensions: 384

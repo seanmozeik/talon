@@ -1,0 +1,7 @@
+---
+source: crates/talon-cli/tests/human_output.rs
+expression: "String::from_utf8(buf).unwrap()"
+---
+Search  "orchard"  ·  hybrid  ·  0 results
+
+  No results found.
