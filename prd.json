@@ -244,8 +244,8 @@
         "just verify passes"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/query/status.rs: query_status(conn, config) -> StatusResponse. SQL counts: active notes (WHERE active=1), total chunks, failed chunks (embedding_status='failed'). Vector dimensions via vec_ext::get_vec_chunks_dimensions. Scope report: total_scopes from config.scopes.len(), default_scopes from config.default_scope_names(), unscoped_count via glob matching against active note paths. emit_status in talon-cli/src/command.rs handles config/DB load failures gracefully (returns StatusState::ConfigError instead of propagating errors). Removed StatusResponse::scaffold(); added ContainerPath::root() infallible constructor; exported ScopeReport and query_status from lib.rs. 5 unit tests. 289 tests pass."
     },
     {
       "id": "US-013",

@@ -108,6 +108,12 @@ impl ContainerPath {
         Ok(Self(value))
     }
 
+    /// Returns a root (`/`) container path. Infallible alternative to `parse("/")`.
+    #[must_use]
+    pub fn root() -> Self {
+        Self("/".to_string())
+    }
+
     /// Returns the path as a string slice.
     #[must_use]
     pub fn as_str(&self) -> &str {
@@ -927,30 +933,6 @@ pub struct StatusResponse {
     /// Scope report.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scopes: Option<ScopeReport>,
-}
-
-impl StatusResponse {
-    /// Builds the scaffold status response before indexing is implemented.
-    ///
-    /// # Errors
-    ///
-    /// Returns [`TalonError::InvalidInput`] if the fixed scaffold path is invalid.
-    pub fn scaffold() -> TalonResult<Self> {
-        Ok(Self {
-            state: StatusState::ConfigError,
-            enabled: false,
-            reason: Some("talon rust port is scaffolded; index is not implemented yet".to_string()),
-            container_mount: ContainerPath::parse("/opt/data/workspace/obsidian")?,
-            index_version: "scaffold".to_string(),
-            index: IndexStats {
-                active_notes: 0,
-                chunk_count: 0,
-                failed_embeddings: 0,
-                vector_dimensions: None,
-            },
-            scopes: None,
-        })
-    }
 }
 
 /// Status state.

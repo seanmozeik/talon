@@ -39,7 +39,7 @@ pub async fn run(args: &CliArgs) -> Result<()> {
         "read" => emit_read(args, rest).await,
         "sync" => emit_sync_stub(args, rest).await,
         "related" => emit_related(args, rest).await,
-        "status" => emit_status_stub(args),
+        "status" => emit_status(args),
         "meta" => emit_meta(args, rest).await,
         "changes" => emit_changes(args, rest).await,
         "lint" => emit_lint(args, rest).await,
@@ -362,8 +362,65 @@ async fn emit_related(args: &CliArgs, rest: &[String]) -> Result<()> {
     emit_response(&response, output_mode(args))
 }
 
-fn emit_status_stub(args: &CliArgs) -> Result<()> {
+fn emit_status(args: &CliArgs) -> Result<()> {
     let started = Instant::now();
+
+    let config_res = config::load_config(args.config_file.as_deref());
+    let config = match config_res {
+        Ok(c) => c,
+        Err(e) => {
+            let resp = StatusResponse {
+                state: talon_core::StatusState::ConfigError,
+                enabled: false,
+                reason: Some(format!("{e:#}")),
+                container_mount: talon_core::ContainerPath::root(),
+                index_version: env!("CARGO_PKG_VERSION").to_string(),
+                index: talon_core::IndexStats {
+                    active_notes: 0,
+                    chunk_count: 0,
+                    failed_embeddings: 0,
+                    vector_dimensions: None,
+                },
+                scopes: None,
+            };
+            let meta = ResponseMeta {
+                duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                result_count: None,
+                warnings: Vec::new(),
+                scope_set: None,
+                since: None,
+            };
+            let data = TalonResponseData::Status(resp);
+            return emit_response(&TalonEnvelope::ok("status", data, meta), output_mode(args));
+        }
+    };
+
+    let db_path = config.db_path.clone();
+    let vault_path = config.vault_path.clone();
+
+    let conn_res = open_database(&db_path);
+    let response = match conn_res {
+        Ok(conn) => talon_core::query_status(&conn, &config),
+        Err(e) => {
+            let mount = talon_core::ContainerPath::parse(vault_path.to_string_lossy().as_ref())
+                .unwrap_or_else(|_| talon_core::ContainerPath::root());
+            StatusResponse {
+                state: talon_core::StatusState::ConfigError,
+                enabled: false,
+                reason: Some(format!("cannot open index at {}: {e:#}", db_path.display())),
+                container_mount: mount,
+                index_version: env!("CARGO_PKG_VERSION").to_string(),
+                index: talon_core::IndexStats {
+                    active_notes: 0,
+                    chunk_count: 0,
+                    failed_embeddings: 0,
+                    vector_dimensions: None,
+                },
+                scopes: None,
+            }
+        }
+    };
+
     let meta = ResponseMeta {
         duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
         result_count: None,
@@ -371,9 +428,8 @@ fn emit_status_stub(args: &CliArgs) -> Result<()> {
         scope_set: None,
         since: None,
     };
-    let data = TalonResponseData::Status(StatusResponse::scaffold()?);
-    let response = TalonEnvelope::ok("status", data, meta);
-    emit_response(&response, output_mode(args))
+    let data = TalonResponseData::Status(response);
+    emit_response(&TalonEnvelope::ok("status", data, meta), output_mode(args))
 }
 
 async fn emit_meta(args: &CliArgs, _rest: &[String]) -> Result<()> {

@@ -9,6 +9,7 @@ pub mod meta;
 pub mod read;
 pub mod related;
 pub mod search;
+pub mod status;
 pub(crate) mod where_filter;
 
 pub use changes::query_changes;
@@ -17,3 +18,4 @@ pub use meta::query_meta;
 pub use read::run_read;
 pub use related::find_related;
 pub use search::run_search;
+pub use status::query_status;

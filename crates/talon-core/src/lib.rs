@@ -57,7 +57,9 @@ pub use migrations::{
     DB_VERSION_KEY, REBUILD_MIGRATIONS, SCHEMA_MIGRATIONS, TALON_SQLITE_BUSY_TIMEOUT_MS,
     TRIGGER_MIGRATIONS, run_migrations,
 };
-pub use query::{find_related, query_changes, query_lint, query_meta, run_read, run_search};
+pub use query::{
+    find_related, query_changes, query_lint, query_meta, query_status, run_read, run_search,
+};
 pub use store::open_database;
 pub use sync::{SyncError, SyncLock, SyncLockError, acquire_sync_lock, run_sync};
 
@@ -69,8 +71,8 @@ pub use tool::{
     ChangesInput, ChangesResponse, ContainerPath, Direction, ErrorEnvelope, FrontmatterFilter,
     IndexStats, LintCheck, LintFinding, LintInput, LintResponse, MatchKind, MetaEntry, MetaInput,
     MetaResponse, PositiveCount, ReadInput, ReadResponse, ReadResult, RelatedInput,
-    RelatedResponse, RelatedResult, RelationKind, ResponseMeta, SearchInput, SearchMode,
-    SearchResponse, SearchResult, StatusInput, StatusResponse, StatusState, SyncInput,
+    RelatedResponse, RelatedResult, RelationKind, ResponseMeta, ScopeReport, SearchInput,
+    SearchMode, SearchResponse, SearchResult, StatusInput, StatusResponse, StatusState, SyncInput,
     SyncResponse, SyncStatus, TalonEnvelope, TalonInput, TalonResponseData, TalonResponseTrait,
     VaultPath, WhereClause, WhereOperator,
 };
