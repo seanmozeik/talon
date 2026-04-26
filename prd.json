@@ -83,8 +83,8 @@
         "just verify passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented: removed talon embed CLI subcommand and emit_embed handler. Removed EmbedInput/EmbedResponse from TalonInput/TalonResponse. Extended run_sync() to accept Option<EmbedPassOptions> + Option<&InferenceClient> — runs embed pass after reconciliation when both are Some. Extended SyncResponse with embedded/embed_failed/dimension_mismatch/embed_remediation/embed_diagnostics fields. Updated emit_sync to build InferenceClient from config when --fast absent. Updated emit_sync_human to print embed sub-line. Fixed vec_chunks INSERT in persist.rs (chunk_id not rowid for sqlite-vec virtual tables). Added 3 integration tests in crates/talon-core/tests/sync_embed.rs. 232 tests pass."
     },
     {
       "id": "US-005",

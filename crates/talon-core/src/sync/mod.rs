@@ -13,6 +13,8 @@ use std::path::Path;
 use rusqlite::Connection;
 use time::OffsetDateTime;
 
+use crate::embed::{EmbedPassOptions, EmbedPassStats, run_embed_pass};
+use crate::inference::InferenceClient;
 use crate::TalonError;
 use crate::change_tracking::TOMBSTONE_RETENTION_MS;
 use crate::indexer::{IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan};
@@ -23,19 +25,27 @@ pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_
 ///
 /// Holds [`SyncLock`] for the duration of the call so concurrent Talon
 /// processes serialize. Runs the full scan, then reconciles deletions, then
-/// (best-effort) prunes tombstones older than [`TOMBSTONE_RETENTION_MS`].
+/// (best-effort) prunes tombstones older than [`TOMBSTONE_RETENTION_MS`],
+/// then optionally runs the embed pass.
+///
+/// When `embed_config` and `inference` are both `Some`, the embed pass runs
+/// after reconciliation. When either is `None` (e.g. `--fast` mode), the
+/// embed pass is skipped entirely.
 ///
 /// # Errors
 ///
 /// Returns [`SyncError::LockBusy`] if another process holds the lock,
-/// [`SyncError::Indexer`] if the underlying scan or reconcile fails, and
+/// [`SyncError::Indexer`] if the underlying scan or reconcile fails,
+/// [`SyncError::Embed`] if the embed pass fails, and
 /// [`SyncError::Lock`] if the lock file itself cannot be created/removed.
 pub fn run_sync(
     conn: &mut Connection,
     vault_root: &Path,
     lock_path: &Path,
     config: &IndexerConfig,
-) -> Result<IndexerStats, SyncError> {
+    embed_config: Option<EmbedPassOptions>,
+    inference: Option<&InferenceClient>,
+) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
     let _lock = acquire_sync_lock(lock_path).map_err(SyncError::from_lock)?;
     let mut stats = run_full_scan(conn, vault_root, config).map_err(SyncError::Indexer)?;
     let deleted = reconcile_deletions(conn, vault_root).map_err(SyncError::Indexer)?;
@@ -47,9 +57,15 @@ pub fn run_sync(
     // here so the eventual prune wiring has an obvious home.
     let _ = TOMBSTONE_RETENTION_MS;
     let _ = OffsetDateTime::now_utc();
-    let _ = conn;
 
-    Ok(stats)
+    // Run embed pass after reconciliation if configured.
+    let embed_stats = if let (Some(opts), Some(client)) = (embed_config, inference) {
+        Some(run_embed_pass(conn, client, &opts).map_err(|e| SyncError::Embed(e.to_string()))?)
+    } else {
+        None
+    };
+
+    Ok((stats, embed_stats))
 }
 
 /// Errors returned by [`run_sync`].
@@ -65,6 +81,9 @@ pub enum SyncError {
     /// Indexer-side failure (DB or filesystem).
     #[error(transparent)]
     Indexer(#[from] TalonError),
+    /// Embed-pass failure (HTTP error, dim mismatch, etc.).
+    #[error("embed pass failed: {0}")]
+    Embed(String),
 }
 
 impl SyncError {
@@ -102,13 +121,14 @@ mod tests {
         let lock = vault.join(".talon").join("sync.lock");
         let mut conn = open_database(&db).unwrap();
 
-        let first = run_sync(&mut conn, &vault, &lock, &IndexerConfig::index_all()).unwrap();
+        let (first, embed) = run_sync(&mut conn, &vault, &lock, &IndexerConfig::index_all(), None, None).unwrap();
         assert_eq!(first.indexed, 2);
         assert_eq!(first.deleted, 0);
+        assert!(embed.is_none());
 
         // Remove one note and re-sync — reconciler should soft-delete it.
         fs::remove_file(vault.join("b.md")).unwrap();
-        let second = run_sync(&mut conn, &vault, &lock, &IndexerConfig::index_all()).unwrap();
+        let (second, _) = run_sync(&mut conn, &vault, &lock, &IndexerConfig::index_all(), None, None).unwrap();
         assert_eq!(second.indexed, 0);
         assert_eq!(second.deleted, 1);
 

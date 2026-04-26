@@ -4,8 +4,7 @@ use crate::exit_codes;
 use eyre::Result;
 use serde::Serialize;
 use std::io::{self, Write};
-use talon_core::{
-    EmbedResponse, LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse,
+use talon_core::{LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse,
     TalonResponse,
 };
 
@@ -49,7 +48,6 @@ fn emit_human(response: &TalonResponse) -> Result<()> {
     match response {
         TalonResponse::Search(resp) => emit_search_human(resp)?,
         TalonResponse::Sync(resp) => emit_sync_human(resp)?,
-        TalonResponse::Embed(resp) => emit_embed_human(resp)?,
         TalonResponse::Status(resp) => emit_status_human(resp)?,
         TalonResponse::Read(_) => emit_read_human()?,
         TalonResponse::Related(resp) => emit_related_human(resp)?,
@@ -97,30 +95,27 @@ fn emit_sync_human(resp: &SyncResponse) -> Result<()> {
         resp.deleted,
         resp.duration_ms
     )?;
-    Ok(())
-}
-
-fn emit_embed_human(resp: &EmbedResponse) -> Result<()> {
-    let label = if resp.dimension_mismatch {
-        "dimension mismatch"
-    } else if resp.failed > 0 {
-        "partial"
-    } else {
-        "OK"
-    };
-    writeln!(
-        io::stdout(),
-        "Embed: {label} ({}/{} succeeded, {} failed) in {}ms",
-        resp.succeeded,
-        resp.processed,
-        resp.failed,
-        resp.duration_ms
-    )?;
-    if let Some(remediation) = resp.remediation.as_deref() {
-        writeln!(io::stdout(), "  ! {remediation}")?;
-    }
-    for line in resp.diagnostics.iter().take(5) {
-        writeln!(io::stdout(), "  - {line}")?;
+    if !resp.fast {
+        let embed_label = if resp.dimension_mismatch {
+            "dimension mismatch"
+        } else if resp.embed_failed > 0 {
+            "partial"
+        } else {
+            "OK"
+        };
+        writeln!(
+            io::stdout(),
+            "Embed: {embed_label} ({}/{} succeeded, {} failed)",
+            resp.embedded,
+            resp.embedded + resp.embed_failed,
+            resp.embed_failed
+        )?;
+        if let Some(remediation) = resp.embed_remediation.as_deref() {
+            writeln!(io::stdout(), "  ! {remediation}")?;
+        }
+        for line in resp.embed_diagnostics.iter().take(5) {
+            writeln!(io::stdout(), "  - {line}")?;
+        }
     }
     Ok(())
 }

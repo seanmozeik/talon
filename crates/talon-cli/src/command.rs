@@ -8,13 +8,10 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    EmbedInput, EmbedResponse, IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse,
-    ReadResponse, RelatedInput, RelatedResponse, SearchInput, SearchResponse, StatusResponse,
-    SyncInput, SyncResponse, SyncStatus, TalonResponse,
-    embed::{EmbedPassOptions, run_embed_pass},
-    inference::InferenceClient,
-    open_database, run_sync,
-    vec_ext::register_sqlite_vec,
+    IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse, ReadResponse, RelatedInput,
+    RelatedResponse, SearchInput, SearchResponse, StatusResponse, SyncInput, SyncResponse,
+    SyncStatus, TalonResponse, embed::EmbedPassOptions, inference::InferenceClient,
+    open_database, run_sync, vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -40,7 +37,6 @@ pub async fn run(args: &CliArgs) -> Result<()> {
         "search" => emit_search_stub(args, rest).await,
         "read" => emit_read_stub(args, rest).await,
         "sync" => emit_sync_stub(args, rest).await,
-        "embed" => emit_embed(args, rest).await,
         "related" => emit_related_stub(args, rest).await,
         "status" => emit_status_stub(args),
         "meta" => emit_meta_stub(args, rest).await,
@@ -124,10 +120,49 @@ async fn emit_sync_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         let started = Instant::now();
         let path_count = u32::try_from(input.paths.len()).unwrap_or(u32::MAX);
         let result = tokio::task::spawn_blocking(move || -> Result<SyncResponse> {
+            register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
             let mut conn = open_database(&db_path)
                 .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-            let stats = run_sync(&mut conn, &vault_path, &lock_path, &indexer_config)
-                .wrap_err("sync failed")?;
+
+            // Build embed config and inference client when not in fast mode.
+            let (embed_opts, inference) = if input.fast {
+                (None, None::<InferenceClient>)
+            } else {
+                let opts = EmbedPassOptions {
+                    force: input.force,
+                    restrict_paths: input.paths.clone(),
+                    chunk_embedding_model: config.inference.models.chunk_embedding.clone(),
+                    document_embedding_model: config.inference.models.document_embedding.clone(),
+                };
+                let client = InferenceClient::new(&config.inference.base_url)
+                    .wrap_err("building inference client")?;
+                (Some(opts), Some(client))
+            };
+
+            let (stats, embed_stats) = run_sync(
+                &mut conn,
+                &vault_path,
+                &lock_path,
+                &indexer_config,
+                embed_opts,
+                inference.as_ref(),
+            )
+            .wrap_err("sync failed")?;
+
+            let (embedded, embed_failed, dimension_mismatch, embed_remediation, embed_diagnostics) =
+                embed_stats.map_or(
+                    (0, 0, false, None, Vec::new()),
+                    |s| {
+                        (
+                            s.succeeded,
+                            s.failed,
+                            s.dimension_mismatch,
+                            s.remediation,
+                            s.diagnostics,
+                        )
+                    },
+                );
+
             Ok(SyncResponse {
                 completed: true,
                 status: SyncStatus::Ok,
@@ -137,9 +172,11 @@ async fn emit_sync_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
                 indexed: stats.indexed,
                 skipped: stats.skipped,
                 deleted: stats.deleted,
-                // Pending embeddings come from the embedding pipeline (Phase 4.6,
-                // not yet wired). Reporting 0 keeps the JSON contract stable.
-                pending_embeddings: 0,
+                embedded,
+                embed_failed,
+                dimension_mismatch,
+                embed_remediation,
+                embed_diagnostics,
                 duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
             })
         })
@@ -150,63 +187,6 @@ async fn emit_sync_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
     };
     let response = if should_spin(args) {
         spinner::with_spinner("Syncing...".to_string(), work).await?
-    } else {
-        work.await?
-    };
-    emit_response(&response, output_mode(args))
-}
-
-async fn emit_embed(args: &CliArgs, rest: &[String]) -> Result<()> {
-    let input = EmbedInput {
-        paths: rest.to_vec(),
-        force: args.force.enabled(),
-    };
-    let config = config::load_config(args.config_file.as_deref())?;
-    let db_path: PathBuf = config.db_path.clone();
-    let inference_base = config.inference.base_url.clone();
-    let chunk_model = config.inference.models.chunk_embedding.clone();
-    let document_model = config.inference.models.document_embedding.clone();
-
-    register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-
-    let path_count = u32::try_from(input.paths.len()).unwrap_or(u32::MAX);
-    let force = input.force;
-    let restrict = input.paths.clone();
-
-    let work = async move {
-        let started = Instant::now();
-        let result = tokio::task::spawn_blocking(move || -> Result<EmbedResponse> {
-            let conn = open_database(&db_path)
-                .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-            let client =
-                InferenceClient::new(&inference_base).wrap_err("building inference client")?;
-            let opts = EmbedPassOptions {
-                force,
-                restrict_paths: restrict,
-                chunk_embedding_model: chunk_model,
-                document_embedding_model: document_model,
-            };
-            let stats = run_embed_pass(&conn, &client, &opts).wrap_err("embed pass failed")?;
-            Ok(EmbedResponse {
-                completed: true,
-                force,
-                path_count,
-                processed: stats.processed,
-                succeeded: stats.succeeded,
-                failed: stats.failed,
-                dimension_mismatch: stats.dimension_mismatch,
-                remediation: stats.remediation,
-                diagnostics: stats.diagnostics,
-                duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            })
-        })
-        .await
-        .wrap_err("embed task join failed")?;
-        let response = TalonResponse::Embed(result?);
-        Ok::<TalonResponse, eyre::Report>(response)
-    };
-    let response = if should_spin(args) {
-        spinner::with_spinner("Embedding...".to_string(), work).await?
     } else {
         work.await?
     };

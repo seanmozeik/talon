@@ -55,7 +55,7 @@ pub fn persist_chunk_vector(
 
     let json = serde_json::to_string(embedding).unwrap_or_else(|_| "[]".to_string());
     let _ = conn.execute(
-        "INSERT OR REPLACE INTO vec_chunks(rowid, embedding) VALUES (?, json(?))",
+        "INSERT OR REPLACE INTO vec_chunks(chunk_id, embedding) VALUES (?, json(?))",
         params![chunk_id, json],
     );
     Ok(())

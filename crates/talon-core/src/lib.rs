@@ -64,10 +64,10 @@ pub use text::{
     parse_wikilink, split_lines, strip_heading_text, strip_outer_quotes,
 };
 pub use tool::{
-    ChangesResponse, ContainerPath, Direction, EmbedInput, EmbedResponse, FrontmatterFilter,
-    IndexStats, LintCheck, LintFinding, LintInput, LintResponse, MatchKind, MetaEntry, MetaInput,
-    MetaResponse, PositiveCount, ReadInput, ReadResponse, ReadResult, RelatedInput,
-    RelatedResponse, RelatedResult, RelationKind, SearchInput, SearchMode, SearchResponse,
-    SearchResult, StatusInput, StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus,
-    TalonInput, TalonResponse, VaultPath, WhereClause, WhereOperator,
+    ChangesResponse, ContainerPath, Direction, FrontmatterFilter, IndexStats, LintCheck,
+    LintFinding, LintInput, LintResponse, MatchKind, MetaEntry, MetaInput, MetaResponse,
+    PositiveCount, ReadInput, ReadResponse, ReadResult, RelatedInput, RelatedResponse,
+    RelatedResult, RelationKind, SearchInput, SearchMode, SearchResponse, SearchResult, StatusInput,
+    StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus, TalonInput, TalonResponse,
+    VaultPath, WhereClause, WhereOperator,
 };

@@ -247,8 +247,6 @@ pub enum TalonInput {
     Read(ReadInput),
     /// Sync/index request.
     Sync(SyncInput),
-    /// Embed pass request.
-    Embed(EmbedInput),
     /// Status request.
     Status(StatusInput),
     /// Related-note request.
@@ -518,8 +516,6 @@ pub enum TalonResponse {
     Read(ReadResponse),
     /// Sync response.
     Sync(SyncResponse),
-    /// Embed response.
-    Embed(EmbedResponse),
     /// Status response.
     Status(StatusResponse),
     /// Related-note response.
@@ -694,51 +690,21 @@ pub struct SyncResponse {
     pub skipped: u32,
     /// Deleted notes.
     pub deleted: u32,
-    /// Remaining pending embeddings.
-    pub pending_embeddings: u32,
-    /// Duration in milliseconds.
-    pub duration_ms: u64,
-}
-
-/// Embed pass request.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-pub struct EmbedInput {
-    /// Restrict to these vault-relative paths (empty = whole vault).
-    #[serde(default)]
-    pub paths: Vec<String>,
-    /// Re-embed every chunk regardless of `embedding_status`.
-    #[serde(default)]
-    pub force: bool,
-}
-
-/// Embed pass response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EmbedResponse {
-    /// Whether the pass ran to completion.
-    pub completed: bool,
-    /// Whether `force` was set.
-    pub force: bool,
-    /// Number of paths in scope (0 = full pass).
-    pub path_count: u32,
-    /// Notes encountered.
-    pub processed: u32,
-    /// Notes embedded successfully.
-    pub succeeded: u32,
-    /// Notes that failed (HTTP, dim mismatch, ...).
-    pub failed: u32,
+    /// Notes embedded during this sync pass.
+    pub embedded: u32,
+    /// Notes that failed embedding.
+    pub embed_failed: u32,
     /// True if any vector dimension differed mid-pass; semantic search is
     /// disabled until the next consistent pass succeeds.
     pub dimension_mismatch: bool,
-    /// Operator-facing remediation hint (present when the pass detected a
-    /// recoverable problem; e.g. dim mismatch tells the user to re-run
+    /// Operator-facing remediation hint (present when the embed pass detected
+    /// a recoverable problem; e.g. dim mismatch tells the user to re-run
     /// with `--force`).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub remediation: Option<String>,
-    /// Up to 20 redacted detail strings.
-    #[serde(default)]
-    pub diagnostics: Vec<String>,
+    pub embed_remediation: Option<String>,
+    /// Up to 20 redacted detail strings from the embed pass.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub embed_diagnostics: Vec<String>,
     /// Duration in milliseconds.
     pub duration_ms: u64,
 }
