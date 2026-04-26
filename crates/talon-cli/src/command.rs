@@ -9,9 +9,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse, ReadResponse, RelatedInput,
-    RelatedResponse, SearchInput, SearchResponse, StatusResponse, SyncInput, SyncResponse,
-    SyncStatus, TalonResponse, embed::EmbedPassOptions, inference::InferenceClient, open_database,
-    run_sync, vec_ext::register_sqlite_vec,
+    RelatedResponse, ResponseMeta, SearchInput, SearchResponse, StatusResponse, SyncInput,
+    SyncResponse, SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions,
+    inference::InferenceClient, open_database, run_sync, vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -68,10 +68,17 @@ async fn emit_search_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         args.fast.enabled(),
         args.limit,
     )?;
+    let started = Instant::now();
     let work = async move {
-        Ok::<TalonResponse, eyre::Report>(TalonResponse::Search(SearchResponse::empty_scaffold(
-            input,
-        )))
+        let meta = ResponseMeta {
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            result_count: Some(0),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        };
+        let data = TalonResponseData::Search(SearchResponse::empty_scaffold(input));
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("search", data, meta))
     };
     let response = if should_spin(args) {
         spinner::with_spinner("Searching...".to_string(), work).await?
@@ -86,8 +93,18 @@ async fn emit_read_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         bail!("read requires a path");
     }
 
-    let work =
-        async move { Ok::<TalonResponse, eyre::Report>(TalonResponse::Read(ReadResponse::stub())) };
+    let started = Instant::now();
+    let work = async move {
+        let meta = ResponseMeta {
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            result_count: Some(0),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        };
+        let data = TalonResponseData::Read(ReadResponse::stub());
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("read", data, meta))
+    };
     let response = if should_spin(args) {
         spinner::with_spinner("Reading...".to_string(), work).await?
     } else {
@@ -179,8 +196,16 @@ async fn emit_sync_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         })
         .await
         .wrap_err("sync task join failed")?;
-        let response = TalonResponse::Sync(result?);
-        Ok::<TalonResponse, eyre::Report>(response)
+        let sync_resp = result?;
+        let meta = ResponseMeta {
+            duration_ms: sync_resp.duration_ms,
+            result_count: Some(sync_resp.indexed),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        };
+        let data = TalonResponseData::Sync(sync_resp);
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("sync", data, meta))
     };
     let response = if should_spin(args) {
         spinner::with_spinner("Syncing...".to_string(), work).await?
@@ -195,6 +220,7 @@ async fn emit_related_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         bail!("related requires a path");
     }
 
+    let started = Instant::now();
     let input = RelatedInput {
         path: rest[0].clone(),
         depth: args
@@ -205,11 +231,19 @@ async fn emit_related_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         scope_only: vec![],
     };
     let work = async move {
-        Ok::<TalonResponse, eyre::Report>(TalonResponse::Related(RelatedResponse {
+        let meta = ResponseMeta {
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            result_count: Some(0),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        };
+        let data = TalonResponseData::Related(RelatedResponse {
             path: talon_core::VaultPath::parse(&input.path)?,
             direction: input.direction,
             results: Vec::new(),
-        }))
+        });
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("related", data, meta))
     };
     let response = if should_spin(args) {
         spinner::with_spinner("Finding related...".to_string(), work).await?
@@ -220,7 +254,16 @@ async fn emit_related_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
 }
 
 fn emit_status_stub(args: &CliArgs) -> Result<()> {
-    let response = TalonResponse::Status(StatusResponse::scaffold()?);
+    let started = Instant::now();
+    let meta = ResponseMeta {
+        duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        result_count: None,
+        warnings: Vec::new(),
+        scope_set: None,
+        since: None,
+    };
+    let data = TalonResponseData::Status(StatusResponse::scaffold()?);
+    let response = TalonEnvelope::ok("status", data, meta);
     emit_response(&response, output_mode(args))
 }
 
@@ -238,11 +281,20 @@ async fn emit_meta_stub(args: &CliArgs, _rest: &[String]) -> Result<()> {
             "limit",
         )?,
     };
+    let started = Instant::now();
     let work = async move {
-        Ok::<TalonResponse, eyre::Report>(TalonResponse::Meta(MetaResponse {
+        let meta = ResponseMeta {
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            result_count: Some(0),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        };
+        let data = TalonResponseData::Meta(MetaResponse {
             entries: Vec::new(),
             tag_counts: None,
-        }))
+        });
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("meta", data, meta))
     };
     let response = if should_spin(args) {
         spinner::with_spinner("Querying frontmatter...".to_string(), work).await?
@@ -269,11 +321,20 @@ async fn emit_lint_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         );
     };
 
+    let started = Instant::now();
     let work = async move {
-        Ok::<TalonResponse, eyre::Report>(TalonResponse::Lint(LintResponse {
+        let meta = ResponseMeta {
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            result_count: Some(0),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        };
+        let data = TalonResponseData::Lint(LintResponse {
             check,
             findings: Vec::new(),
-        }))
+        });
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("lint", data, meta))
     };
     let response = if should_spin(args) {
         spinner::with_spinner("Running lint...".to_string(), work).await?

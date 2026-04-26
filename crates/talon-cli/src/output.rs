@@ -5,7 +5,8 @@ use eyre::Result;
 use serde::Serialize;
 use std::io::{self, Write};
 use talon_core::{
-    LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse, TalonResponse,
+    LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse, TalonEnvelope,
+    TalonResponseData,
 };
 
 /// CLI output mode.
@@ -31,29 +32,34 @@ pub fn write_stdout_bytes(bytes: &[u8]) -> u8 {
     }
 }
 
-/// Emits a Talon response.
+/// Emits a Talon envelope.
 ///
 /// # Errors
 ///
 /// Returns an error if serialization or stdout writes fail.
-pub fn emit_response(response: &TalonResponse, mode: OutputMode) -> Result<()> {
+pub fn emit_response(envelope: &TalonEnvelope, mode: OutputMode) -> Result<()> {
     match mode {
-        OutputMode::Human => emit_human(response),
-        OutputMode::JsonPretty => emit_json_pretty(response),
-        OutputMode::Agent => emit_agent(response),
+        OutputMode::Human => emit_human(envelope),
+        OutputMode::JsonPretty => emit_json_pretty(envelope),
+        OutputMode::Agent => emit_agent(envelope),
     }
 }
 
-fn emit_human(response: &TalonResponse) -> Result<()> {
-    match response {
-        TalonResponse::Search(resp) => emit_search_human(resp)?,
-        TalonResponse::Sync(resp) => emit_sync_human(resp)?,
-        TalonResponse::Status(resp) => emit_status_human(resp)?,
-        TalonResponse::Read(_) => emit_read_human()?,
-        TalonResponse::Related(resp) => emit_related_human(resp)?,
-        TalonResponse::Meta(resp) => emit_meta_human(resp)?,
-        TalonResponse::Changes(resp) => emit_changes_human(resp)?,
-        TalonResponse::Lint(resp) => emit_lint_human(resp)?,
+fn emit_human(envelope: &TalonEnvelope) -> Result<()> {
+    match envelope.data.as_ref() {
+        Some(TalonResponseData::Search(resp)) => emit_search_human(resp)?,
+        Some(TalonResponseData::Sync(resp)) => emit_sync_human(resp)?,
+        Some(TalonResponseData::Status(resp)) => emit_status_human(resp)?,
+        Some(TalonResponseData::Read(_)) => emit_read_human()?,
+        Some(TalonResponseData::Related(resp)) => emit_related_human(resp)?,
+        Some(TalonResponseData::Meta(resp)) => emit_meta_human(resp)?,
+        Some(TalonResponseData::Changes(resp)) => emit_changes_human(resp)?,
+        Some(TalonResponseData::Lint(resp)) => emit_lint_human(resp)?,
+        None => {
+            if let Some(err) = &envelope.error {
+                writeln!(io::stderr(), "Error [{}]: {}", err.code, err.message)?;
+            }
+        }
     }
     Ok(())
 }
@@ -200,22 +206,22 @@ fn emit_lint_human(resp: &LintResponse) -> Result<()> {
     Ok(())
 }
 
-fn emit_json_pretty(response: &TalonResponse) -> Result<()> {
+fn emit_json_pretty(envelope: &TalonEnvelope) -> Result<()> {
     let stdout = io::stdout();
     let mut lock = stdout.lock();
-    serde_json::to_writer_pretty(&mut lock, response)?;
+    serde_json::to_writer_pretty(&mut lock, envelope)?;
     writeln!(lock)?;
     Ok(())
 }
 
-fn emit_agent(response: &TalonResponse) -> Result<()> {
-    match response {
-        TalonResponse::Search(search) => {
+fn emit_agent(envelope: &TalonEnvelope) -> Result<()> {
+    match envelope.data.as_ref() {
+        Some(TalonResponseData::Search(search)) => {
             let hits: Vec<AgentSearchHit<'_>> =
                 search.results.iter().map(AgentSearchHit::from).collect();
             emit_json_compact(&hits)
         }
-        other => emit_json_compact(other),
+        _ => emit_json_compact(envelope),
     }
 }
 

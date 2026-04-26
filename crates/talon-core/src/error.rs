@@ -26,6 +26,20 @@ pub enum ErrorCode {
     Internal,
 }
 
+impl std::fmt::Display for ErrorCode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidScope => write!(f, "invalid-scope"),
+            Self::InvalidWhere => write!(f, "invalid-where"),
+            Self::InvalidSince => write!(f, "invalid-since"),
+            Self::DbBusy => write!(f, "db-busy"),
+            Self::DbCorrupt => write!(f, "db-corrupt"),
+            Self::NotIndexed => write!(f, "not-indexed"),
+            Self::Internal => write!(f, "internal"),
+        }
+    }
+}
+
 /// Typed failures produced by Talon core operations.
 #[derive(Debug, Error)]
 #[non_exhaustive]

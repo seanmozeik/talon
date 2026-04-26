@@ -118,8 +118,8 @@
         "just verify passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented TalonEnvelope struct replacing TalonResponse enum. Success shape: {action, version, ok: true, data, meta}. Error shape: {action, version, ok: false, error}. TalonResponseData tagged enum wraps all 8 response variants. Helper constructors TalonEnvelope::ok() and TalonEnvelope::err(). CLI command.rs uses envelope helpers everywhere. output.rs formatters unwrap data field. camelCase on ResponseMeta + ErrorEnvelope. ErrorCode added Display. 15 round-trip serde tests. 250 tests pass."
     },
     {
       "id": "US-006",

@@ -502,14 +502,14 @@ const fn default_depth() -> u8 {
 
 // ── Response types ──────────────────────────────────────────────────────────
 
-/// Unified output envelope for all Talon responses.
+/// Action-discriminated response payload, serialized inside `TalonEnvelope.data`.
 ///
-/// Every JSON response uses this shape:
-/// - Success: `{ action, version, ok: true, data: ..., meta: ... }`
-/// - Error: `{ action, version, ok: false, error: { code, message, detail } }`
+/// When serialized, produces `{ action: "<action>", ...fields }` — the action
+/// discriminator is redundant with the envelope's top-level `action` but kept
+/// for forward-compatibility with MCP tool call results.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
-pub enum TalonResponse {
+pub enum TalonResponseData {
     /// Search response.
     Search(SearchResponse),
     /// Read response.
@@ -528,8 +528,190 @@ pub enum TalonResponse {
     Lint(LintResponse),
 }
 
+/// Unified output envelope for all Talon responses.
+///
+/// Every JSON response uses this shape:
+/// - Success: `{ action, version, ok: true, data: ..., meta: ... }`
+/// - Error:  `{ action, version, ok: false, error: { code, message, detail } }`
+///
+/// See Decision 8 in the design spec for the locked contract.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TalonEnvelope {
+    /// Action name in kebab-case (e.g. "search", "sync", "status").
+    pub action: String,
+    /// Cargo package version at build time.
+    pub version: String,
+    /// Whether the call succeeded.
+    pub ok: bool,
+    /// Action-discriminated payload (present when `ok: true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub data: Option<TalonResponseData>,
+    /// Metadata (present when `ok: true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<ResponseMeta>,
+    /// Error envelope (present when `ok: false`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<ErrorEnvelope>,
+}
+
+impl TalonEnvelope {
+    /// Builds a success envelope.
+    #[must_use]
+    pub fn ok(action: &'static str, data: TalonResponseData, meta: ResponseMeta) -> Self {
+        Self {
+            action: action.to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            ok: true,
+            data: Some(data),
+            meta: Some(meta),
+            error: None,
+        }
+    }
+
+    /// Builds an error envelope.
+    #[must_use]
+    pub fn err(action: &'static str, error: ErrorEnvelope) -> Self {
+        Self {
+            action: action.to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            ok: false,
+            data: None,
+            meta: None,
+            error: Some(error),
+        }
+    }
+
+    /// Returns the inner response data, if present.
+    #[must_use]
+    pub const fn data(&self) -> Option<&TalonResponseData> {
+        self.data.as_ref()
+    }
+
+    /// Returns the inner response data, if present and mutable.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn data_mut(&mut self) -> Option<&mut TalonResponseData> {
+        self.data.as_mut()
+    }
+
+    /// Extracts the inner response data.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn into_data(self) -> Option<TalonResponseData> {
+        self.data
+    }
+
+    /// Returns the human-readable response for this envelope.
+    #[must_use]
+    #[allow(clippy::missing_const_for_fn)]
+    pub fn as_response(&self) -> Option<&dyn TalonResponseTrait> {
+        self.data.as_ref().map(|d| d as &dyn TalonResponseTrait)
+    }
+}
+
+/// Trait for accessing response data from `TalonResponseData`.
+///
+/// Implemented by each response variant so output formatters can match on
+/// the inner type without knowing the enum discriminant.
+pub trait TalonResponseTrait {
+    /// Returns the action name.
+    fn action(&self) -> &str;
+}
+
+impl TalonResponseTrait for TalonResponseData {
+    fn action(&self) -> &str {
+        match self {
+            Self::Search(_) => "search",
+            Self::Read(_) => "read",
+            Self::Sync(_) => "sync",
+            Self::Status(_) => "status",
+            Self::Related(_) => "related",
+            Self::Meta(_) => "meta",
+            Self::Changes(_) => "changes",
+            Self::Lint(_) => "lint",
+        }
+    }
+}
+
+// ── Response inner-type accessor impls ──────────────────────────────────────
+
+impl TalonResponseData {
+    /// Returns a reference to the inner `SearchResponse`, if present.
+    #[must_use]
+    pub const fn as_search(&self) -> Option<&SearchResponse> {
+        match self {
+            Self::Search(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `SyncResponse`, if present.
+    #[must_use]
+    pub const fn as_sync(&self) -> Option<&SyncResponse> {
+        match self {
+            Self::Sync(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `StatusResponse`, if present.
+    #[must_use]
+    pub const fn as_status(&self) -> Option<&StatusResponse> {
+        match self {
+            Self::Status(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `RelatedResponse`, if present.
+    #[must_use]
+    pub const fn as_related(&self) -> Option<&RelatedResponse> {
+        match self {
+            Self::Related(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `MetaResponse`, if present.
+    #[must_use]
+    pub const fn as_meta(&self) -> Option<&MetaResponse> {
+        match self {
+            Self::Meta(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `ChangesResponse`, if present.
+    #[must_use]
+    pub const fn as_changes(&self) -> Option<&ChangesResponse> {
+        match self {
+            Self::Changes(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `LintResponse`, if present.
+    #[must_use]
+    pub const fn as_lint(&self) -> Option<&LintResponse> {
+        match self {
+            Self::Lint(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `ReadResponse`, if present.
+    #[must_use]
+    pub const fn as_read(&self) -> Option<&ReadResponse> {
+        match self {
+            Self::Read(r) => Some(r),
+            _ => None,
+        }
+    }
+}
+
 /// Error envelope used when `ok: false`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ErrorEnvelope {
     /// Error code from the fixed enum.
     pub code: ErrorCode,
@@ -542,6 +724,7 @@ pub struct ErrorEnvelope {
 
 /// Metadata included in every successful response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ResponseMeta {
     /// Duration in milliseconds.
     pub duration_ms: u64,
@@ -916,4 +1099,283 @@ pub struct LintFinding {
     /// Line number, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
+}
+
+// ── Round-trip tests ────────────────────────────────────────────────────────
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod envelope_tests {
+    use super::*;
+
+    fn success_meta() -> ResponseMeta {
+        ResponseMeta {
+            duration_ms: 42,
+            result_count: Some(3),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        }
+    }
+
+    fn error_envelope() -> ErrorEnvelope {
+        ErrorEnvelope {
+            code: ErrorCode::Internal,
+            message: "something broke".to_string(),
+            detail: None,
+        }
+    }
+
+    // ── Success envelope ──────────────────────────────────────────────
+
+    #[test]
+    fn search_success_round_trip() {
+        let data = TalonResponseData::Search(SearchResponse {
+            query: Some("hello world".to_string()),
+            mode: SearchMode::Hybrid,
+            fast: false,
+            expanded: true,
+            reranked: true,
+            index_version: "1".to_string(),
+            total: 3,
+            results: Vec::new(),
+        });
+        let envelope = TalonEnvelope::ok("search", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "search");
+        assert!(round_trip.ok);
+        assert!(round_trip.data.is_some());
+        assert!(round_trip.meta.is_some());
+        assert!(round_trip.error.is_none());
+        // Verify top-level keys are exactly {action, version, ok, data, meta}
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let mut keys: Vec<String> = parsed.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, vec!["action", "data", "meta", "ok", "version"]);
+    }
+
+    #[test]
+    fn sync_success_round_trip() {
+        let data = TalonResponseData::Sync(SyncResponse {
+            completed: true,
+            status: SyncStatus::Ok,
+            fast: false,
+            force: false,
+            path_count: 1,
+            indexed: 5,
+            skipped: 0,
+            deleted: 0,
+            embedded: 5,
+            embed_failed: 0,
+            dimension_mismatch: false,
+            embed_remediation: None,
+            embed_diagnostics: Vec::new(),
+            duration_ms: 100,
+        });
+        let envelope = TalonEnvelope::ok("sync", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "sync");
+        assert!(round_trip.ok);
+        assert!(round_trip.data.is_some());
+    }
+
+    #[test]
+    fn status_success_round_trip() {
+        let data = TalonResponseData::Status(StatusResponse {
+            state: StatusState::Ready,
+            enabled: true,
+            reason: None,
+            container_mount: ContainerPath::parse("/vault").unwrap(),
+            index_version: "1".to_string(),
+            index: IndexStats {
+                active_notes: 100,
+                chunk_count: 500,
+                failed_embeddings: 0,
+                vector_dimensions: Some(384),
+            },
+            scopes: None,
+        });
+        let envelope = TalonEnvelope::ok("status", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "status");
+        assert!(round_trip.ok);
+    }
+
+    #[test]
+    fn read_success_round_trip() {
+        let data = TalonResponseData::Read(ReadResponse::stub());
+        let envelope = TalonEnvelope::ok("read", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "read");
+        assert!(round_trip.ok);
+    }
+
+    #[test]
+    fn related_success_round_trip() {
+        let data = TalonResponseData::Related(RelatedResponse {
+            path: VaultPath::parse("test.md").unwrap(),
+            direction: Direction::Both,
+            results: Vec::new(),
+        });
+        let envelope = TalonEnvelope::ok("related", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "related");
+        assert!(round_trip.ok);
+    }
+
+    #[test]
+    fn meta_success_round_trip() {
+        let data = TalonResponseData::Meta(MetaResponse {
+            entries: Vec::new(),
+            tag_counts: Some(BTreeMap::new()),
+        });
+        let envelope = TalonEnvelope::ok("meta", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "meta");
+        assert!(round_trip.ok);
+    }
+
+    #[test]
+    fn changes_success_round_trip() {
+        let data = TalonResponseData::Changes(ChangesResponse {
+            added: Vec::new(),
+            modified: Vec::new(),
+            deleted: Vec::new(),
+        });
+        let envelope = TalonEnvelope::ok("changes", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "changes");
+        assert!(round_trip.ok);
+    }
+
+    #[test]
+    fn lint_success_round_trip() {
+        let data = TalonResponseData::Lint(LintResponse {
+            check: LintCheck::Orphans,
+            findings: Vec::new(),
+        });
+        let envelope = TalonEnvelope::ok("lint", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "lint");
+        assert!(round_trip.ok);
+    }
+
+    // ── Error envelope ────────────────────────────────────────────────
+
+    #[test]
+    fn error_round_trip() {
+        let envelope = TalonEnvelope::err("search", error_envelope());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "search");
+        assert!(!round_trip.ok);
+        assert!(round_trip.data.is_none());
+        assert!(round_trip.meta.is_none());
+        assert!(round_trip.error.is_some());
+        // Verify top-level keys are exactly {action, version, ok, error}
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let mut keys: Vec<String> = parsed.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, vec!["action", "error", "ok", "version"]);
+    }
+
+    // ── Top-level key assertions ──────────────────────────────────────
+
+    #[test]
+    fn success_envelope_has_exactly_five_keys() {
+        let data =
+            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let envelope = TalonEnvelope::ok("search", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.as_object().unwrap().keys().count(),
+            5,
+            "success envelope must have exactly 5 top-level keys"
+        );
+    }
+
+    #[test]
+    fn error_envelope_has_exactly_four_keys() {
+        let envelope = TalonEnvelope::err("search", error_envelope());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(
+            parsed.as_object().unwrap().keys().count(),
+            4,
+            "error envelope must have exactly 4 top-level keys"
+        );
+    }
+
+    #[test]
+    fn version_is_cargo_pkg_version() {
+        let data =
+            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let envelope = TalonEnvelope::ok("search", data, success_meta());
+        assert_eq!(envelope.version, env!("CARGO_PKG_VERSION"));
+    }
+
+    #[test]
+    fn action_is_kebab_case() {
+        let data =
+            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let envelope = TalonEnvelope::ok("search", data, success_meta());
+        assert_eq!(envelope.action, "search");
+        let data2 =
+            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let envelope = TalonEnvelope::ok("my-action", data2, success_meta());
+        assert_eq!(envelope.action, "my-action");
+    }
+
+    // ── ResponseMeta optional fields ──────────────────────────────────
+
+    #[test]
+    fn meta_skips_none_fields() {
+        let meta = ResponseMeta {
+            duration_ms: 10,
+            result_count: None,
+            warnings: Vec::new(),
+            scope_set: None,
+            since: None,
+        };
+        let data =
+            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let envelope = TalonEnvelope::ok("search", data, meta);
+        let json = serde_json::to_string(&envelope).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        // Debug: print the full JSON
+        eprintln!("JSON: {json}");
+        let meta_obj = parsed.get("meta").unwrap().as_object().unwrap();
+        // result_count, scope_set, since should be absent
+        assert!(!meta_obj.contains_key("resultCount"));
+        assert!(!meta_obj.contains_key("scopeSet"));
+        assert!(!meta_obj.contains_key("since"));
+        // duration_ms should be present (camelCase)
+        assert!(meta_obj.contains_key("durationMs"));
+        assert_eq!(meta_obj["durationMs"], 10);
+    }
+
+    #[test]
+    fn error_skips_none_detail() {
+        let env = TalonEnvelope::err(
+            "search",
+            ErrorEnvelope {
+                code: ErrorCode::Internal,
+                message: "boom".to_string(),
+                detail: None,
+            },
+        );
+        let json = serde_json::to_string(&env).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let error_obj = parsed.get("error").unwrap().as_object().unwrap();
+        assert!(!error_obj.contains_key("detail"));
+    }
 }
