@@ -260,8 +260,8 @@
         "just verify passes"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Ported 21 notes to crates/talon-core/tests/fixtures/vault/ (Atlas/*, Graph/*, Search/*, Filters/*, Lifecycle/*). Added fixture_vault.rs with 9 integration tests: sync counts all 21 notes, fulltext search (orchard/banana), title alias search (Cafe del Sol), hybrid search with mocked expansion+rerank, related graph traversal (Hub depth=2 finds Child/Side/Inbound/Grandchild), meta --where status=archived returns only Filters/Frontmatter.md, lint orphans excludes linked notes, status reports 21 active notes + 5-dim vectors. EmbedChunkedResponder dynamically returns N vectors per chunk to satisfy persist_multi_chunk. 298 tests pass."
     },
     {
       "id": "US-014",
