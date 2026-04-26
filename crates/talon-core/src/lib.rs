@@ -57,7 +57,7 @@ pub use migrations::{
     DB_VERSION_KEY, REBUILD_MIGRATIONS, SCHEMA_MIGRATIONS, TALON_SQLITE_BUSY_TIMEOUT_MS,
     TRIGGER_MIGRATIONS, run_migrations,
 };
-pub use query::{find_related, run_read, run_search};
+pub use query::{find_related, query_meta, run_read, run_search};
 pub use store::open_database;
 pub use sync::{SyncError, SyncLock, SyncLockError, acquire_sync_lock, run_sync};
 

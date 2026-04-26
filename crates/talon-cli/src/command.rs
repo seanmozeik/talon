@@ -8,10 +8,10 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse,
-    PositiveCount, ReadInput, RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse,
-    SyncInput, SyncResponse, SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions,
-    find_related, inference::InferenceClient, open_database, run_read, run_search, run_sync,
+    ExpansionClient, IndexerConfig, LintCheck, LintResponse, MetaInput, PositiveCount, ReadInput,
+    RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse, SyncInput, SyncResponse,
+    SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions, find_related,
+    inference::InferenceClient, open_database, query_meta, run_read, run_search, run_sync,
     vec_ext::register_sqlite_vec,
 };
 
@@ -40,7 +40,7 @@ pub async fn run(args: &CliArgs) -> Result<()> {
         "sync" => emit_sync_stub(args, rest).await,
         "related" => emit_related(args, rest).await,
         "status" => emit_status_stub(args),
-        "meta" => emit_meta_stub(args, rest).await,
+        "meta" => emit_meta(args, rest).await,
         "changes" => bail!("changes is scaffolded but not implemented yet"),
         "lint" => emit_lint_stub(args, rest).await,
         "help" => bail!("use `talon --help` for command help"),
@@ -376,33 +376,47 @@ fn emit_status_stub(args: &CliArgs) -> Result<()> {
     emit_response(&response, output_mode(args))
 }
 
-async fn emit_meta_stub(args: &CliArgs, _rest: &[String]) -> Result<()> {
-    let _input = MetaInput {
-        where_: Vec::new(),
-        since: None,
+async fn emit_meta(args: &CliArgs, _rest: &[String]) -> Result<()> {
+    let where_clauses: Vec<talon_core::WhereClause> = args
+        .where_clauses
+        .iter()
+        .map(|s| parse_where_clause(s).map_err(|e| eyre::eyre!("invalid --where: {s}: {e}")))
+        .collect::<Result<Vec<_>>>()?;
+
+    let input = MetaInput {
+        where_: where_clauses,
+        since: args.since.clone(),
         scope: vec![],
         scope_only: vec![],
-        select: vec![],
-        tag_counts: false,
-        sources: None,
-        limit: talon_core::PositiveCount::new(
+        select: args.meta.select.clone(),
+        tag_counts: args.meta.tag_counts,
+        sources: args.meta.sources.clone(),
+        limit: PositiveCount::new(
             args.limit.unwrap_or(talon_core::constants::DEFAULT_LIMIT),
             "limit",
         )?,
     };
+
+    let config = config::load_config(args.config_file.as_deref())?;
+    let db_path: PathBuf = config.db_path.clone();
+    let since_str = input.since.clone();
+
     let started = Instant::now();
     let work = async move {
+        let conn = open_database(&db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+
+        let response = query_meta(&conn, &input);
+        let result_count = u32::try_from(response.entries.len()).unwrap_or(u32::MAX);
+
         let meta = ResponseMeta {
             duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            result_count: Some(0),
+            result_count: Some(result_count),
             warnings: Vec::new(),
             scope_set: None,
-            since: None,
+            since: since_str,
         };
-        let data = TalonResponseData::Meta(MetaResponse {
-            entries: Vec::new(),
-            tag_counts: None,
-        });
+        let data = TalonResponseData::Meta(response);
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("meta", data, meta))
     };
     let response = if should_spin(args) {

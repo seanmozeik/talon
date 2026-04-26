@@ -193,8 +193,8 @@
         "just verify passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/query/meta.rs: query_meta(conn, &MetaInput) -> MetaResponse. Supports --where (8 operators via shared query/where_filter.rs primitives), --since timestamp filter, --select field projection from notes.frontmatter JSON, --tag-counts aggregation via note_tags, and --sources reverse-reference lookup via note_frontmatter_fields. CLI gains --select/--tag-counts/--sources flags via MetaArgs sub-struct. emit_meta replaces emit_meta_stub in command.rs. 8 unit tests. 274 tests pass."
     },
     {
       "id": "US-010",

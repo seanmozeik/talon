@@ -5,14 +5,12 @@
 //!
 //! Ports the search command from `services/talon/search/command.ts`.
 
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 
 use crate::config::TalonConfig;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
-use crate::tool::{
-    MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause, WhereOperator,
-};
+use crate::tool::{MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause};
 
 use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
@@ -166,9 +164,7 @@ fn apply_where_filter(
             let Some(note_id) = note_id else {
                 return false;
             };
-            clauses
-                .iter()
-                .all(|clause| check_where_clause(conn, note_id, clause))
+            super::where_filter::passes_where_clauses(conn, note_id, clauses)
         })
         .collect()
 }
@@ -243,88 +239,4 @@ fn get_note_mtime(conn: &Connection, note_id: i64) -> Option<u64> {
         |row| row.get(0),
     )
     .ok()
-}
-
-/// Checks a single `--where` clause against a note's frontmatter fields.
-fn check_where_clause(conn: &Connection, note_id: i64, clause: &WhereClause) -> bool {
-    match clause.op {
-        WhereOperator::Exists => {
-            // Check if the field has any entries.
-            let count: i64 = conn
-                .query_row(
-                    "SELECT COUNT(*) FROM note_frontmatter_fields WHERE note_id = ? AND field = ?",
-                    params![note_id, &clause.key],
-                    |row| row.get(0),
-                )
-                .unwrap_or(0);
-            count > 0
-        }
-        WhereOperator::Equals => check_fm_field(conn, note_id, &clause.key, |value| {
-            value == clause.value.as_deref()
-        }),
-        WhereOperator::NotEquals => check_fm_field(conn, note_id, &clause.key, |value| {
-            value != clause.value.as_deref()
-        }),
-        WhereOperator::LessThan => check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-            v < clause.value.as_deref().unwrap_or("")
-        }),
-        WhereOperator::LessThanOrEqual => check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-            v <= clause.value.as_deref().unwrap_or("")
-        }),
-        WhereOperator::GreaterThan => check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-            v > clause.value.as_deref().unwrap_or("")
-        }),
-        WhereOperator::GreaterThanOrEqual => {
-            check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-                v >= clause.value.as_deref().unwrap_or("")
-            })
-        }
-        WhereOperator::Contains => check_fm_field(conn, note_id, &clause.key, |value| {
-            value.is_some_and(|v| v.contains(clause.value.as_deref().unwrap_or("")))
-        }),
-    }
-}
-
-/// Checks a frontmatter field against a predicate on the string value.
-///
-/// Returns `true` if ANY field entry matches the predicate.
-/// Returns `false` if the field has no entries (field does not exist on the note).
-fn check_fm_field<F>(conn: &Connection, note_id: i64, field: &str, pred: F) -> bool
-where
-    F: Fn(Option<&str>) -> bool,
-{
-    let Ok(mut stmt) =
-        conn.prepare("SELECT value FROM note_frontmatter_fields WHERE note_id = ? AND field = ?")
-    else {
-        return false;
-    };
-    let values: Vec<String> = stmt
-        .query_map(params![note_id, field], |row| row.get::<_, String>(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
-        .unwrap_or_default();
-
-    // Field must exist AND at least one value must match the predicate.
-    !values.is_empty() && values.iter().any(|v| pred(Some(v.as_str())))
-}
-
-/// Checks a frontmatter field against a numeric predicate.
-///
-/// Compares string values lexicographically.
-/// Returns `false` if the field has no entries.
-fn check_fm_field_numeric<F>(conn: &Connection, note_id: i64, field: &str, pred: F) -> bool
-where
-    F: Fn(&str) -> bool,
-{
-    let Ok(mut stmt) =
-        conn.prepare("SELECT value FROM note_frontmatter_fields WHERE note_id = ? AND field = ?")
-    else {
-        return false;
-    };
-    let values: Vec<String> = stmt
-        .query_map(params![note_id, field], |row| row.get::<_, String>(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
-        .unwrap_or_default();
-
-    // Field must exist AND at least one value must match the predicate.
-    !values.is_empty() && values.iter().any(|v| pred(v.as_str()))
 }

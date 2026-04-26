@@ -39,8 +39,21 @@ pub struct CliArgs {
     pub where_clauses: Vec<String>,
     /// Filter results indexed since this timestamp.
     pub since: Option<String>,
+    /// Meta-command specific flags.
+    pub meta: MetaArgs,
     /// Positional command and command arguments.
     pub positionals: Vec<String>,
+}
+
+/// Meta-command specific options.
+#[derive(Debug, Clone, Default)]
+pub struct MetaArgs {
+    /// Frontmatter fields to project (repeatable).
+    pub select: Vec<String>,
+    /// Emit tag counts.
+    pub tag_counts: bool,
+    /// Resolve reverse-source references for this path.
+    pub sources: Option<String>,
 }
 
 macro_rules! flag_type {
@@ -130,7 +143,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .argument::<u16>("N")
         .optional();
     let max_lines = long("max-lines")
-        .help("Maximum lines for read.")
+        .help("Max lines for read.")
         .argument::<u16>("N")
         .optional();
     let depth = long("depth")
@@ -150,6 +163,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .help("Filter results indexed since this timestamp (ISO 8601 or epoch ms).")
         .argument::<String>("SINCE")
         .optional();
+    let meta = meta_parser();
     let positionals = positional::<String>("ARGS")
         .help("Command and command arguments.")
         .many();
@@ -171,10 +185,28 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         direction,
         where_clauses,
         since,
+        meta,
         positionals
     })
     .to_options()
     .descr("Talon Obsidian vault search, indexing, and MCP server.")
+}
+
+fn meta_parser() -> impl bpaf::Parser<MetaArgs> {
+    let select = long("select")
+        .help("Frontmatter field to project (repeatable).")
+        .argument::<String>("FIELD")
+        .many();
+    let tag_counts = long("tag-counts").help("Emit tag counts.").switch();
+    let sources = long("sources")
+        .help("Resolve notes referencing this path via their sources: field.")
+        .argument::<String>("PATH")
+        .optional();
+    bpaf::construct!(MetaArgs {
+        select,
+        tag_counts,
+        sources
+    })
 }
 
 fn parse_search_mode(value: &str) -> Result<SearchMode, String> {
