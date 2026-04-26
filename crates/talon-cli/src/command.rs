@@ -8,11 +8,11 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, IndexerConfig, LintCheck, LintResponse, MetaInput, PositiveCount, ReadInput,
+    ExpansionClient, IndexerConfig, LintCheck, LintInput, MetaInput, PositiveCount, ReadInput,
     RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse, SyncInput, SyncResponse,
     SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions, find_related,
-    inference::InferenceClient, open_database, query_changes, query_meta, run_read, run_search,
-    run_sync, vec_ext::register_sqlite_vec,
+    inference::InferenceClient, open_database, query_changes, query_lint, query_meta, run_read,
+    run_search, run_sync, vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -42,7 +42,7 @@ pub async fn run(args: &CliArgs) -> Result<()> {
         "status" => emit_status_stub(args),
         "meta" => emit_meta(args, rest).await,
         "changes" => emit_changes(args, rest).await,
-        "lint" => emit_lint_stub(args, rest).await,
+        "lint" => emit_lint(args, rest).await,
         "help" => bail!("use `talon --help` for command help"),
         other => bail!("unknown command `{other}`"),
     }
@@ -473,7 +473,7 @@ async fn emit_changes(args: &CliArgs, _rest: &[String]) -> Result<()> {
     emit_response(&response, output_mode(args))
 }
 
-async fn emit_lint_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
+async fn emit_lint(args: &CliArgs, rest: &[String]) -> Result<()> {
     let check = if let Some(c) = rest.first() {
         match c.as_str() {
             "orphans" => LintCheck::Orphans,
@@ -485,24 +485,32 @@ async fn emit_lint_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
             ),
         }
     } else {
-        bail!(
-            "lint requires --check <type>; try orphans, broken-links, dangling-refs, unreferenced"
-        );
+        bail!("lint requires a check type; try orphans, broken-links, dangling-refs, unreferenced");
     };
+
+    let input = LintInput {
+        check,
+        scope: Vec::new(),
+        scope_only: Vec::new(),
+    };
+
+    let config = config::load_config(args.config_file.as_deref())?;
+    let db_path: PathBuf = config.db_path.clone();
 
     let started = Instant::now();
     let work = async move {
+        let conn = open_database(&db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+        let response = query_lint(&conn, &input);
+        let result_count = u32::try_from(response.findings.len()).unwrap_or(u32::MAX);
         let meta = ResponseMeta {
             duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            result_count: Some(0),
+            result_count: Some(result_count),
             warnings: Vec::new(),
             scope_set: None,
             since: None,
         };
-        let data = TalonResponseData::Lint(LintResponse {
-            check,
-            findings: Vec::new(),
-        });
+        let data = TalonResponseData::Lint(response);
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("lint", data, meta))
     };
     let response = if should_spin(args) {

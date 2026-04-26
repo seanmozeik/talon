@@ -227,8 +227,8 @@
         "just verify passes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/query/lint.rs: query_lint(conn, &LintInput) -> LintResponse. Four SQL-backed checks: orphans (no incoming links via NOT IN subquery on links.to_path), broken-links (links.to_path not in active notes), dangling-refs (note_frontmatter_fields values ending in .md not in active notes), unreferenced (neither incoming nor outgoing links). Scope filter applied to all checks. Replaced emit_lint_stub in talon-cli/src/command.rs with real emit_lint handler opening the index DB. Exported query_lint from query/mod.rs and lib.rs. 5 unit tests. 284 tests pass."
     },
     {
       "id": "US-012",
