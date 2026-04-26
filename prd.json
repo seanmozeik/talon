@@ -1,7 +1,7 @@
 {
   "project": "Talon Rust Port",
   "branchName": "main",
-  "description": "Complete the Rust port of Talon (Obsidian vault search engine) from where Phase 4 ended. Phases 0-4 (workspace, store, search algorithms, indexer/sync, embed pipeline, sqlite-vec) are landed with 206 passing tests. Remaining work: query handlers (search/read/related/meta/changes/lint/status), MCP server, filesystem watcher, TS wrapper with per-platform binaries, parity tests, and final polish. Reference TS at /tmp/talon-scaffold-imports/ultra/edge/src/services/talon/. Standing rules: never silence clippy lints with #[allow] (real fixes only); use wiremock for sidecar HTTP tests; real rusqlite Connection for DB tests (no mocks); pin deps to full semver; project conventions are eyre/color-eyre, time (not chrono), fs-err (not std::fs), serde_yaml_ng, blocking rusqlite + reqwest::blocking + spawn_blocking.",
+  "description": "Complete the Rust port of Talon (Obsidian vault search engine) from where Phase 4 ended. Phases 0-4 (workspace, store, search algorithms, indexer/sync, embed pipeline, sqlite-vec) are landed with 206 passing tests. Remaining work: query handlers (search/read/related/meta/changes/lint/status), stateless MCP server, TS wrapper with per-platform binaries, parity tests, and final polish. Reference TS at /tmp/talon-scaffold-imports/ultra/edge/src/services/talon/. Architectural decision LOCKED per docs/superpowers/specs/2026-04-25-talon-extraction-design.md §2/§4: Talon is stateless and manual — NO file watcher, NO scheduler, NO clock-driven background work in Rust. The ultraclaw TS watcher remains the caller and spawns `talon sync`. `--mcp` is a stateless stdio request/response server, not a daemon. Standing rules: never silence clippy lints with #[allow] (real fixes only); use wiremock for sidecar HTTP tests; real rusqlite Connection for DB tests (no mocks); pin deps to full semver; project conventions are eyre/color-eyre, time (not chrono), fs-err (not std::fs), serde_yaml_ng, blocking rusqlite + reqwest::blocking + spawn_blocking.",
   "userStories": [
     {
       "id": "US-001",
@@ -256,12 +256,14 @@
     },
     {
       "id": "US-016",
-      "title": "Wire --mcp flag to long-running server",
-      "description": "As an operator, I want `talon --mcp` to run as a long-lived process that handles requests until shutdown or SIGINT.",
+      "title": "Wire --mcp flag to stateless stdio request/response loop",
+      "description": "As an MCP client, I want `talon --mcp` to read JSON-RPC frames from stdin and write responses to stdout until EOF or shutdown — stateless per call (open DB, answer, return), no clock-driven work, per spec §4.",
       "acceptanceCriteria": [
         "Replaces bail!(\"mcp mode is scaffolded but not implemented yet\") in command.rs",
-        "Long-running loop with graceful shutdown on JSON-RPC shutdown method or SIGINT",
-        "Integration test: spawn `talon --mcp` subprocess, send tools/list + tools/call, verify response and clean exit",
+        "Frame loop reads stdin until EOF or JSON-RPC shutdown method; SIGINT triggers clean exit",
+        "Each tools/call dispatches to the same handler the CLI uses, opens DB if needed, returns response — no in-memory caching beyond the existing SearchCache LRU",
+        "No background tasks, no timers, no fs watching inside the loop (spec §2 Decision 1)",
+        "Integration test: spawn `talon --mcp` subprocess, send initialize + tools/list + tools/call + shutdown, verify responses and clean exit",
         "Manual smoke: `talon --mcp <<< '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}'` returns valid response",
         "just verify passes"
       ],
@@ -271,56 +273,6 @@
     },
     {
       "id": "US-017",
-      "title": "Add filesystem watcher event source",
-      "description": "As Talon, I want a debounced fs-event source that coalesces per-path Created/Modified/Deleted/Renamed events so the watcher does not thrash on save bursts.",
-      "acceptanceCriteria": [
-        "New module talon-core/src/watcher/{mod,events,debounce}.rs",
-        "New deps: notify and notify-debouncer-mini, pinned to full semver",
-        "Public surface: WatcherHandle::new(vault_root, debounce_ms) -> (handle, mpsc::Receiver<WatchEvent>)",
-        "Coalesces per-path events; emits Created/Modified/Deleted/Renamed after the debounce window",
-        "Tests: temp dir with file ops verifies coalesced events (single create→modify→modify yields one Modified)",
-        "just verify passes"
-      ],
-      "priority": 17,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-018",
-      "title": "Wire watcher events to indexer",
-      "description": "As Talon, I want watcher events to drive incremental sync via index_one_note and perform_note_deletion so the index stays current without a full scan.",
-      "acceptanceCriteria": [
-        "New module talon-core/src/watcher/dispatch.rs",
-        "Created/Modified → index_one_note(conn, path, …)",
-        "Deleted/Renamed-from → perform_note_deletion(conn, path)",
-        "Acquires existing sync lock briefly per batch, releases immediately",
-        "Drops events for paths matching indexer::matches_ignore_patterns",
-        "Tests: temp vault, write/edit/delete a file, watcher dispatches and DB reflects state",
-        "just verify passes"
-      ],
-      "priority": 18,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-019",
-      "title": "Add talon watch CLI command",
-      "description": "As an operator, I want `talon watch` to be a long-running command that incrementally syncs the vault on every fs change, with --once for tests.",
-      "acceptanceCriteria": [
-        "New \"watch\" => emit_watch(args, rest).await arm in command.rs",
-        "Loads config, registers sqlite-vec, opens DB, spawns watcher",
-        "Long-running; SIGINT triggers clean shutdown that drains pending events and releases lock",
-        "--once flag: drain pending events then exit (tests/CI use this)",
-        "Integration test: spawn `talon watch --once` against temp vault, verify exit + DB state",
-        "talon watch --help renders",
-        "just verify passes"
-      ],
-      "priority": 19,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-020",
       "title": "Scaffold ts/ npm package with binary resolver",
       "description": "As a Node consumer, I want a `@talon/cli` npm package that resolves the right prebuilt binary at runtime via optionalDependencies, matching the esbuild/biome/oxc pattern.",
       "acceptanceCriteria": [
@@ -331,12 +283,12 @@
         "Vitest tests for resolution logic with mocked platform/arch",
         "npm pack produces a valid tarball; npm test clean"
       ],
-      "priority": 20,
+      "priority": 17,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-021",
+      "id": "US-018",
       "title": "Cross-build per-platform binaries with cargo zigbuild",
       "description": "As a release engineer, I want `cargo zigbuild` to produce stripped release binaries for darwin-arm64, darwin-x64, linux-x64, linux-aarch64, win32-x64 so each npm subpackage ships a working binary.",
       "acceptanceCriteria": [
@@ -347,27 +299,27 @@
         "Per-platform npm subpackage layout: package.json + the prebuilt binary, no JS",
         "just verify passes"
       ],
-      "priority": 21,
+      "priority": 18,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-022",
+      "id": "US-019",
       "title": "Add release workflow and version tagging",
       "description": "As a release engineer, I want a tag push to trigger the cross-build matrix and publish all platform packages plus the meta package to npm in one shot.",
       "acceptanceCriteria": [
         "New .github/workflows/release.yml triggered by v* tag push",
-        "Matrix invokes US-021 build script, packages each platform binary, npm publish each subpackage and the meta package",
+        "Matrix invokes US-018 build script, packages each platform binary, npm publish each subpackage and the meta package",
         "Version is read from Cargo.toml; ts/package.json version stays in lockstep",
         "Dry-run mode (workflow_dispatch with input) goes through every step except publish",
         "Dry-run succeeds end-to-end on a clean checkout"
       ],
-      "priority": 22,
+      "priority": 19,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-023",
+      "id": "US-020",
       "title": "Embed SKILL.md and wire --skill flag",
       "description": "As an MCP client, I want `talon --skill` to print an embedded SKILL.md so agents can self-load Talon usage instructions.",
       "acceptanceCriteria": [
@@ -377,12 +329,12 @@
         "Test: assert_cmd verifies non-empty output + exit 0",
         "just verify passes"
       ],
-      "priority": 23,
+      "priority": 20,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-024",
+      "id": "US-021",
       "title": "Polish human CLI output",
       "description": "As a CLI user, I want terminal-width-aware wrapping, colored headings, compact result cards, and a spinner during search so the human output is pleasant.",
       "acceptanceCriteria": [
@@ -393,12 +345,12 @@
         "Snapshot tests via insta (one snapshot per command's human output)",
         "just verify passes"
       ],
-      "priority": 24,
+      "priority": 21,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-025",
+      "id": "US-022",
       "title": "Add ranking regression test suite",
       "description": "As a maintainer, I want golden expected ranks for canonical queries so silent ranking drift is caught in CI.",
       "acceptanceCriteria": [
@@ -408,12 +360,12 @@
         "Any TS-vs-Rust intentional divergence documented in a comment with reason",
         "Suite green; just verify passes"
       ],
-      "priority": 25,
+      "priority": 22,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-026",
+      "id": "US-023",
       "title": "Add CLI contract test suite",
       "description": "As a maintainer, I want assert_cmd-driven contract tests so the CLI's exit codes, help text, and JSON envelope shape are pinned and cannot regress silently.",
       "acceptanceCriteria": [
@@ -422,12 +374,12 @@
         "Ports relevant assertions from tests/services/talon/cli.test.ts and contract.test.ts",
         "Suite green; just verify passes"
       ],
-      "priority": 26,
+      "priority": 23,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-027",
+      "id": "US-024",
       "title": "Final verification: release build, parity, manual smokes",
       "description": "As a release engineer, I want every shippable surface verified: release build, parity against TS for canonical queries, manual smoke of every command — before tagging v0.1.0.",
       "acceptanceCriteria": [
@@ -435,16 +387,15 @@
         "cargo build --release succeeds; stripped binary < 30 MB",
         "talon --version, talon --help, talon --skill all work",
         "talon init creates ~/.config/talon/config.toml from template",
-        "talon sync indexes a real vault end-to-end",
+        "talon sync indexes a real vault end-to-end (the caller — ultraclaw's chokidar watcher or a launchd plist — is responsible for invoking sync; Rust does not watch)",
         "talon embed populates vec_chunks against a live TEI sidecar (manual smoke; document command in NOTES.md)",
         "talon search '<query>' returns real ranked results (manual smoke)",
         "talon related <path>, talon meta --tag-counts, talon lint orphans all work on real data",
-        "talon watch reacts to fs events (manual smoke)",
-        "talon --mcp survives tools/list + tools/call from an MCP inspector or hand-crafted JSON-RPC (manual smoke)",
+        "talon --mcp survives initialize + tools/list + tools/call + shutdown round-trip from an MCP inspector or hand-crafted JSON-RPC (manual smoke)",
         "Parity: 5+ canonical search queries return matching top-10 paths against TS reference (top-K order must match; score drift allowed)",
-        "v0.1.0 tag pushed; US-022 release workflow publishes successfully (dry-run first if uncertain)"
+        "v0.1.0 tag pushed; US-019 release workflow publishes successfully (dry-run first if uncertain)"
       ],
-      "priority": 27,
+      "priority": 24,
       "passes": false,
       "notes": ""
     }
