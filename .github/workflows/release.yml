@@ -1,0 +1,121 @@
+name: Release
+
+# Triggered by pushing a version tag (e.g. v0.1.0) or manually with optional
+# dry-run mode that skips the actual npm publish step.
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — build and package, but skip npm publish'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # All five cross-compilation targets supported by cargo-zigbuild.
+          targets: >-
+            aarch64-apple-darwin,
+            x86_64-apple-darwin,
+            aarch64-unknown-linux-gnu,
+            x86_64-unknown-linux-gnu,
+            x86_64-pc-windows-gnu
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index
+            ~/.cargo/registry/cache
+            ~/.cargo/git/db
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-registry-
+
+      - name: Install zig
+        uses: mlugg/setup-zig@v1
+
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      # Read the canonical version from the workspace Cargo.toml so every
+      # subsequent step can reference $TALON_VERSION without re-parsing.
+      - name: Read version from Cargo.toml
+        run: |
+          VERSION=$(cargo pkgid -p talon-cli --locked | sed 's/.*#//')
+          echo "TALON_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      # Enforce the lockstep rule: ts/package.json must already carry the same
+      # version as Cargo.toml before a release is attempted.
+      - name: Verify ts/package.json version matches Cargo.toml
+        run: |
+          TS_VER=$(node -p "require('./ts/package.json').version")
+          if [ "$TS_VER" != "$TALON_VERSION" ]; then
+            echo "::error::ts/package.json version ($TS_VER) does not match Cargo.toml version ($TALON_VERSION)"
+            echo "Update ts/package.json and its optionalDependencies versions to $TALON_VERSION before tagging."
+            exit 1
+          fi
+
+      # On tag-triggered runs, the tag itself must match the Cargo.toml version.
+      - name: Verify git tag matches Cargo.toml version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          EXPECTED="v$TALON_VERSION"
+          if [ "${{ github.ref_name }}" != "$EXPECTED" ]; then
+            echo "::error::git tag '${{ github.ref_name }}' does not match expected '$EXPECTED'"
+            exit 1
+          fi
+
+      # Run the US-018 build script for all five targets.  TALON_SKIP_SMOKE=1
+      # because CI runners do not have qemu/wine for cross-OS smoke testing.
+      - name: Build all platform binaries
+        run: TALON_SKIP_SMOKE=1 scripts/build-platform-packages.sh
+
+      # Publish each platform subpackage produced by the build script.
+      # On workflow_dispatch with dry_run=true, --dry-run is appended so
+      # the full publish path is exercised without touching the registry.
+      - name: Publish platform subpackages
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          DRY="${{ inputs.dry_run == true }}"
+          FLAGS="--access public"
+          [ "$DRY" = "true" ] && FLAGS="$FLAGS --dry-run"
+          for pkg in ts/npm/*/; do
+            echo "==> publishing $pkg"
+            npm publish "$pkg" $FLAGS
+          done
+
+      - name: Publish @seanmozeik/talon meta package
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          DRY="${{ inputs.dry_run == true }}"
+          FLAGS="--access public"
+          [ "$DRY" = "true" ] && FLAGS="$FLAGS --dry-run"
+          cd ts
+          npm publish $FLAGS

@@ -389,8 +389,8 @@
         "Dry-run succeeds end-to-end on a clean checkout"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented .github/workflows/release.yml triggered by v* tag push and workflow_dispatch (dry_run boolean input, default true). Single ubuntu-latest job: installs zig + cargo-zigbuild, adds all five Rust cross-targets, runs scripts/build-platform-packages.sh with TALON_SKIP_SMOKE=1, verifies ts/package.json version lockstep with Cargo.toml, verifies git tag matches version on tag-triggered runs, then npm-publishes each platform subpackage and the meta package (--dry-run when inputs.dry_run==true). 316 tests pass."
     },
     {
       "id": "US-020",
