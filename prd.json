@@ -342,8 +342,8 @@
         "just verify passes"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Wired talon --mcp through command::run to the line-delimited JSON-RPC stdio loop. Existing transport handles EOF, initialize, initialized notification, tools/list, tools/call, and shutdown without background tasks. Added crates/talon-cli/tests/mcp_stdio.rs subprocess integration test covering initialize + tools/list + status tools/call + shutdown. Manual talon --mcp stdin smoke passes. just verify passes."
     },
     {
       "id": "US-017",
