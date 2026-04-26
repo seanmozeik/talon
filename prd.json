@@ -156,8 +156,8 @@
         "just verify passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/query/read.rs: run_read(conn, vault_root, &ReadInput) -> ReadResponse. Queries notes table for vault_path + active=1. Strips frontmatter via parse_frontmatter unless raw=true. Applies 1-based from_line/max_lines slicing. Hydrates links (outgoing), backlinks, tags, aliases from relational tables. Missing notes return found: false; empty path returns empty results list. Replaced emit_read_stub in talon-cli/command.rs. Updated emit_read_human to render title/path/tags/links/body. Exported run_read from talon-core lib.rs. 5 tests: frontmatter strip, raw mode, line range, missing note, links+backlinks. 261 tests pass."
     },
     {
       "id": "US-008",

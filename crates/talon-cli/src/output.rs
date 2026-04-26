@@ -5,8 +5,8 @@ use eyre::Result;
 use serde::Serialize;
 use std::io::{self, Write};
 use talon_core::{
-    LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse, TalonEnvelope,
-    TalonResponseData,
+    LintResponse, MetaResponse, ReadResponse, RelatedResponse, SearchResult, SyncResponse,
+    TalonEnvelope, TalonResponseData,
 };
 
 /// CLI output mode.
@@ -50,7 +50,7 @@ fn emit_human(envelope: &TalonEnvelope) -> Result<()> {
         Some(TalonResponseData::Search(resp)) => emit_search_human(resp)?,
         Some(TalonResponseData::Sync(resp)) => emit_sync_human(resp)?,
         Some(TalonResponseData::Status(resp)) => emit_status_human(resp)?,
-        Some(TalonResponseData::Read(_)) => emit_read_human()?,
+        Some(TalonResponseData::Read(resp)) => emit_read_human(resp)?,
         Some(TalonResponseData::Related(resp)) => emit_related_human(resp)?,
         Some(TalonResponseData::Meta(resp)) => emit_meta_human(resp)?,
         Some(TalonResponseData::Changes(resp)) => emit_changes_human(resp)?,
@@ -140,8 +140,32 @@ fn emit_status_human(resp: &talon_core::StatusResponse) -> Result<()> {
     Ok(())
 }
 
-fn emit_read_human() -> Result<()> {
-    writeln!(io::stdout(), "Read: complete")?;
+fn emit_read_human(resp: &ReadResponse) -> Result<()> {
+    for result in &resp.results {
+        if !result.found {
+            writeln!(io::stdout(), "Not found: {}", result.vault_path.as_str())?;
+            continue;
+        }
+        let title = result
+            .title
+            .as_deref()
+            .unwrap_or(result.vault_path.as_str());
+        writeln!(io::stdout(), "# {title}")?;
+        writeln!(io::stdout(), "Path: {}", result.vault_path.as_str())?;
+        if !result.tags.is_empty() {
+            writeln!(io::stdout(), "Tags: {}", result.tags.join(", "))?;
+        }
+        if !result.links.is_empty() {
+            writeln!(io::stdout(), "Links: {}", result.links.join(", "))?;
+        }
+        if !result.backlinks.is_empty() {
+            writeln!(io::stdout(), "Backlinks: {}", result.backlinks.join(", "))?;
+        }
+        writeln!(io::stdout())?;
+        if let Some(content) = &result.content {
+            writeln!(io::stdout(), "{content}")?;
+        }
+    }
     Ok(())
 }
 

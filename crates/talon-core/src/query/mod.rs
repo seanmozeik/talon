@@ -3,6 +3,8 @@
 //! This module contains the real implementations of search, read, related,
 //! meta, changes, and lint handlers — replacing the CLI stubs.
 
+pub mod read;
 pub mod search;
 
+pub use read::run_read;
 pub use search::run_search;
