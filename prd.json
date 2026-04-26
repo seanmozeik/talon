@@ -358,8 +358,8 @@
         "npm pack produces a valid tarball; npm test clean"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented ts npm package scaffold for @seanmozeik/talon: optional platform dependencies, resolveBinary() platform/arch resolver via require.resolve, mcpChildSpec() public API, Vitest coverage for resolution and child spec, package-lock, npm test, npm pack, and just verify pass."
     },
     {
       "id": "US-018",
