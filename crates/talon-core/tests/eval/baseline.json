@@ -1,0 +1,700 @@
+{
+  "default": {
+    "hit_at_10": 1.0,
+    "hit_at_5": 0.8,
+    "mrr": 0.6413832199546485,
+    "ndcg_at_10": 0.7316281377331879,
+    "ndcg_at_5": 0.6370515776541418,
+    "query_count": 35,
+    "recall_at_10": 0.9942857142857142
+  },
+  "fast": {
+    "hit_at_10": 1.0,
+    "hit_at_5": 1.0,
+    "mrr": 0.9571428571428572,
+    "ndcg_at_10": 0.9550956296147427,
+    "ndcg_at_5": 0.9522381132829092,
+    "query_count": 35,
+    "recall_at_10": 1.0
+  },
+  "mode": "hybrid_fast",
+  "per_query": [
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Search/Fruit Orchard.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q001",
+      "mrr": 1.0,
+      "ndcg_at_10": 0.9473224867337506,
+      "ndcg_at_5": 0.847309415119579,
+      "query": "orchard",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Atlas/Alpha.md",
+        "Atlas/Root.md",
+        "Search/Long Section.md",
+        "Atlas/Beta.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Search/Banana Grove.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q002",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "banana",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Banana Grove.md",
+        "Search/Long Section.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Search/Cafe Note.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q003",
+      "mrr": 1.0,
+      "ndcg_at_10": 0.9502344167898356,
+      "ndcg_at_5": 0.9502344167898356,
+      "query": "cafe",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Cafe Note.md",
+        "Search/Long Section.md",
+        "Atlas/Gamma.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Graph/Hub.md",
+        "Graph/Child.md",
+        "Graph/Inbound.md",
+        "Graph/Grandchild.md",
+        "Graph/Side.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q004",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "graph",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Graph/Child.md",
+        "Graph/Hub.md",
+        "Graph/Inbound.md",
+        "Graph/Side.md",
+        "Graph/Grandchild.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Search/Fruit Orchard.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q005",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "harvest",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Atlas/Alpha.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Search/Cafe Note.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q006",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "espresso",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Cafe Note.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Graph/Hub.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q007",
+      "mrr": 1.0,
+      "ndcg_at_10": 0.9502344167898356,
+      "ndcg_at_5": 0.9502344167898356,
+      "query": "hub",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Graph/Hub.md",
+        "Graph/Inbound.md",
+        "Atlas/Root.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Graph/Grandchild.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q008",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "grandchild",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Graph/Grandchild.md",
+        "Graph/Child.md",
+        "Search/Banana Grove.md",
+        "Graph/Hub.md",
+        "Graph/Side.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Graph/Inbound.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q009",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "inbound",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Graph/Inbound.md",
+        "Graph/Hub.md"
+      ]
+    },
+    {
+      "category": "keyword",
+      "expected_paths": [
+        "Atlas/Alpha.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q010",
+      "mrr": 0.5,
+      "ndcg_at_10": 0.8597186998521972,
+      "ndcg_at_5": 0.8597186998521972,
+      "query": "beacon",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Atlas/Beta.md",
+        "Atlas/Alpha.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Search/Fruit Orchard.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q011",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "grafted branch",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Atlas/Gamma.md",
+        "Graph/Grandchild.md",
+        "Filters/Tagged.md",
+        "Filters/Scope/Inside.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Search/Fruit Orchard.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q012",
+      "mrr": 1.0,
+      "ndcg_at_10": 0.9502344167898356,
+      "ndcg_at_5": 0.9502344167898356,
+      "query": "apple trees orchard",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Atlas/Beta.md",
+        "Atlas/Alpha.md",
+        "Atlas/Root.md",
+        "Search/Long Section.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Search/Banana Grove.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q013",
+      "mrr": 0.5,
+      "ndcg_at_10": 0.6309297535714575,
+      "ndcg_at_5": 0.6309297535714575,
+      "query": "yellow fruit sweet trail",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Search/Banana Grove.md",
+        "Atlas/Alpha.md",
+        "Atlas/Beta.md",
+        "Atlas/Root.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Search/Cafe Note.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q014",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "espresso cafe reading",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Cafe Note.md",
+        "Search/Long Section.md",
+        "Atlas/Gamma.md",
+        "Lifecycle/Renamed-Source.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Graph/Grandchild.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q015",
+      "mrr": 0.5,
+      "ndcg_at_10": 0.6309297535714575,
+      "ndcg_at_5": 0.6309297535714575,
+      "query": "end of the chain",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Graph/Grandchild.md",
+        "Search/Long Section.md",
+        "Atlas/Alpha.md",
+        "Atlas/Gamma.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Graph/Hub.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q016",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "hub links side inbound",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Graph/Hub.md",
+        "Graph/Inbound.md",
+        "Graph/Side.md",
+        "Atlas/Root.md",
+        "Lifecycle/Support.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Search/Banana Grove.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q017",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "grove calm grassy",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Banana Grove.md",
+        "Graph/Grandchild.md",
+        "Graph/Hub.md",
+        "Graph/Side.md",
+        "Graph/Child.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Atlas/Gamma.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q018",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "lexical semantic search honest",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Atlas/Gamma.md",
+        "Atlas/Root.md",
+        "Atlas/Alpha.md",
+        "Atlas/Beta.md",
+        "Search/Long Section.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Atlas/Beta.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q019",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "beta trail orchard links fanout",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Atlas/Beta.md",
+        "Search/Fruit Orchard.md",
+        "Atlas/Alpha.md",
+        "Atlas/Root.md",
+        "Graph/Inbound.md"
+      ]
+    },
+    {
+      "category": "phrase",
+      "expected_paths": [
+        "Atlas/Alpha.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q020",
+      "mrr": 1.0,
+      "ndcg_at_10": 0.9502344167898356,
+      "ndcg_at_5": 0.9502344167898356,
+      "query": "orchard harvest beacon language",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Atlas/Alpha.md",
+        "Atlas/Beta.md",
+        "Search/Fruit Orchard.md",
+        "Atlas/Root.md",
+        "Search/Long Section.md"
+      ]
+    },
+    {
+      "category": "alias",
+      "expected_paths": [
+        "Search/Fruit Orchard.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q021",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "apple orchard",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Atlas/Alpha.md",
+        "Atlas/Root.md",
+        "Search/Long Section.md",
+        "Atlas/Beta.md"
+      ]
+    },
+    {
+      "category": "alias",
+      "expected_paths": [
+        "Search/Fruit Orchard.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q022",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "cider field",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Filters/Frontmatter.md",
+        "Graph/Side.md",
+        "Filters/Scope/Inside.md",
+        "Filters/Scope/Outside.md"
+      ]
+    },
+    {
+      "category": "alias",
+      "expected_paths": [
+        "Search/Banana Grove.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q023",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "banana stand",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Banana Grove.md",
+        "Search/Long Section.md",
+        "Graph/Grandchild.md"
+      ]
+    },
+    {
+      "category": "alias",
+      "expected_paths": [
+        "Search/Cafe Note.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q024",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "cafe del sol",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Cafe Note.md",
+        "Lifecycle/Delete-Me.md",
+        "Lifecycle/Support.md",
+        "Search/Long Section.md",
+        "Atlas/Gamma.md"
+      ]
+    },
+    {
+      "category": "alias",
+      "expected_paths": [
+        "Atlas/Beta.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q025",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "bee two",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Atlas/Beta.md",
+        "Search/Long Section.md"
+      ]
+    },
+    {
+      "category": "alias",
+      "expected_paths": [
+        "Atlas/Gamma.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q026",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "gamma ray",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Atlas/Gamma.md",
+        "Atlas/Beta.md"
+      ]
+    },
+    {
+      "category": "alias",
+      "expected_paths": [
+        "Lifecycle/Renamed-Source.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q027",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "old rename",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Lifecycle/Renamed-Source.md",
+        "Lifecycle/Mutable.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Search/Fruit Orchard.md",
+        "Search/Banana Grove.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q028",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "fruit notes",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Search/Banana Grove.md",
+        "Atlas/Gamma.md",
+        "Atlas/Root.md",
+        "Atlas/Alpha.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Search/Fruit Orchard.md",
+        "Search/Banana Grove.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q029",
+      "mrr": 1.0,
+      "ndcg_at_10": 0.9197207891481876,
+      "ndcg_at_5": 0.9197207891481876,
+      "query": "fruit basket",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Search/Fruit Orchard.md",
+        "Atlas/Root.md",
+        "Search/Banana Grove.md",
+        "Atlas/Alpha.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Filters/Scope/Inside.md",
+        "Filters/Scope/Outside.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q030",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "scope note inside outside",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Filters/Scope/Outside.md",
+        "Filters/Scope/Inside.md",
+        "Filters/Frontmatter.md",
+        "Filters/Tagged.md",
+        "Lifecycle/Mutable.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Filters/Tagged.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q031",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "tag filtering note",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Filters/Tagged.md",
+        "Filters/Frontmatter.md",
+        "Lifecycle/Mutable.md",
+        "Search/Cafe Note.md",
+        "Filters/Scope/Outside.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Graph/Child.md",
+        "Graph/Grandchild.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q032",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "child grandchild graph",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Graph/Child.md",
+        "Graph/Grandchild.md",
+        "Graph/Hub.md",
+        "Graph/Inbound.md",
+        "Graph/Side.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Atlas/Alpha.md",
+        "Atlas/Beta.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q033",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "beacon trail alpha beta",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Atlas/Alpha.md",
+        "Atlas/Beta.md",
+        "Atlas/Root.md",
+        "Search/Banana Grove.md",
+        "Search/Fruit Orchard.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Graph/Inbound.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q034",
+      "mrr": 1.0,
+      "ndcg_at_10": 1.0,
+      "ndcg_at_5": 1.0,
+      "query": "links back hub graph",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Graph/Inbound.md",
+        "Graph/Hub.md",
+        "Graph/Child.md",
+        "Graph/Side.md",
+        "Graph/Grandchild.md"
+      ]
+    },
+    {
+      "category": "multi",
+      "expected_paths": [
+        "Lifecycle/Support.md"
+      ],
+      "hit_at_5": 1.0,
+      "id": "q035",
+      "mrr": 1.0,
+      "ndcg_at_10": 0.6387878864795979,
+      "ndcg_at_5": 0.6387878864795979,
+      "query": "helper support lifecycle",
+      "recall_at_10": 1.0,
+      "top_5_paths": [
+        "Lifecycle/Support.md",
+        "Search/Long Section.md",
+        "Filters/Frontmatter.md",
+        "Search/Fruit Orchard.md"
+      ]
+    }
+  ],
+  "query_count": 35,
+  "run_at": 1777238321
+}

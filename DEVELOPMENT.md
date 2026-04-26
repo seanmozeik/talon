@@ -40,3 +40,53 @@ The script also smoke-runs `talon --version` when a target runtime is available:
 - Windows x64 can run through `wine`.
 
 Set `TALON_REQUIRE_TARGET_SMOKE=1` in CI when the runner is expected to have the right native runtime, QEMU, or Wine installed. Use `TALON_SKIP_SMOKE=1` only when checking packaging mechanics locally.
+
+## Ranking Quality Eval
+
+Talon ships a golden-set evaluation harness to detect silent ranking drift in CI.
+
+### Running the eval
+
+```bash
+cargo test --test eval_suite -p talon-core -- --nocapture
+```
+
+Results are written to `crates/talon-core/tests/eval/results/latest.json`.
+
+### Updating the baseline
+
+After a real quality improvement (new chunker, better RRF weights, etc.), update
+the committed baseline with the new results:
+
+```bash
+cp crates/talon-core/tests/eval/results/latest.json \
+   crates/talon-core/tests/eval/baseline.json
+```
+
+Then raise the floor constants in `crates/talon-core/tests/ranking_regression.rs`
+to match the new baseline minus ~10%.
+
+**Thresholds are raised never lowered.** If a PR lowers metrics, investigate before
+merging — do not lower the floor to make the test pass.
+
+### Comparing two runs
+
+```bash
+just eval-compare tests/eval/baseline.json tests/eval/results/latest.json
+```
+
+This prints a per-metric delta table between two result JSON files.
+
+### Floor calibration
+
+The floor constants in `ranking_regression.rs` were set to measured baseline
+minus 10%:
+
+| Mode             | nDCG@5 | MRR   | Hit@5 | Recall@10 |
+|------------------|--------|-------|-------|-----------|
+| fast (BM25+vec)  | 0.83   | 0.90  | 0.95  | —         |
+| default (hybrid) | 0.45   | 0.45  | 0.90  | —         |
+| golden set       | 0.85   | 0.85  | 0.95  | 0.90      |
+
+Default mode nDCG is lower than fast because the mock expansion emits fixed
+off-topic queries, which injects RRF noise. Real LLM expansion improves this.

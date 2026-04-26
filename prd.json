@@ -441,8 +441,8 @@
         "just verify passes"
       ],
       "priority": 25,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented golden-set eval harness: tests/eval/mod.rs with ndcg/mrr/hit_at_k/recall_at_k metrics (ported from obsidian-hybrid-search MIT eval/metrics.ts); tests/fixtures/golden-set.json with 35 queries; tests/ranking_regression.rs ports TS ranking-regression.test.ts with fast-mode floors (nDCG@5≥0.83, MRR≥0.90, Hit@5≥0.95) and golden-set floors (nDCG@5≥0.85, MRR≥0.85, Hit@5≥0.95, Recall@10≥0.90); tests/eval_suite.rs runs full golden set and writes tests/eval/results/latest.json; baseline.json committed (nDCG@5=0.952, MRR=0.957, Recall@10=1.0). Content-aware 5D semantic embed/rerank mocks enable meaningful ranking quality measurement. just eval and just eval-compare recipes added. 330 tests pass."
     },
     {
       "id": "US-022a",

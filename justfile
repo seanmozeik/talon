@@ -62,3 +62,12 @@ cross-build-no-smoke:
 
 install:
     cargo install --path crates/talon-cli --locked
+
+# Run the ranking eval suite and write results to tests/eval/results/latest.json.
+eval:
+    cargo test --test eval_suite -p talon-core -- --nocapture
+
+# Compare two eval result JSON files and print per-metric deltas.
+# Usage: just eval-compare baseline.json latest.json
+eval-compare file_a file_b:
+    python3 scripts/eval_compare.py {{file_a}} {{file_b}}

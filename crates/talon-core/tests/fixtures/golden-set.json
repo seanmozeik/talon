@@ -1,0 +1,253 @@
+[
+  {
+    "id": "q001",
+    "query": "orchard",
+    "expected_paths": ["Search/Fruit Orchard.md"],
+    "partial_paths": ["Atlas/Alpha.md", "Atlas/Beta.md", "Atlas/Gamma.md"],
+    "category": "keyword"
+  },
+  {
+    "id": "q002",
+    "query": "banana",
+    "expected_paths": ["Search/Banana Grove.md"],
+    "partial_paths": [],
+    "category": "keyword"
+  },
+  {
+    "id": "q003",
+    "query": "cafe",
+    "expected_paths": ["Search/Cafe Note.md"],
+    "partial_paths": ["Atlas/Gamma.md"],
+    "category": "keyword"
+  },
+  {
+    "id": "q004",
+    "query": "graph",
+    "expected_paths": [
+      "Graph/Hub.md",
+      "Graph/Child.md",
+      "Graph/Inbound.md",
+      "Graph/Grandchild.md",
+      "Graph/Side.md"
+    ],
+    "partial_paths": [],
+    "category": "keyword"
+  },
+  {
+    "id": "q005",
+    "query": "harvest",
+    "expected_paths": ["Search/Fruit Orchard.md"],
+    "partial_paths": ["Atlas/Alpha.md"],
+    "category": "keyword"
+  },
+  {
+    "id": "q006",
+    "query": "espresso",
+    "expected_paths": ["Search/Cafe Note.md"],
+    "partial_paths": [],
+    "category": "keyword"
+  },
+  {
+    "id": "q007",
+    "query": "hub",
+    "expected_paths": ["Graph/Hub.md"],
+    "partial_paths": ["Atlas/Root.md"],
+    "category": "keyword"
+  },
+  {
+    "id": "q008",
+    "query": "grandchild",
+    "expected_paths": ["Graph/Grandchild.md"],
+    "partial_paths": ["Graph/Child.md"],
+    "category": "keyword"
+  },
+  {
+    "id": "q009",
+    "query": "inbound",
+    "expected_paths": ["Graph/Inbound.md"],
+    "partial_paths": [],
+    "category": "keyword"
+  },
+  {
+    "id": "q010",
+    "query": "beacon",
+    "expected_paths": ["Atlas/Alpha.md"],
+    "partial_paths": ["Atlas/Beta.md"],
+    "category": "keyword"
+  },
+  {
+    "id": "q011",
+    "query": "grafted branch",
+    "expected_paths": ["Search/Fruit Orchard.md"],
+    "partial_paths": [],
+    "category": "phrase"
+  },
+  {
+    "id": "q012",
+    "query": "apple trees orchard",
+    "expected_paths": ["Search/Fruit Orchard.md"],
+    "partial_paths": ["Atlas/Alpha.md"],
+    "category": "phrase"
+  },
+  {
+    "id": "q013",
+    "query": "yellow fruit sweet trail",
+    "expected_paths": ["Search/Banana Grove.md"],
+    "partial_paths": [],
+    "category": "phrase"
+  },
+  {
+    "id": "q014",
+    "query": "espresso cafe reading",
+    "expected_paths": ["Search/Cafe Note.md"],
+    "partial_paths": [],
+    "category": "phrase"
+  },
+  {
+    "id": "q015",
+    "query": "end of the chain",
+    "expected_paths": ["Graph/Grandchild.md"],
+    "partial_paths": [],
+    "category": "phrase"
+  },
+  {
+    "id": "q016",
+    "query": "hub links side inbound",
+    "expected_paths": ["Graph/Hub.md"],
+    "partial_paths": ["Graph/Side.md", "Graph/Inbound.md"],
+    "category": "phrase"
+  },
+  {
+    "id": "q017",
+    "query": "grove calm grassy",
+    "expected_paths": ["Search/Banana Grove.md"],
+    "partial_paths": [],
+    "category": "phrase"
+  },
+  {
+    "id": "q018",
+    "query": "lexical semantic search honest",
+    "expected_paths": ["Atlas/Gamma.md"],
+    "partial_paths": [],
+    "category": "phrase"
+  },
+  {
+    "id": "q019",
+    "query": "beta trail orchard links fanout",
+    "expected_paths": ["Atlas/Beta.md"],
+    "partial_paths": ["Search/Fruit Orchard.md"],
+    "category": "phrase"
+  },
+  {
+    "id": "q020",
+    "query": "orchard harvest beacon language",
+    "expected_paths": ["Atlas/Alpha.md"],
+    "partial_paths": ["Search/Fruit Orchard.md"],
+    "category": "phrase"
+  },
+  {
+    "id": "q021",
+    "query": "apple orchard",
+    "expected_paths": ["Search/Fruit Orchard.md"],
+    "partial_paths": [],
+    "category": "alias"
+  },
+  {
+    "id": "q022",
+    "query": "cider field",
+    "expected_paths": ["Search/Fruit Orchard.md"],
+    "partial_paths": [],
+    "category": "alias"
+  },
+  {
+    "id": "q023",
+    "query": "banana stand",
+    "expected_paths": ["Search/Banana Grove.md"],
+    "partial_paths": [],
+    "category": "alias"
+  },
+  {
+    "id": "q024",
+    "query": "cafe del sol",
+    "expected_paths": ["Search/Cafe Note.md"],
+    "partial_paths": [],
+    "category": "alias"
+  },
+  {
+    "id": "q025",
+    "query": "bee two",
+    "expected_paths": ["Atlas/Beta.md"],
+    "partial_paths": [],
+    "category": "alias"
+  },
+  {
+    "id": "q026",
+    "query": "gamma ray",
+    "expected_paths": ["Atlas/Gamma.md"],
+    "partial_paths": [],
+    "category": "alias"
+  },
+  {
+    "id": "q027",
+    "query": "old rename",
+    "expected_paths": ["Lifecycle/Renamed-Source.md"],
+    "partial_paths": [],
+    "category": "alias"
+  },
+  {
+    "id": "q028",
+    "query": "fruit notes",
+    "expected_paths": ["Search/Fruit Orchard.md", "Search/Banana Grove.md"],
+    "partial_paths": [],
+    "category": "multi"
+  },
+  {
+    "id": "q029",
+    "query": "fruit basket",
+    "expected_paths": ["Search/Fruit Orchard.md", "Search/Banana Grove.md"],
+    "partial_paths": [],
+    "category": "multi"
+  },
+  {
+    "id": "q030",
+    "query": "scope note inside outside",
+    "expected_paths": ["Filters/Scope/Inside.md", "Filters/Scope/Outside.md"],
+    "partial_paths": [],
+    "category": "multi"
+  },
+  {
+    "id": "q031",
+    "query": "tag filtering note",
+    "expected_paths": ["Filters/Tagged.md"],
+    "partial_paths": ["Filters/Frontmatter.md"],
+    "category": "multi"
+  },
+  {
+    "id": "q032",
+    "query": "child grandchild graph",
+    "expected_paths": ["Graph/Child.md", "Graph/Grandchild.md"],
+    "partial_paths": ["Graph/Hub.md"],
+    "category": "multi"
+  },
+  {
+    "id": "q033",
+    "query": "beacon trail alpha beta",
+    "expected_paths": ["Atlas/Alpha.md", "Atlas/Beta.md"],
+    "partial_paths": [],
+    "category": "multi"
+  },
+  {
+    "id": "q034",
+    "query": "links back hub graph",
+    "expected_paths": ["Graph/Inbound.md"],
+    "partial_paths": ["Graph/Hub.md"],
+    "category": "multi"
+  },
+  {
+    "id": "q035",
+    "query": "helper support lifecycle",
+    "expected_paths": ["Lifecycle/Support.md"],
+    "partial_paths": ["Lifecycle/Mutable.md", "Lifecycle/Delete-Me.md"],
+    "category": "multi"
+  }
+]
