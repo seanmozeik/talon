@@ -93,10 +93,8 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
      )",
     "CREATE TABLE IF NOT EXISTS llm_cache (
        key           TEXT PRIMARY KEY,
-       kind          TEXT NOT NULL,
-       model         TEXT NOT NULL,
-       value_json    TEXT NOT NULL,
-       created_at_ms INTEGER NOT NULL
+       value         TEXT NOT NULL,
+       expires_at_ms INTEGER NOT NULL
      )",
     "CREATE TABLE IF NOT EXISTS vector_metadata (
        chunk_id       INTEGER PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,

@@ -6,9 +6,11 @@
 //! client that requests reformulated search variants, normalises the
 //! response, and degrades gracefully on any LLM-quality failure.
 
+pub mod cache;
 pub mod client;
 pub mod error;
 pub mod types;
 
+pub use cache::LlmCache;
 pub use client::{DEFAULT_EXPANSION_TIMEOUT, ExpansionClient};
 pub use error::ExpansionError;

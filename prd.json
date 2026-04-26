@@ -32,8 +32,8 @@
         "just verify passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/expansion/cache.rs: LlmCache<'conn> with new(conn), get(key), put(key, value, ttl_ms), purge_expired(). Updated llm_cache migration to (key, value, expires_at_ms) schema. Exported from expansion::mod and lib.rs. 5 tests (round-trip, missing-key, expired-entry, overwrite, purge). 217 tests pass."
     },
     {
       "id": "US-003",

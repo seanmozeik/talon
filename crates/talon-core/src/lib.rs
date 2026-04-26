@@ -35,7 +35,7 @@ pub use config::{
     ScopeResolution, ScopesConfig, TalonConfig,
 };
 pub use error::{ErrorCode, TalonError, TalonResult};
-pub use expansion::{ExpansionClient, ExpansionError};
+pub use expansion::{ExpansionClient, ExpansionError, LlmCache};
 pub use frontmatter::{
     FrontmatterEntry, FrontmatterExtract, FrontmatterReverseIndex, FrontmatterValue,
     FrontmatterValueType, ReverseSourceIndex, WikiLink, normalize_keyword, normalize_vault_path,
