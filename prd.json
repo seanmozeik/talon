@@ -1,7 +1,7 @@
 {
   "project": "Talon Rust Port",
   "branchName": "main",
-  "description": "Complete the Rust port of Talon (Obsidian vault search engine) from where Phase 4 ended. Phases 0-4 (workspace, store, search algorithms, indexer/sync, embed pipeline, sqlite-vec) are landed with 206 passing tests. Remaining work: query handlers (search/read/related/meta/changes/lint/status), stateless MCP server, TS wrapper with per-platform binaries, parity tests, and final polish. Reference TS at /tmp/talon-scaffold-imports/ultra/edge/src/services/talon/. Architectural decision LOCKED per docs/superpowers/specs/2026-04-25-talon-extraction-design.md §2/§4: Talon is stateless and manual — NO file watcher, NO scheduler, NO clock-driven background work in Rust. The ultraclaw TS watcher remains the caller and spawns `talon sync`. `--mcp` is a stateless stdio request/response server, not a daemon. Standing rules: never silence clippy lints with #[allow] (real fixes only); use wiremock for sidecar HTTP tests; real rusqlite Connection for DB tests (no mocks); pin deps to full semver; project conventions are eyre/color-eyre, time (not chrono), fs-err (not std::fs), serde_yaml_ng, blocking rusqlite + reqwest::blocking + spawn_blocking.",
+  "description": "Complete the Rust port of Talon (Obsidian vault search engine) from where Phase 4 ended. Phases 0-4 (workspace, store, search algorithms, indexer/sync, embed pipeline, sqlite-vec) are landed with 206 passing tests. Remaining work: query handlers (search/read/related/meta/changes/lint/status), stateless MCP server, TS wrapper with per-platform binaries, parity tests, and final polish. Reference TS at /tmp/talon-scaffold-imports/ultra/edge/src/services/talon/. Architectural decision LOCKED per docs/superpowers/specs/2026-04-25-talon-extraction-design.md §2/§4: Talon is stateless and manual — NO file watcher, NO scheduler, NO clock-driven background work in Rust. The ultraclaw TS watcher remains the caller and spawns `talon sync`. `--mcp` is a stateless stdio request/response server, not a daemon. Spec also locks: §5 binary surface lists no `talon embed` command (embed runs inside `talon sync`, `--fast` skips it); Decision 8 locks the response envelope as `{action, version, ok, data, meta}` for success and `{action, version, ok: false, error}` for failures; Decision 12 puts the agent skill at `skill/SKILL.md` at repo root (not docs/); Decision 14 names the npm package `@seanmozeik/talon` with platform subpackages `@seanmozeik/talon-<platform>-<arch>`. Standing rules: never silence clippy lints with #[allow] (real fixes only); use wiremock for sidecar HTTP tests; real rusqlite Connection for DB tests (no mocks); pin deps to full semver; project conventions are eyre/color-eyre, time (not chrono), fs-err (not std::fs), serde_yaml_ng, blocking rusqlite + reqwest::blocking + spawn_blocking.",
   "userStories": [
     {
       "id": "US-001",
@@ -67,6 +67,26 @@
       "notes": "Implemented talon-core/src/search/rerank_pipeline.rs. rerank_candidates(inference, query, candidates, top_k) calls inference.rerank with title+\"\\n\\n\"+snippet payload, composes fuse::blend_rerank_candidates. top_k caps candidates sent to reranker. Graceful degradation on HTTP error returns original candidates with hybrid scores unchanged. Added RERANK_TOP_K=40 to search/constants. 5 wiremock tests: happy path, blend math within 1e-4, HTTP 5xx fallback, empty-candidates early exit, top_k truncation. 227 tests pass."
     },
     {
+      "id": "US-004b",
+      "title": "Undo `talon embed` subcommand and fold the embed pass into `talon sync`",
+      "description": "As a Talon operator, I want `talon sync` to embed pending chunks as part of the same call (per spec §5 line 188-204) so the binary surface matches the spec — `--fast` on sync skips the embed pass; there is no separate `talon embed` command. The previously-committed `talon embed` command violated the spec and must be removed.",
+      "acceptanceCriteria": [
+        "Delete the `\"embed\" => emit_embed(...)` arm from talon-cli/src/command.rs",
+        "Delete emit_embed function entirely (do NOT leave it as a hidden alias)",
+        "Remove EmbedInput / EmbedResponse from TalonInput / TalonResponse in talon-core/src/tool.rs (the embed action is not in the spec's MCP tool surface — Decision 10)",
+        "Extend run_sync(conn, vault_root, lock_path, indexer_config, embed_config: Option<EmbedPassOptions>, inference: Option<&InferenceClient>) — when embed_config is Some AND inference is Some AND not --fast, run the embed pass after reconcile_deletions",
+        "Extend SyncResponse with embed-pass fields: { embedded: u32, embed_failed: u32, dimension_mismatch: bool, embed_remediation: Option<String>, embed_diagnostics: Vec<String> } — fold the existing remediation hint here",
+        "Update emit_sync in command.rs: when --fast is absent, build InferenceClient + EmbedPassOptions from config and pass through; --fast skips inference build entirely (no useless network setup)",
+        "Update output.rs::emit_sync_human to print the embed sub-line (e.g. `Embedded N notes (M failed)` and the remediation hint when set)",
+        "Existing wiremock embed tests in talon-core/src/embed/runner.rs continue to pass — they test run_embed_pass directly and don't depend on the CLI command",
+        "Add an integration test crates/talon-core/tests/sync_embed.rs: temp vault → talon sync (with mocked sidecar) → vec_chunks populated; talon sync --fast → vec_chunks empty",
+        "just verify passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
       "id": "US-005",
       "title": "Build hybrid-pipeline orchestrator",
       "description": "As Talon, I want the full hybrid search pipeline (probe, optional expansion, multi-variant retrieval, fuse, rerank, filter) wired together so the search command can call one function.",
@@ -79,25 +99,46 @@
         "Strong-signal path verified: high-confidence query skips expansion call",
         "just verify passes"
       ],
-      "priority": 5,
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005b",
+      "title": "Wrap TalonResponse in the spec-locked {action, version, ok, data, meta} envelope",
+      "description": "As an MCP / agent client, I want every Talon response to use the envelope locked by Decision 8 — `{action, version, ok: true, data, meta}` for success, `{action, version, ok: false, error}` for failure — so downstream contracts are stable. The current `#[serde(tag = \"action\")]` flattens action-specific fields onto the top level with no `ok`, no `version`, no `meta`. The doc comment in tool.rs already declares this contract; the implementation must be brought in line.",
+      "acceptanceCriteria": [
+        "Replace TalonResponse enum with a TalonEnvelope struct: { action: String (kebab-case), version: String (env!(\"CARGO_PKG_VERSION\")), ok: bool, data: Option<TalonResponseData>, meta: Option<ResponseMeta>, error: Option<ErrorEnvelope> }",
+        "TalonResponseData becomes the action-discriminated payload (the existing variants: Search, Read, Sync, Status, Related, Meta, Changes, Lint), serialized via #[serde(untagged)] OR a sibling tag — whichever yields the spec's nested `data: { ... }` shape",
+        "Helper constructors: TalonEnvelope::ok(action, data, meta) and TalonEnvelope::err(action, error)",
+        "All CLI command handlers in talon-cli/src/command.rs construct envelopes via the helpers — no raw struct literals",
+        "All emit_*_human formatters in talon-cli/src/output.rs unwrap the envelope's data field before rendering",
+        "JSON output (--json / --agent) emits the full envelope per spec",
+        "Tests: serde round-trip for one variant of each shape; assert top-level keys are exactly action/version/ok/data/meta on success and action/version/ok/error on failure; existing CLI integration tests updated to read through envelope",
+        "just verify passes"
+      ],
+      "priority": 7,
       "passes": false,
       "notes": ""
     },
     {
       "id": "US-006",
       "title": "Wire real search command",
-      "description": "As a Talon CLI user, I want `talon search` to return real ranked results across hybrid/semantic/fulltext/title modes with scope-priority post-multiplication.",
+      "description": "As a Talon CLI user, I want `talon search` to return real ranked results across hybrid/semantic/fulltext/title modes with scope-priority post-multiplication, plus --where and --since post-filtering.",
       "acceptanceCriteria": [
         "Replace talon-cli/src/command.rs::emit_search_stub with real handler calling US-005",
         "Modes: hybrid (default), semantic (vector only), fulltext (bm25 only), title (fuzzy_title only)",
         "Query embedding via blocking inference.embed for semantic/hybrid modes",
+        "--where <KEY OP VALUE> (repeatable) post-filters results by frontmatter (reuses WhereClause/WhereOperator from tool.rs and the meta handler's filter primitive — coordinate with US-009)",
+        "--since <TS> post-filters results to notes whose mtime >= parsed timestamp (reuses change_tracking::parse_since)",
         "Post-rerank: multiply each result.score by ScopePriority::multiplier(), then re-sort",
-        "--fast flag skips expansion + skips rerank",
+        "--fast flag skips expansion + skips rerank (per spec §5 line 225)",
         "SearchResponse::empty_scaffold call sites removed",
-        "Integration test: end-to-end on temp vault (run_sync + run_embed_pass + search) with wiremock sidecar",
+        "Integration test: end-to-end on temp vault (run_sync + search) with wiremock sidecar, including --where and --since cases",
+        "Wraps result in the US-005b envelope",
         "just verify passes"
       ],
-      "priority": 6,
+      "priority": 8,
       "passes": false,
       "notes": ""
     },
@@ -114,7 +155,7 @@
         "Tests: read fixture note with frontmatter, line range, raw mode, missing file → InvalidInput",
         "just verify passes"
       ],
-      "priority": 7,
+      "priority": 9,
       "passes": false,
       "notes": ""
     },
@@ -131,7 +172,7 @@
         "Tests: traversal on fixture graph (Graph/Parent → Graph/Child → Graph/Grandchild) with depth limits and direction variants",
         "just verify passes"
       ],
-      "priority": 8,
+      "priority": 10,
       "passes": false,
       "notes": ""
     },
@@ -147,10 +188,11 @@
         "--sources resolves via ReverseSourceIndex",
         "--since applies time-window filter",
         "Replaces talon-cli/src/command.rs::emit_meta_stub",
+        "Expose the WhereClause matcher as a reusable primitive (e.g. apply_where_clauses(rows, clauses) -> Vec<row>) so US-006 search --where can share the implementation rather than reimplement it",
         "Tests: each operator on fixture vault, tag aggregation, source lookup",
         "just verify passes"
       ],
-      "priority": 9,
+      "priority": 11,
       "passes": false,
       "notes": ""
     },
@@ -166,7 +208,7 @@
         "Tests: simulate add → modify → delete sequence via direct DB writes; verify classification",
         "just verify passes"
       ],
-      "priority": 10,
+      "priority": 12,
       "passes": false,
       "notes": ""
     },
@@ -184,7 +226,7 @@
         "Tests: each check on fixture vault (Graph/Grandchild=orphan, Lifecycle/Doomed→nonexistent=broken)",
         "just verify passes"
       ],
-      "priority": 11,
+      "priority": 13,
       "passes": false,
       "notes": ""
     },
@@ -201,7 +243,7 @@
         "Tests: status against seeded vault, status with no DB returns ConfigError",
         "just verify passes"
       ],
-      "priority": 12,
+      "priority": 14,
       "passes": false,
       "notes": ""
     },
@@ -212,12 +254,12 @@
       "acceptanceCriteria": [
         "Port 21 notes from /tmp/talon-scaffold-imports/.../tests/fixtures/talon/fixture-vault.ts to crates/talon-core/tests/fixtures/vault/ (Atlas/*, Graph/*, Search/*, Filters/*, Lifecycle/*)",
         "New integration test crates/talon-core/tests/fixture_vault.rs",
-        "Runs run_sync, then exercises: search hybrid (mocked sidecar), search fulltext, related, meta-where, lint orphans, status",
+        "Runs run_sync (which now also embeds per US-004b) with mocked sidecar, then exercises: search hybrid, search fulltext, related, meta-where, lint orphans, status",
         "Asserts paths exact-match TS expectations from tests/services/talon/fixture-vault.integration.test.ts; scores within 1e-3",
         "Suite green across 5 consecutive runs with no flake",
         "just verify passes"
       ],
-      "priority": 13,
+      "priority": 15,
       "passes": false,
       "notes": ""
     },
@@ -233,7 +275,7 @@
         "Tests: handshake echo round-trips; malformed frame returns proper JSON-RPC error envelope",
         "just verify passes"
       ],
-      "priority": 14,
+      "priority": 16,
       "passes": false,
       "notes": ""
     },
@@ -244,13 +286,14 @@
       "acceptanceCriteria": [
         "New module talon-cli/src/mcp/tool.rs",
         "Tool name: talon (per design spec §11)",
+        "Action union per spec §11 / Decision 10: search, read, sync, related, status, meta, changes, lint — and ONLY these (no embed action)",
         "Input schema generated for each TalonInput variant (schemars crate or hand-written constants in tool.rs)",
-        "tools/call dispatches through the same handlers as US-006 through US-012; wraps TalonResponse as MCP CallToolResult",
+        "tools/call dispatches through the same handlers as US-006 through US-012; wraps responses in the US-005b envelope as MCP CallToolResult",
         "TalonError mapped to MCP error envelope with code + message",
         "Tests: tools/list returns valid schema; each action's tools/call round-trips against the integration vault",
         "just verify passes"
       ],
-      "priority": 15,
+      "priority": 17,
       "passes": false,
       "notes": ""
     },
@@ -267,69 +310,69 @@
         "Manual smoke: `talon --mcp <<< '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}'` returns valid response",
         "just verify passes"
       ],
-      "priority": 16,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-017",
-      "title": "Scaffold ts/ npm package with binary resolver",
-      "description": "As a Node consumer, I want a `@talon/cli` npm package that resolves the right prebuilt binary at runtime via optionalDependencies, matching the esbuild/biome/oxc pattern.",
-      "acceptanceCriteria": [
-        "New ts/ workspace with package.json declaring optionalDependencies: @talon/cli-darwin-arm64, -darwin-x64, -linux-x64, -linux-arm64, -win32-x64",
-        "ts/src/binary.ts: resolveBinary() walks optionalDependencies matching process.platform + process.arch, returns the binary path",
-        "ts/src/child.ts: mcpChildSpec(): { command, args: ['--mcp'], env: NodeJS.ProcessEnv } per design spec §9",
-        "ts/src/index.ts barrel export",
-        "Vitest tests for resolution logic with mocked platform/arch",
-        "npm pack produces a valid tarball; npm test clean"
-      ],
-      "priority": 17,
-      "passes": false,
-      "notes": ""
-    },
-    {
-      "id": "US-018",
-      "title": "Cross-build per-platform binaries with cargo zigbuild",
-      "description": "As a release engineer, I want `cargo zigbuild` to produce stripped release binaries for darwin-arm64, darwin-x64, linux-x64, linux-aarch64, win32-x64 so each npm subpackage ships a working binary.",
-      "acceptanceCriteria": [
-        "Document zig + cargo-zigbuild install in DEVELOPMENT.md (or equivalent)",
-        "Build matrix script (justfile or shell) runs: cargo zigbuild --release --target aarch64-apple-darwin / x86_64-apple-darwin / x86_64-unknown-linux-gnu / aarch64-unknown-linux-gnu / x86_64-pc-windows-gnu",
-        "Each target output is stripped and < 30 MB",
-        "Each binary runs --version on its target platform (CI matrix or qemu/wine smoke)",
-        "Per-platform npm subpackage layout: package.json + the prebuilt binary, no JS",
-        "just verify passes"
-      ],
       "priority": 18,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-019",
-      "title": "Add release workflow and version tagging",
-      "description": "As a release engineer, I want a tag push to trigger the cross-build matrix and publish all platform packages plus the meta package to npm in one shot.",
+      "id": "US-017",
+      "title": "Scaffold ts/ npm package @seanmozeik/talon with binary resolver",
+      "description": "As a Node consumer, I want a `@seanmozeik/talon` npm package (per Decision 14) that resolves the right prebuilt binary at runtime via optionalDependencies, matching the esbuild/biome/oxc/ddg pattern.",
       "acceptanceCriteria": [
-        "New .github/workflows/release.yml triggered by v* tag push",
-        "Matrix invokes US-018 build script, packages each platform binary, npm publish each subpackage and the meta package",
-        "Version is read from Cargo.toml; ts/package.json version stays in lockstep",
-        "Dry-run mode (workflow_dispatch with input) goes through every step except publish",
-        "Dry-run succeeds end-to-end on a clean checkout"
+        "New ts/ workspace with package.json name `@seanmozeik/talon` declaring optionalDependencies: @seanmozeik/talon-darwin-arm64, @seanmozeik/talon-darwin-x64, @seanmozeik/talon-linux-x64, @seanmozeik/talon-linux-arm64, @seanmozeik/talon-win32-x64",
+        "ts/src/binary.ts: resolveBinary() walks optionalDependencies matching process.platform + process.arch, returns the binary path via require.resolve('@seanmozeik/talon-<plat>-<arch>/bin/talon')",
+        "ts/src/child.ts: mcpChildSpec(): { command, args: ['--mcp'], env: NodeJS.ProcessEnv } per design spec §9",
+        "ts/src/index.ts barrel exports mcpChildSpec and resolveBinary (the only public API per spec §9 — no Talon class, no .search()/.sync() methods)",
+        "Vitest tests for resolution logic with mocked platform/arch",
+        "npm pack produces a valid tarball; npm test clean"
       ],
       "priority": 19,
       "passes": false,
       "notes": ""
     },
     {
-      "id": "US-020",
-      "title": "Embed SKILL.md and wire --skill flag",
-      "description": "As an MCP client, I want `talon --skill` to print an embedded SKILL.md so agents can self-load Talon usage instructions.",
+      "id": "US-018",
+      "title": "Cross-build per-platform binaries with cargo zigbuild",
+      "description": "As a release engineer, I want `cargo zigbuild` to produce stripped release binaries for darwin-arm64, darwin-x64, linux-x64, linux-aarch64, win32-x64 so each @seanmozeik/talon-<platform>-<arch> npm subpackage ships a working binary.",
       "acceptanceCriteria": [
-        "Author docs/SKILL.md (port the agent prompt from the TS reference)",
-        "include_str!(\"../../docs/SKILL.md\") embeds it into the binary",
+        "Document zig + cargo-zigbuild install in DEVELOPMENT.md (or equivalent)",
+        "Build matrix script (justfile or shell) runs: cargo zigbuild --release --target aarch64-apple-darwin / x86_64-apple-darwin / x86_64-unknown-linux-gnu / aarch64-unknown-linux-gnu / x86_64-pc-windows-gnu",
+        "Each target output is stripped and < 30 MB",
+        "Each binary runs --version on its target platform (CI matrix or qemu/wine smoke)",
+        "Per-platform npm subpackage layout: package.json (name `@seanmozeik/talon-<platform>-<arch>`) + the prebuilt binary at bin/talon, no JS",
+        "just verify passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Add release workflow and version tagging",
+      "description": "As a release engineer, I want a tag push to trigger the cross-build matrix and publish all platform packages plus the @seanmozeik/talon meta package to npm in one shot.",
+      "acceptanceCriteria": [
+        "New .github/workflows/release.yml triggered by v* tag push",
+        "Matrix invokes US-018 build script, packages each platform binary, npm publish each @seanmozeik/talon-<platform>-<arch> subpackage and the @seanmozeik/talon meta package",
+        "Version is read from Cargo.toml; ts/package.json version stays in lockstep",
+        "Dry-run mode (workflow_dispatch with input) goes through every step except publish",
+        "Dry-run succeeds end-to-end on a clean checkout"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Embed skill/SKILL.md and wire --skill flag",
+      "description": "As an MCP client, I want `talon --skill` to print an embedded SKILL.md (located at repo root `skill/SKILL.md` per spec §3 + Decision 12) so agents can self-load Talon usage instructions, matching the ddg pattern.",
+      "acceptanceCriteria": [
+        "Author skill/SKILL.md at repo root (port the agent prompt from the TS reference, then extend to document the new meta/changes/lint actions per spec §12)",
+        "include_str! embeds skill/SKILL.md into the talon-cli binary (path: include_str!(\"../../../skill/SKILL.md\") from talon-cli/src/main.rs)",
         "--skill prints the contents and exits 0",
         "Test: assert_cmd verifies non-empty output + exit 0",
         "just verify passes"
       ],
-      "priority": 20,
+      "priority": 22,
       "passes": false,
       "notes": ""
     },
@@ -345,22 +388,23 @@
         "Snapshot tests via insta (one snapshot per command's human output)",
         "just verify passes"
       ],
-      "priority": 21,
+      "priority": 23,
       "passes": false,
       "notes": ""
     },
     {
       "id": "US-022",
-      "title": "Add ranking regression test suite",
-      "description": "As a maintainer, I want golden expected ranks for canonical queries so silent ranking drift is caught in CI.",
+      "title": "Add ranking regression test suite (parity bar §19 Phase 1)",
+      "description": "As a maintainer, I want golden expected ranks for canonical queries so silent ranking drift is caught in CI — meeting the spec §19 Phase 1 acceptance bar (path equality, score within tolerance, stable subset of meta fields).",
       "acceptanceCriteria": [
         "Port tests/services/talon/ranking-regression.test.ts to crates/talon-core/tests/ranking_regression.rs",
-        "Golden expected top-K paths for ~10 fixture queries",
-        "Score drift tolerated within 1e-3; rank order changes fail the test",
+        "Golden expected top-K paths for ~10 fixture queries — assert exact equality of data.results[*].path against the TS reference output",
+        "Score drift on data.results[*].score tolerated within 1e-3; rank order changes fail the test",
+        "Stable subset of envelope `meta` fields asserted (e.g. result_count, scope set, fast flag) — not the full meta blob",
         "Any TS-vs-Rust intentional divergence documented in a comment with reason",
         "Suite green; just verify passes"
       ],
-      "priority": 22,
+      "priority": 24,
       "passes": false,
       "notes": ""
     },
@@ -370,32 +414,35 @@
       "description": "As a maintainer, I want assert_cmd-driven contract tests so the CLI's exit codes, help text, and JSON envelope shape are pinned and cannot regress silently.",
       "acceptanceCriteria": [
         "New crates/talon-cli/tests/cli.rs using assert_cmd + predicates",
-        "Covers: help text shape, exit code per error class, JSON envelope shape (action, ok, data/error fields) for every command",
+        "Covers: help text shape, exit code per error class",
+        "JSON envelope shape per Decision 8: top-level keys are exactly {action, version, ok, data, meta} on success and {action, version, ok, error} on failure — verified for every command",
         "Ports relevant assertions from tests/services/talon/cli.test.ts and contract.test.ts",
         "Suite green; just verify passes"
       ],
-      "priority": 23,
+      "priority": 25,
       "passes": false,
       "notes": ""
     },
     {
       "id": "US-024",
-      "title": "Final verification: release build, parity, manual smokes",
-      "description": "As a release engineer, I want every shippable surface verified: release build, parity against TS for canonical queries, manual smoke of every command — before tagging v0.1.0.",
+      "title": "Final verification: release build, parity, README, manual smokes",
+      "description": "As a release engineer, I want every shippable surface verified: release build, parity against TS for canonical queries, README explains the inference endpoint, manual smoke of every command — before tagging v0.1.0.",
       "acceptanceCriteria": [
         "just verify green",
         "cargo build --release succeeds; stripped binary < 30 MB",
         "talon --version, talon --help, talon --skill all work",
         "talon init creates ~/.config/talon/config.toml from template",
-        "talon sync indexes a real vault end-to-end (the caller — ultraclaw's chokidar watcher or a launchd plist — is responsible for invoking sync; Rust does not watch)",
-        "talon embed populates vec_chunks against a live TEI sidecar (manual smoke; document command in NOTES.md)",
-        "talon search '<query>' returns real ranked results (manual smoke)",
+        "talon sync indexes a real vault end-to-end AND embeds pending chunks against a live TEI sidecar in the same call (per US-004b spec-faithful sync; the caller — ultraclaw's chokidar watcher or a launchd plist — is responsible for invoking sync; Rust does not watch)",
+        "talon sync --fast completes without contacting the inference sidecar (lexical pass only)",
+        "talon search '<query>' returns real ranked results with --where and --since filtering working (manual smoke)",
         "talon related <path>, talon meta --tag-counts, talon lint orphans all work on real data",
-        "talon --mcp survives initialize + tools/list + tools/call + shutdown round-trip from an MCP inspector or hand-crafted JSON-RPC (manual smoke)",
-        "Parity: 5+ canonical search queries return matching top-10 paths against TS reference (top-K order must match; score drift allowed)",
+        "talon --mcp survives initialize + tools/list + tools/call + shutdown round-trip from an MCP inspector or hand-crafted JSON-RPC; tools/list does NOT advertise an embed action (Decision 10)",
+        "README explains inference.base_url points at a TEI-compatible endpoint (text-embeddings-inference, Infinity, or ultraclaw's sidecar) per Decision 13",
+        "JSON output for every command matches the {action, version, ok, data, meta} envelope shape (Decision 8) verified by US-023 contract tests",
+        "Parity bar §19 Phase 1: 5+ canonical search queries return matching data.results[*].path against TS reference (top-K order must match; data.results[*].score drift within 1e-3 allowed; stable subset of meta fields equal)",
         "v0.1.0 tag pushed; US-019 release workflow publishes successfully (dry-run first if uncertain)"
       ],
-      "priority": 24,
+      "priority": 26,
       "passes": false,
       "notes": ""
     }

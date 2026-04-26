@@ -264,3 +264,30 @@ mod tests {
         cleanup(&path);
     }
 }
+
+    #[test]
+    #[ignore]
+    fn bm25_score_diagnostic_temp() {
+        use crate::open_database;
+        use std::env::temp_dir;
+        let path = temp_dir().join("score_diag_test.sqlite");
+        let conn = open_database(&path).unwrap();
+        for i in 0..20 {
+            conn.execute(
+                "INSERT INTO notes (vault_path, title, tags, aliases, content, mtime_ms, size_bytes, hash, docid, active) VALUES (?, ?, '[]', '[]', ?, 0, 0, 'h', 'd', 1)",
+                rusqlite::params![format!("dummy-{i}.md"), format!("Unrelated Topic {i}"), format!("content about something completely different topic number {i}")],
+            ).unwrap();
+        }
+        conn.execute(
+            "INSERT INTO notes (vault_path, title, tags, aliases, content, mtime_ms, size_bytes, hash, docid, active) VALUES (?, ?, '[]', '[]', ?, 0, 0, 'h', 'd', 1)",
+            rusqlite::params!["signal.md", "crystallophosphene Research", "unique term found nowhere else"],
+        ).unwrap();
+        let results = search_bm25(&conn, "crystallophosphene", 2, 300);
+        for r in &results {
+            eprintln!("  path={} score={:.6}", r.path, r.score);
+        }
+        assert!(!results.is_empty());
+        let _ = fs_err::remove_file(&path);
+        let _ = fs_err::remove_file(path.with_extension("sqlite-wal"));
+        let _ = fs_err::remove_file(path.with_extension("sqlite-shm"));
+    }
