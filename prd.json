@@ -63,8 +63,8 @@
         "just verify passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/search/rerank_pipeline.rs. rerank_candidates(inference, query, candidates, top_k) calls inference.rerank with title+\"\\n\\n\"+snippet payload, composes fuse::blend_rerank_candidates. top_k caps candidates sent to reranker. Graceful degradation on HTTP error returns original candidates with hybrid scores unchanged. Added RERANK_TOP_K=40 to search/constants. 5 wiremock tests: happy path, blend math within 1e-4, HTTP 5xx fallback, empty-candidates early exit, top_k truncation. 227 tests pass."
     },
     {
       "id": "US-005",

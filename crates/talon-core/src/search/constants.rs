@@ -99,5 +99,10 @@ pub const HYBRID_PROBE_LEXICAL_LIMIT: u32 = 2;
 /// Strong-match probe: title result count in hybrid.
 pub const HYBRID_PROBE_TITLE_LIMIT: u32 = 1;
 
+/// Maximum candidates sent to the cross-encoder reranker per call.
+///
+/// Mirrors `RERANK_CANDIDATE_LIMIT` from the root constants and the TS reference.
+pub const RERANK_TOP_K: u32 = 40;
+
 /// Default LRU size for the in-process hybrid result cache.
 pub const GLOBAL_HYBRID_CACHE_SIZE: usize = 100;

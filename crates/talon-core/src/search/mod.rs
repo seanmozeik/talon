@@ -20,6 +20,7 @@ pub mod constants;
 pub mod fuse;
 pub mod fuzzy_title;
 pub mod hybrid_single;
+pub mod rerank_pipeline;
 pub mod rrf;
 pub mod text_fts;
 pub mod types;
@@ -30,8 +31,8 @@ pub use constants::{
     BM25_FTS_SCORES, BM25_MIN_TOKENS, BM25_TOKENS_PER_CHAR_DIV, COSINE_DISTANCE_MAX,
     DEFAULT_SNIPPET_LENGTH, FUZZY_ALIAS_MIN_LEN, GLOBAL_HYBRID_CACHE_SIZE,
     HYBRID_PROBE_LEXICAL_LIMIT, HYBRID_PROBE_TITLE_LIMIT, LITERAL_EMPTY_FTS, LLM_CACHE_LIMIT,
-    RERANK_MID_RANK_THRESHOLD, RERANK_TOP_RANK_THRESHOLD, RERANK_WEIGHT_LOW, RERANK_WEIGHT_MID,
-    RERANK_WEIGHT_TOP, RRF_K, RRF_WEIGHTS, RrfWeights, STRONG_SIGNAL_MIN_GAP,
+    RERANK_MID_RANK_THRESHOLD, RERANK_TOP_K, RERANK_TOP_RANK_THRESHOLD, RERANK_WEIGHT_LOW,
+    RERANK_WEIGHT_MID, RERANK_WEIGHT_TOP, RRF_K, RRF_WEIGHTS, RrfWeights, STRONG_SIGNAL_MIN_GAP,
     STRONG_SIGNAL_MIN_SCORE, TRIGRAM_LEN,
 };
 pub use fuse::{
@@ -39,6 +40,7 @@ pub use fuse::{
 };
 pub use fuzzy_title::TitleSearchParts;
 pub use hybrid_single::{HybridSingleResult, run_hybrid_single};
+pub use rerank_pipeline::rerank_candidates;
 pub use rrf::{RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 pub use text_fts::{
     FtsOperator, build_bm25_score, build_trigram_or_query, calculate_trigram_overlap, get_trigrams,
