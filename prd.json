@@ -47,8 +47,8 @@
         "just verify passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/search/hybrid_single.rs. HybridSingleResult { bm25, fuzzy_title_parts: TitleSearchParts, vector }. run_hybrid_single(conn, query, embedding: Option<&[f32]>, limit) composes search_bm25, search_title_parts, search_vector. embedding=None skips vector call and returns empty bucket. Re-exported HybridSingleResult and run_hybrid_single from search::mod. 5 tests: bm25/fuzzy-title/vector bucket isolation, None-embedding guard, disjoint-note independence. 222 tests pass."
     },
     {
       "id": "US-004",

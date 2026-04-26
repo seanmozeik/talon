@@ -19,6 +19,7 @@ pub mod cache;
 pub mod constants;
 pub mod fuse;
 pub mod fuzzy_title;
+pub mod hybrid_single;
 pub mod rrf;
 pub mod text_fts;
 pub mod types;
@@ -36,6 +37,8 @@ pub use constants::{
 pub use fuse::{
     blend_rerank_candidates, clamp01, estimate_strong_signal, fuse_hybrid_result_lists, sigmoid,
 };
+pub use fuzzy_title::TitleSearchParts;
+pub use hybrid_single::{HybridSingleResult, run_hybrid_single};
 pub use rrf::{RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 pub use text_fts::{
     FtsOperator, build_bm25_score, build_trigram_or_query, calculate_trigram_overlap, get_trigrams,
