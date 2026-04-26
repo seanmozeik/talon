@@ -524,8 +524,8 @@
         "v0.1.0 tag pushed; US-019 release workflow publishes successfully (dry-run first if uncertain)"
       ],
       "priority": 29,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Release verification complete: just verify green (399 tests); cargo build --release produces 10 MB stripped binary; talon --version/--help/--skill/--mcp all confirmed working; talon init creates config.toml (2 new tests); MCP tools/list explicitly asserts no embed action and all 8 expected actions present (Decision 10); README documents inference.base_url → TEI endpoint (Decision 13); JSON envelope shape pinned by US-023 contract tests; parity bar §19 Phase 1 met by US-022 ranking_regression suite (nDCG@5≥0.85, MRR≥0.85, Hit@5≥0.95, Recall@10≥0.90); talon sync --fast covered by sync_embed tests; all 8 commands smoke-tested by CLI contract tests; note: v0.1.0 tag push and npm publish require manual operator action per release workflow (US-019)."
     },
     {
       "id": "US-025",

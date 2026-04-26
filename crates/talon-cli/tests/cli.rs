@@ -36,6 +36,71 @@ fn version_flag_exits_zero_and_prints_semver() {
         .stdout(predicate::str::is_match(r"^\d+\.\d+\.\d+\n$").unwrap_or_else(|e| panic!("{e}")));
 }
 
+// ── A2. talon init ────────────────────────────────────────────────────────────
+
+#[test]
+fn init_creates_config_toml_in_xdg_config_home() {
+    let tmp = std::env::temp_dir().join(format!("talon-init-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
+        .arg("init")
+        .env("HOME", &tmp)
+        .env("XDG_CONFIG_HOME", tmp.join("config"))
+        .output()
+        .unwrap_or_else(|e| panic!("spawn talon init: {e}"));
+    assert!(out.status.success(), "talon init should exit 0");
+
+    let config_path = tmp.join("config").join("talon").join("config.toml");
+    assert!(
+        config_path.exists(),
+        "config.toml not created at {}",
+        config_path.display()
+    );
+    let content =
+        std::fs::read_to_string(&config_path).unwrap_or_else(|e| panic!("read config.toml: {e}"));
+    assert!(
+        content.contains("vault_path"),
+        "config.toml missing vault_path"
+    );
+    assert!(
+        content.contains("base_url"),
+        "config.toml missing base_url (inference endpoint)"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn init_does_not_overwrite_existing_config() {
+    let tmp = std::env::temp_dir().join(format!("talon-init-existing-{}", std::process::id()));
+    let config_dir = tmp.join("config").join("talon");
+    std::fs::create_dir_all(&config_dir).unwrap_or_else(|e| panic!("create config dir: {e}"));
+    let config_path = config_dir.join("config.toml");
+    std::fs::write(&config_path, "# sentinel\n")
+        .unwrap_or_else(|e| panic!("write sentinel config: {e}"));
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
+        .arg("init")
+        .env("HOME", &tmp)
+        .env("XDG_CONFIG_HOME", tmp.join("config"))
+        .output()
+        .unwrap_or_else(|e| panic!("spawn talon init: {e}"));
+    assert!(
+        out.status.success(),
+        "talon init should exit 0 when file exists"
+    );
+
+    let content = std::fs::read_to_string(&config_path)
+        .unwrap_or_else(|e| panic!("read sentinel config: {e}"));
+    assert_eq!(
+        content, "# sentinel\n",
+        "talon init must not overwrite an existing config"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
 // ── B. Error class exit codes ────────────────────────────────────────────────
 
 #[test]

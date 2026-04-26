@@ -48,12 +48,31 @@ fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "talon");
     assert_eq!(responses[1]["id"], 2);
     assert_eq!(responses[1]["result"]["tools"][0]["name"], "talon");
-    assert_eq!(
+    let actions: Vec<&str> =
         responses[1]["result"]["tools"][0]["inputSchema"]["properties"]["action"]["enum"]
             .as_array()
-            .map(Vec::len),
-        Some(8),
+            .unwrap_or_else(|| panic!("action enum should be an array"))
+            .iter()
+            .map(|v| v.as_str().unwrap_or(""))
+            .collect();
+    assert_eq!(
+        actions.len(),
+        8,
+        "tools/list should advertise exactly 8 actions"
     );
+    // Decision 10: embed is not a public MCP action; it runs inside talon sync.
+    assert!(
+        !actions.contains(&"embed"),
+        "tools/list must not advertise an embed action (Decision 10)"
+    );
+    for expected in &[
+        "search", "read", "sync", "status", "related", "meta", "changes", "lint",
+    ] {
+        assert!(
+            actions.contains(expected),
+            "tools/list missing expected action: {expected}"
+        );
+    }
     assert_eq!(responses[2]["id"], 3);
     assert_eq!(
         responses[2]["result"]["structuredContent"]["action"],
