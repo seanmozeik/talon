@@ -104,7 +104,7 @@ mod tests {
         assert_eq!(responses[1]["id"], "tools");
         assert_eq!(
             responses[1]["result"]["tools"].as_array().map(Vec::len),
-            Some(0)
+            Some(1)
         );
         assert_eq!(responses[2]["id"], 2);
         Ok(())

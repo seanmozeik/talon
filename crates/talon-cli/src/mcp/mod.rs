@@ -7,6 +7,7 @@
 //! test and avoids committing the CLI to a larger server abstraction too early.
 
 pub mod protocol;
+pub mod tool;
 pub mod transport;
 
 pub use transport::{TransportOutcome, run_jsonrpc_loop};

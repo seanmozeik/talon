@@ -2,9 +2,11 @@
 
 use crate::cli::{CliArgs, parse_where_clause};
 use crate::config;
+use crate::mcp::transport::{TransportOutcome, run_jsonrpc_loop};
 use crate::output::{OutputMode, emit_response};
 use crate::spinner;
 use eyre::{Result, WrapErr as _, bail};
+use std::io::{self, BufReader};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
@@ -22,7 +24,13 @@ use talon_core::{
 /// Returns an error for invalid command input or not-yet-implemented behavior.
 pub async fn run(args: &CliArgs) -> Result<()> {
     if args.mcp.enabled() {
-        bail!("mcp mode is scaffolded but not implemented yet");
+        let stdin = io::stdin();
+        let stdout = io::stdout();
+        let outcome = run_jsonrpc_loop(BufReader::new(stdin.lock()), stdout.lock())?;
+        if outcome == TransportOutcome::Shutdown {
+            return Ok(());
+        }
+        return Ok(());
     }
 
     if let Some(path) = args.config_file.as_deref() {

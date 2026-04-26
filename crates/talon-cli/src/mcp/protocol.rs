@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+use super::tool;
+
 pub const JSONRPC_VERSION: &str = "2.0";
 
 const PARSE_ERROR: i32 = -32700;
@@ -68,14 +70,19 @@ pub fn handle_request(request: JsonRpcRequest) -> (Option<JsonRpcResponse>, Meth
             respond_to_request(request, initialize_result(), MethodDisposition::Continue)
         }
         "notifications/initialized" | "initialized" => (None, MethodDisposition::Continue),
-        "tools/list" => {
-            respond_to_request(request, tools_list_result(), MethodDisposition::Continue)
-        }
-        "tools/call" => respond_to_request(
+        "tools/list" => respond_to_request(
             request,
-            tool_call_placeholder_result(),
+            tool::tools_list_result(),
             MethodDisposition::Continue,
         ),
+        "tools/call" => {
+            let params = request.params.clone();
+            respond_to_request(
+                request,
+                tool::tools_call_result(params),
+                MethodDisposition::Continue,
+            )
+        }
         "shutdown" => respond_to_request(request, Value::Null, MethodDisposition::Shutdown),
         _ => {
             if request.is_notification() {
@@ -142,24 +149,6 @@ fn initialize_result() -> Value {
     })
 }
 
-fn tools_list_result() -> Value {
-    json!({
-        "tools": []
-    })
-}
-
-fn tool_call_placeholder_result() -> Value {
-    json!({
-        "content": [
-            {
-                "type": "text",
-                "text": "talon MCP tool dispatch is not implemented yet"
-            }
-        ],
-        "isError": true
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use super::{JsonRpcRequest, MethodDisposition, handle_request};
@@ -211,6 +200,33 @@ mod tests {
 
         assert_eq!(disposition, MethodDisposition::Shutdown);
         assert_eq!(response["id"], Value::String("stop".to_owned()));
+        Ok(())
+    }
+
+    #[test]
+    fn handle_request_dispatches_talon_status_tool_call() -> Result<()> {
+        let request: JsonRpcRequest = serde_json::from_value(json!({
+            "jsonrpc": "2.0",
+            "id": "call",
+            "method": "tools/call",
+            "params": {
+                "name": "talon",
+                "arguments": { "action": "status" }
+            }
+        }))?;
+
+        let (response, disposition) = handle_request(request);
+        let response = serde_json::to_value(response)?;
+        let text = response["result"]["content"][0]["text"]
+            .as_str()
+            .ok_or_else(|| color_eyre::eyre::eyre!("missing tool result text"))?;
+        let envelope: Value = serde_json::from_str(text)?;
+
+        assert_eq!(disposition, MethodDisposition::Continue);
+        assert_eq!(response["id"], "call");
+        assert_eq!(envelope["action"], "status");
+        assert_eq!(envelope["ok"], true);
+        assert_eq!(envelope["data"]["action"], "status");
         Ok(())
     }
 }

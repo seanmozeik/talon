@@ -325,8 +325,8 @@
         "just verify passes"
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-cli/src/mcp/tool.rs with the single talon tool, hand-written action schema for search/read/sync/status/related/meta/changes/lint only, and tools/call dispatch to the same core query/sync functions used by CLI handlers. MCP CallToolResult wraps full US-005b TalonEnvelope JSON in content text and structuredContent; invalid tool calls/arguments return an error envelope. Wired protocol.rs tools/list/tools/call to the module and enabled --mcp stdio loop in command.rs. Tests cover schema, invalid calls, status tools/call round-trip, and transport tools/list count. just verify passes."
     },
     {
       "id": "US-016",
