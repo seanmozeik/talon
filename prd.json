@@ -173,8 +173,8 @@
         "just verify passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/query/related.rs: find_related(conn, &RelatedInput) -> RelatedResponse. BFS traversal with cycle detection (visited HashSet), supports Outgoing/Backlinks/Both direction, depth clamped to RELATED_MAX_DEPTH=3. Scope filter via passes_scope_filter applied per neighbor. Title hydrated from notes table. Fixed clippy manual_let_else lint. Replaced emit_related_stub in talon-cli/src/command.rs with real emit_related handler opening the index DB. Exported from query::mod and lib.rs. 5 tests: outgoing depth-1, outgoing depth-2 transitive, backlinks, both directions, orphan. 266 tests pass."
     },
     {
       "id": "US-009",

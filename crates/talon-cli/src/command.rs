@@ -9,10 +9,10 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     ExpansionClient, IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse,
-    PositiveCount, ReadInput, RelatedInput, RelatedResponse, ResponseMeta, SearchInput, SearchMode,
-    StatusResponse, SyncInput, SyncResponse, SyncStatus, TalonEnvelope, TalonResponseData,
-    embed::EmbedPassOptions, inference::InferenceClient, open_database, run_read, run_search,
-    run_sync, vec_ext::register_sqlite_vec,
+    PositiveCount, ReadInput, RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse,
+    SyncInput, SyncResponse, SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions,
+    find_related, inference::InferenceClient, open_database, run_read, run_search, run_sync,
+    vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -38,7 +38,7 @@ pub async fn run(args: &CliArgs) -> Result<()> {
         "search" => emit_search(args, rest).await,
         "read" => emit_read(args, rest).await,
         "sync" => emit_sync_stub(args, rest).await,
-        "related" => emit_related_stub(args, rest).await,
+        "related" => emit_related(args, rest).await,
         "status" => emit_status_stub(args),
         "meta" => emit_meta_stub(args, rest).await,
         "changes" => bail!("changes is scaffolded but not implemented yet"),
@@ -318,12 +318,11 @@ async fn emit_sync_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
     emit_response(&response, output_mode(args))
 }
 
-async fn emit_related_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
+async fn emit_related(args: &CliArgs, rest: &[String]) -> Result<()> {
     if rest.is_empty() {
         bail!("related requires a path");
     }
 
-    let started = Instant::now();
     let input = RelatedInput {
         path: rest[0].clone(),
         depth: args
@@ -333,19 +332,26 @@ async fn emit_related_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
         scope: vec![],
         scope_only: vec![],
     };
+
+    let config = config::load_config(args.config_file.as_deref())?;
+    let db_path: PathBuf = config.db_path.clone();
+
+    let started = Instant::now();
     let work = async move {
+        let conn = open_database(&db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+
+        let response = find_related(&conn, &input);
+        let result_count = response.results.len();
+
         let meta = ResponseMeta {
             duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            result_count: Some(0),
+            result_count: Some(u32::try_from(result_count).unwrap_or(u32::MAX)),
             warnings: Vec::new(),
             scope_set: None,
             since: None,
         };
-        let data = TalonResponseData::Related(RelatedResponse {
-            path: talon_core::VaultPath::parse(&input.path)?,
-            direction: input.direction,
-            results: Vec::new(),
-        });
+        let data = TalonResponseData::Related(response);
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("related", data, meta))
     };
     let response = if should_spin(args) {
