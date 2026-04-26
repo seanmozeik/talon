@@ -404,8 +404,8 @@
         "just verify passes"
       ],
       "priority": 23,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Extended skill/SKILL.md with meta/changes/lint action docs per spec §12. include_str! embed already wired in lib.rs via CARGO_MANIFEST_DIR. --skill flag already prints and exits 0. Added crates/talon-cli/tests/skill_flag.rs: non-empty output + exit 0 assertion using CARGO_BIN_EXE_talon. 319 tests pass."
     },
     {
       "id": "US-021",
