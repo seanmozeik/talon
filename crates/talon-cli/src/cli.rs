@@ -2,7 +2,7 @@
 
 use bpaf::{Parser, long, positional};
 use std::path::PathBuf;
-use talon_core::{Direction, SearchMode};
+use talon_core::{Direction, SearchMode, WhereClause, WhereOperator};
 
 /// Parsed command-line arguments.
 #[derive(Debug, Clone)]
@@ -35,6 +35,10 @@ pub struct CliArgs {
     pub depth: Option<u8>,
     /// Related traversal direction.
     pub direction: Option<Direction>,
+    /// Frontmatter `--where` filters for search.
+    pub where_clauses: Vec<String>,
+    /// Filter results indexed since this timestamp.
+    pub since: Option<String>,
     /// Positional command and command arguments.
     pub positionals: Vec<String>,
 }
@@ -138,6 +142,14 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .argument::<String>("DIRECTION")
         .parse(|value| parse_direction(&value))
         .optional();
+    let where_clauses = long("where")
+        .help("Frontmatter filter: KEY OP VALUE (repeatable). Ops: =, !=, <, <=, >, >=, contains, exists.")
+        .argument::<String>("WHERE")
+        .many();
+    let since = long("since")
+        .help("Filter results indexed since this timestamp (ISO 8601 or epoch ms).")
+        .argument::<String>("SINCE")
+        .optional();
     let positionals = positional::<String>("ARGS")
         .help("Command and command arguments.")
         .many();
@@ -157,6 +169,8 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         max_lines,
         depth,
         direction,
+        where_clauses,
+        since,
         positionals
     })
     .to_options()
@@ -180,4 +194,43 @@ fn parse_direction(value: &str) -> Result<Direction, String> {
         "both" => Ok(Direction::Both),
         _ => Err("direction must be outgoing, backlinks, or both".to_string()),
     }
+}
+
+/// Parses a `--where` string into a [`WhereClause`].
+///
+/// Format: `KEY OP VALUE` (three space-separated tokens).
+/// `exists` takes only one token: `KEY exists`.
+///
+/// # Errors
+///
+/// Returns an error string if the format is invalid or the operator is unknown.
+pub fn parse_where_clause(value: &str) -> Result<WhereClause, String> {
+    let parts: Vec<&str> = value.splitn(3, ' ').collect();
+    if parts.len() < 2 {
+        return Err(format!(
+            "invalid where clause '{value}'; expected 'KEY OP VALUE' or 'KEY exists'"
+        ));
+    }
+    let key = parts[0].to_string();
+    let op = match parts[1] {
+        "=" => WhereOperator::Equals,
+        "!=" => WhereOperator::NotEquals,
+        "<" => WhereOperator::LessThan,
+        "<=" => WhereOperator::LessThanOrEqual,
+        ">" => WhereOperator::GreaterThan,
+        ">=" => WhereOperator::GreaterThanOrEqual,
+        "contains" => WhereOperator::Contains,
+        "exists" => WhereOperator::Exists,
+        other => {
+            return Err(format!(
+                "unknown operator '{other}'; try =, !=, <, <=, >, >=, contains, exists"
+            ));
+        }
+    };
+    let value = if op == WhereOperator::Exists {
+        None
+    } else {
+        Some(parts.get(2).unwrap_or(&"").to_string())
+    };
+    Ok(WhereClause { key, op, value })
 }

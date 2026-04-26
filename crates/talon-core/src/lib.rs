@@ -15,6 +15,7 @@ pub mod indexer;
 pub mod inference;
 pub mod links;
 pub mod migrations;
+pub mod query;
 pub mod search;
 pub mod store;
 pub mod sync;
@@ -56,6 +57,7 @@ pub use migrations::{
     DB_VERSION_KEY, REBUILD_MIGRATIONS, SCHEMA_MIGRATIONS, TALON_SQLITE_BUSY_TIMEOUT_MS,
     TRIGGER_MIGRATIONS, run_migrations,
 };
+pub use query::run_search;
 pub use store::open_database;
 pub use sync::{SyncError, SyncLock, SyncLockError, acquire_sync_lock, run_sync};
 

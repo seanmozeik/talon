@@ -139,8 +139,8 @@
         "just verify passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Wired real search handler calling run_search() in talon-core/src/query/search.rs. Supports hybrid/semantic/fulltext/title modes. --where frontmatter filters and --since timestamp filters applied post-retrieval. ScopePriority::multiplier() multiplied post-rerank and results re-sorted. --fast skips expansion and rerank. Removed SearchResponse::empty_scaffold (no call sites remain). Changed SearchResult.score/raw_score from f32 to f64 to fix cast lints. Fixed 22 clippy violations. 6-test integration suite in tests/search_integration.rs. 256 tests pass."
     },
     {
       "id": "US-007",

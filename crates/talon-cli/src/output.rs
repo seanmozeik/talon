@@ -238,7 +238,7 @@ struct AgentSearchHit<'a> {
     path: &'a str,
     title: &'a str,
     snippet: &'a str,
-    score: f32,
+    score: f64,
 }
 
 impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {

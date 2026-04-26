@@ -1,6 +1,6 @@
 //! Command dispatch for the Talon CLI scaffold.
 
-use crate::cli::CliArgs;
+use crate::cli::{CliArgs, parse_where_clause};
 use crate::config;
 use crate::output::{OutputMode, emit_response};
 use crate::spinner;
@@ -8,10 +8,11 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse, ReadResponse, RelatedInput,
-    RelatedResponse, ResponseMeta, SearchInput, SearchResponse, StatusResponse, SyncInput,
-    SyncResponse, SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions,
-    inference::InferenceClient, open_database, run_sync, vec_ext::register_sqlite_vec,
+    ExpansionClient, IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse,
+    PositiveCount, ReadResponse, RelatedInput, RelatedResponse, ResponseMeta, SearchInput,
+    SearchMode, StatusResponse, SyncInput, SyncResponse, SyncStatus, TalonEnvelope,
+    TalonResponseData, embed::EmbedPassOptions, inference::InferenceClient, open_database,
+    run_search, run_sync, vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -34,7 +35,7 @@ pub async fn run(args: &CliArgs) -> Result<()> {
 
     match command.as_str() {
         "init" => init_config(),
-        "search" => emit_search_stub(args, rest).await,
+        "search" => emit_search(args, rest).await,
         "read" => emit_read_stub(args, rest).await,
         "sync" => emit_sync_stub(args, rest).await,
         "related" => emit_related_stub(args, rest).await,
@@ -57,29 +58,103 @@ fn init_config() -> Result<()> {
     Ok(())
 }
 
-async fn emit_search_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
+async fn emit_search(args: &CliArgs, rest: &[String]) -> Result<()> {
     if rest.is_empty() {
         bail!("search requires a query");
     }
 
-    let input = SearchInput::from_cli_query(
-        rest.join(" "),
-        args.mode.unwrap_or_default(),
-        args.fast.enabled(),
-        args.limit,
-    )?;
+    let query = rest.join(" ");
+    let mode = args.mode.unwrap_or_default();
+    let fast = args.fast.enabled();
+    let limit = args.limit;
+
+    // Parse --where clauses.
+    let where_clauses: Vec<talon_core::WhereClause> = args
+        .where_clauses
+        .iter()
+        .map(|s| parse_where_clause(s).map_err(|e| eyre::eyre!("invalid --where: {s}: {e}")))
+        .collect::<Result<Vec<_>>>()?;
+
+    let input = SearchInput {
+        query: Some(query),
+        queries: Vec::new(),
+        mode,
+        fast,
+        limit: PositiveCount::new(
+            limit.unwrap_or(talon_core::constants::DEFAULT_LIMIT),
+            "limit",
+        )?,
+        path: None,
+        tag: Vec::new(),
+        frontmatter: None,
+        related: false,
+        depth: talon_core::constants::RELATED_DEFAULT_DEPTH,
+        direction: talon_core::Direction::Both,
+        scope: Vec::new(),
+        scope_only: Vec::new(),
+        where_: where_clauses,
+        since: args.since.clone(),
+    };
+
     let started = Instant::now();
+
+    // Load config for scope priority resolution.
+    let config = config::load_config(args.config_file.as_deref()).ok();
+
     let work = async move {
+        let db_path: PathBuf = config.as_ref().map_or_else(
+            || PathBuf::from("~/.local/share/talon/index.sqlite"),
+            |c| c.db_path.clone(),
+        );
+
+        // Open DB and register sqlite-vec.
+        let conn = open_database(&db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+        register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
+
+        // Build inference client (needed for hybrid/semantic modes).
+        let (inference, expansion) =
+            if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
+                (None, None)
+            } else {
+                let inference_url = config.as_ref().map_or_else(
+                    || "http://localhost:8080".to_string(),
+                    |c| c.inference.base_url.clone(),
+                );
+                let inference = InferenceClient::new(inference_url)
+                    .wrap_err("building inference client")
+                    .ok();
+                let expansion = config
+                    .as_ref()
+                    .map(|c| ExpansionClient::new(c.expansion.base_url.clone(), &c.expansion.model))
+                    .transpose()
+                    .ok()
+                    .flatten();
+                (inference, expansion)
+            };
+
+        let response = run_search(
+            &conn,
+            &input,
+            inference.as_ref(),
+            expansion.as_ref(),
+            config.as_ref().map(|c| c as &talon_core::TalonConfig),
+        );
+
+        let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         let meta = ResponseMeta {
-            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
-            result_count: Some(0),
+            duration_ms,
+            result_count: Some(response.total),
             warnings: Vec::new(),
-            scope_set: None,
-            since: None,
+            scope_set: config
+                .as_ref()
+                .map(|c| c.default_scope_names().into_iter().cloned().collect()),
+            since: input.since.clone(),
         };
-        let data = TalonResponseData::Search(SearchResponse::empty_scaffold(input));
+        let data = TalonResponseData::Search(response);
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("search", data, meta))
     };
+
     let response = if should_spin(args) {
         spinner::with_spinner("Searching...".to_string(), work).await?
     } else {

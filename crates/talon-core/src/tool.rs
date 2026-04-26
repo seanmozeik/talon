@@ -765,16 +765,16 @@ pub struct SearchResponse {
 }
 
 impl SearchResponse {
-    /// Builds an empty scaffold response for a parsed search request.
+    /// Builds an empty response when the input query is blank.
     #[must_use]
-    pub fn empty_scaffold(input: SearchInput) -> Self {
+    pub fn empty_input() -> Self {
         Self {
-            query: input.query,
-            mode: input.mode,
-            fast: input.fast,
+            query: None,
+            mode: SearchMode::Hybrid,
+            fast: false,
             expanded: false,
             reranked: false,
-            index_version: "scaffold".to_string(),
+            index_version: "1".to_string(),
             total: 0,
             results: Vec::new(),
         }
@@ -794,10 +794,10 @@ pub struct SearchResult {
     /// Result snippet.
     pub snippet: String,
     /// Result score (after scope multiplier).
-    pub score: f32,
+    pub score: f64,
     /// Pre-multiplier score (before scope boost).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub raw_score: Option<f32>,
+    pub raw_score: Option<f64>,
     /// Match provenance.
     pub match_kind: MatchKind,
     /// Resolved scope name, if applicable.
@@ -1291,8 +1291,7 @@ mod envelope_tests {
 
     #[test]
     fn success_envelope_has_exactly_five_keys() {
-        let data =
-            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let data = TalonResponseData::Search(SearchResponse::empty_input());
         let envelope = TalonEnvelope::ok("search", data, success_meta());
         let json = serde_json::to_string(&envelope).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
@@ -1317,20 +1316,17 @@ mod envelope_tests {
 
     #[test]
     fn version_is_cargo_pkg_version() {
-        let data =
-            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let data = TalonResponseData::Search(SearchResponse::empty_input());
         let envelope = TalonEnvelope::ok("search", data, success_meta());
         assert_eq!(envelope.version, env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
     fn action_is_kebab_case() {
-        let data =
-            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let data = TalonResponseData::Search(SearchResponse::empty_input());
         let envelope = TalonEnvelope::ok("search", data, success_meta());
         assert_eq!(envelope.action, "search");
-        let data2 =
-            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let data2 = TalonResponseData::Search(SearchResponse::empty_input());
         let envelope = TalonEnvelope::ok("my-action", data2, success_meta());
         assert_eq!(envelope.action, "my-action");
     }
@@ -1346,8 +1342,7 @@ mod envelope_tests {
             scope_set: None,
             since: None,
         };
-        let data =
-            TalonResponseData::Search(SearchResponse::empty_scaffold(SearchInput::default()));
+        let data = TalonResponseData::Search(SearchResponse::empty_input());
         let envelope = TalonEnvelope::ok("search", data, meta);
         let json = serde_json::to_string(&envelope).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
