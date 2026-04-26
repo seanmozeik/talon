@@ -1,0 +1,452 @@
+{
+  "project": "Talon Rust Port",
+  "branchName": "main",
+  "description": "Complete the Rust port of Talon (Obsidian vault search engine) from where Phase 4 ended. Phases 0-4 (workspace, store, search algorithms, indexer/sync, embed pipeline, sqlite-vec) are landed with 206 passing tests. Remaining work: query handlers (search/read/related/meta/changes/lint/status), MCP server, filesystem watcher, TS wrapper with per-platform binaries, parity tests, and final polish. Reference TS at /tmp/talon-scaffold-imports/ultra/edge/src/services/talon/. Standing rules: never silence clippy lints with #[allow] (real fixes only); use wiremock for sidecar HTTP tests; real rusqlite Connection for DB tests (no mocks); pin deps to full semver; project conventions are eyre/color-eyre, time (not chrono), fs-err (not std::fs), serde_yaml_ng, blocking rusqlite + reqwest::blocking + spawn_blocking.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add LLM expansion HTTP client",
+      "description": "As Talon, I want a blocking OpenAI-compatible chat client so the hybrid search pipeline can request query expansion variants from the local LLM.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/expansion/{mod,client,types,error}.rs",
+        "Public surface: ExpansionClient::new(base_url, model) and expand(query: &str, n_variants: u8) -> Result<Vec<String>, ExpansionError>",
+        "POSTs /chat/completions with system prompt ported from search/hybrid-expand.ts",
+        "Returns empty Vec on malformed JSON (never panics); HTTP errors map to ExpansionError",
+        "PII redaction reuses inference::redact",
+        "Wiremock tests: happy path, malformed-JSON fallback, HTTP 5xx",
+        "just verify passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Add persistent llm_cache with TTL",
+      "description": "As Talon, I want a SQL-backed cache for LLM expansion responses so repeated queries skip the LLM round trip across process restarts.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/expansion/cache.rs",
+        "Public surface: LlmCache::new(conn), get(key), put(key, value, ttl_ms), purge_expired()",
+        "Uses existing llm_cache table from migrations (key, value, expires_at_ms columns)",
+        "Tests: round-trip, expiry past TTL returns None, purge_expired removes stale rows",
+        "just verify passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Compose hybrid-single retrieval",
+      "description": "As Talon, I want a single-query retrieval function that runs bm25 + fuzzy_title + vector in parallel and returns the three result lists for downstream RRF fusion.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/search/hybrid_single.rs",
+        "Public surface: run_hybrid_single(conn, query, embedding: Option<&[f32]>, limit) -> HybridSingleResult { bm25, fuzzy_title_parts: TitleSearchParts, vector }",
+        "Composes existing search::bm25::search_bm25, search::fuzzy_title::search_title_parts, search::vector::search_vector — no new algorithm code",
+        "Tests against seeded fixture: each retriever's contribution is isolated and complete",
+        "just verify passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Build cross-encoder rerank pipeline",
+      "description": "As Talon, I want a reranker that calls the sidecar /rerank endpoint and blends the cross-encoder scores into the hybrid scores using rank-tier weights.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/search/rerank_pipeline.rs",
+        "Public surface: rerank_candidates(inference, query, candidates: Vec<RawSearchResult>, top_k: u32) -> Vec<RawSearchResult>",
+        "Calls inference.rerank(query, texts, return_text=false), then composes existing fuse::blend_rerank_candidates",
+        "Honors RERANK_TOP_K from search/constants",
+        "Wiremock test for /rerank; blend math matches TS expectations within 1e-4",
+        "just verify passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Build hybrid-pipeline orchestrator",
+      "description": "As Talon, I want the full hybrid search pipeline (probe, optional expansion, multi-variant retrieval, fuse, rerank, filter) wired together so the search command can call one function.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/search/hybrid_pipeline.rs",
+        "Public surface: run_hybrid_pipeline(conn, inference, expansion, query, options) -> Vec<RawSearchResult>",
+        "Strong-signal short-circuit via fuse::estimate_strong_signal — skips expansion+rerank when probe is decisive",
+        "Calls US-001 expansion + US-003 hybrid-single per variant + US-004 rerank",
+        "Wiremock end-to-end test: full pipeline against seeded fixture vault with mocked sidecar (chat + embed + rerank)",
+        "Strong-signal path verified: high-confidence query skips expansion call",
+        "just verify passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Wire real search command",
+      "description": "As a Talon CLI user, I want `talon search` to return real ranked results across hybrid/semantic/fulltext/title modes with scope-priority post-multiplication.",
+      "acceptanceCriteria": [
+        "Replace talon-cli/src/command.rs::emit_search_stub with real handler calling US-005",
+        "Modes: hybrid (default), semantic (vector only), fulltext (bm25 only), title (fuzzy_title only)",
+        "Query embedding via blocking inference.embed for semantic/hybrid modes",
+        "Post-rerank: multiply each result.score by ScopePriority::multiplier(), then re-sort",
+        "--fast flag skips expansion + skips rerank",
+        "SearchResponse::empty_scaffold call sites removed",
+        "Integration test: end-to-end on temp vault (run_sync + run_embed_pass + search) with wiremock sidecar",
+        "just verify passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Build read handler",
+      "description": "As an agent, I want `talon read <path>` to return the note body with frontmatter stripped, optional line range, and a heading tree.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/query/read.rs with read_note(conn, vault_root, input: &ReadInput) -> ReadResponse",
+        "Supports --from-line / --max-lines slicing",
+        "Supports --raw mode (no frontmatter strip)",
+        "Returns headings tree extracted from body",
+        "Replaces talon-cli/src/command.rs::emit_read_stub",
+        "Tests: read fixture note with frontmatter, line range, raw mode, missing file → InvalidInput",
+        "just verify passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Build related-notes handler",
+      "description": "As an agent, I want `talon related <path>` to traverse the link graph in outgoing/backlinks/both directions up to a configured depth.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/query/related.rs with find_related(conn, input: &RelatedInput) -> RelatedResponse",
+        "Direction: Outgoing | Backlinks | Both; depth 1-3 (RELATED_DEFAULT_DEPTH=1)",
+        "Reuses existing links::compute_backlinks and resolve_wiki_links",
+        "Scope filter applied during traversal",
+        "Replaces talon-cli/src/command.rs::emit_related_stub",
+        "Tests: traversal on fixture graph (Graph/Parent → Graph/Child → Graph/Grandchild) with depth limits and direction variants",
+        "just verify passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Build meta (frontmatter query) handler",
+      "description": "As an agent, I want `talon meta` to filter notes by frontmatter --where clauses, project --select fields, aggregate --tag-counts, and resolve --sources reverse references.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/query/meta.rs with query_meta(conn, input: &MetaInput) -> MetaResponse",
+        "--where operators: =, !=, <, <=, >, >=, contains, exists (existing WhereClause/WhereOperator types)",
+        "--select projects requested frontmatter fields onto each entry",
+        "--tag-counts emits SELECT tag, COUNT(*) FROM note_tags GROUP BY tag",
+        "--sources resolves via ReverseSourceIndex",
+        "--since applies time-window filter",
+        "Replaces talon-cli/src/command.rs::emit_meta_stub",
+        "Tests: each operator on fixture vault, tag aggregation, source lookup",
+        "just verify passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Build changes handler",
+      "description": "As an agent, I want `talon changes --since <timestamp>` to return the added/modified/deleted notes from the event_log.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/query/changes.rs with get_changes(conn, since: Option<i64>) -> ChangesResponse",
+        "Returns { added, modified, deleted } populated from event_log table",
+        "--since parsing reuses change_tracking::parse_since",
+        "Replaces the bail!(\"changes is scaffolded but not implemented yet\") in command.rs",
+        "Tests: simulate add → modify → delete sequence via direct DB writes; verify classification",
+        "just verify passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Build lint handler",
+      "description": "As an agent, I want `talon lint <check>` to surface graph health issues: orphans, broken-links, dangling-refs, unreferenced.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/query/lint.rs with run_lint(conn, check: LintCheck) -> LintResponse",
+        "Orphans: notes with zero incoming links",
+        "BrokenLinks: link target file does not exist",
+        "DanglingRefs: frontmatter reference to nonexistent path",
+        "Unreferenced: zero incoming AND zero outgoing",
+        "Replaces talon-cli/src/command.rs::emit_lint_stub",
+        "Tests: each check on fixture vault (Graph/Grandchild=orphan, Lifecycle/Doomed→nonexistent=broken)",
+        "just verify passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Replace status stub with real index counts",
+      "description": "As an operator, I want `talon status` to report real index health: active note count, chunk count, failed-embedding count, vector dimensions, scope report.",
+      "acceptanceCriteria": [
+        "Replaces StatusResponse::scaffold and command.rs::emit_status_stub",
+        "Real counts via SQL: COUNT(*) FROM notes WHERE active=1, COUNT(*) FROM chunks, COUNT(*) FROM chunks WHERE embedding_status='failed'",
+        "Vector dimensions via vec_ext::get_vec_chunks_dimensions",
+        "Scope report: configured scopes, default set, unscoped count",
+        "State: Ready when vault reachable + index exists; ConfigError when talon init not run",
+        "Tests: status against seeded vault, status with no DB returns ConfigError",
+        "just verify passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Port fixture vault and add integration test suite",
+      "description": "As a maintainer, I want the 21-note fixture vault from the TS reference ported into a real on-disk fixture so integration tests exercise the full query layer end-to-end.",
+      "acceptanceCriteria": [
+        "Port 21 notes from /tmp/talon-scaffold-imports/.../tests/fixtures/talon/fixture-vault.ts to crates/talon-core/tests/fixtures/vault/ (Atlas/*, Graph/*, Search/*, Filters/*, Lifecycle/*)",
+        "New integration test crates/talon-core/tests/fixture_vault.rs",
+        "Runs run_sync, then exercises: search hybrid (mocked sidecar), search fulltext, related, meta-where, lint orphans, status",
+        "Asserts paths exact-match TS expectations from tests/services/talon/fixture-vault.integration.test.ts; scores within 1e-3",
+        "Suite green across 5 consecutive runs with no flake",
+        "just verify passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Add MCP JSON-RPC stdio transport",
+      "description": "As an MCP client, I want `talon --mcp` to speak JSON-RPC 2.0 over stdio so it can be embedded in MCP-aware agents.",
+      "acceptanceCriteria": [
+        "New module talon-cli/src/mcp/{mod,transport,protocol}.rs",
+        "Choose between rmcp crate and hand-rolled JSON-RPC; document choice with reason in module docstring",
+        "Frame format: line-delimited JSON-RPC 2.0 on stdin/stdout (no Content-Length headers)",
+        "Methods supported: initialize, initialized notification, tools/list, tools/call, shutdown",
+        "Tests: handshake echo round-trips; malformed frame returns proper JSON-RPC error envelope",
+        "just verify passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add MCP tool schema and handler dispatch",
+      "description": "As an MCP client, I want a single `talon` tool whose action-discriminated input dispatches to the same query handlers the CLI uses.",
+      "acceptanceCriteria": [
+        "New module talon-cli/src/mcp/tool.rs",
+        "Tool name: talon (per design spec §11)",
+        "Input schema generated for each TalonInput variant (schemars crate or hand-written constants in tool.rs)",
+        "tools/call dispatches through the same handlers as US-006 through US-012; wraps TalonResponse as MCP CallToolResult",
+        "TalonError mapped to MCP error envelope with code + message",
+        "Tests: tools/list returns valid schema; each action's tools/call round-trips against the integration vault",
+        "just verify passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Wire --mcp flag to long-running server",
+      "description": "As an operator, I want `talon --mcp` to run as a long-lived process that handles requests until shutdown or SIGINT.",
+      "acceptanceCriteria": [
+        "Replaces bail!(\"mcp mode is scaffolded but not implemented yet\") in command.rs",
+        "Long-running loop with graceful shutdown on JSON-RPC shutdown method or SIGINT",
+        "Integration test: spawn `talon --mcp` subprocess, send tools/list + tools/call, verify response and clean exit",
+        "Manual smoke: `talon --mcp <<< '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}'` returns valid response",
+        "just verify passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Add filesystem watcher event source",
+      "description": "As Talon, I want a debounced fs-event source that coalesces per-path Created/Modified/Deleted/Renamed events so the watcher does not thrash on save bursts.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/watcher/{mod,events,debounce}.rs",
+        "New deps: notify and notify-debouncer-mini, pinned to full semver",
+        "Public surface: WatcherHandle::new(vault_root, debounce_ms) -> (handle, mpsc::Receiver<WatchEvent>)",
+        "Coalesces per-path events; emits Created/Modified/Deleted/Renamed after the debounce window",
+        "Tests: temp dir with file ops verifies coalesced events (single create→modify→modify yields one Modified)",
+        "just verify passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Wire watcher events to indexer",
+      "description": "As Talon, I want watcher events to drive incremental sync via index_one_note and perform_note_deletion so the index stays current without a full scan.",
+      "acceptanceCriteria": [
+        "New module talon-core/src/watcher/dispatch.rs",
+        "Created/Modified → index_one_note(conn, path, …)",
+        "Deleted/Renamed-from → perform_note_deletion(conn, path)",
+        "Acquires existing sync lock briefly per batch, releases immediately",
+        "Drops events for paths matching indexer::matches_ignore_patterns",
+        "Tests: temp vault, write/edit/delete a file, watcher dispatches and DB reflects state",
+        "just verify passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Add talon watch CLI command",
+      "description": "As an operator, I want `talon watch` to be a long-running command that incrementally syncs the vault on every fs change, with --once for tests.",
+      "acceptanceCriteria": [
+        "New \"watch\" => emit_watch(args, rest).await arm in command.rs",
+        "Loads config, registers sqlite-vec, opens DB, spawns watcher",
+        "Long-running; SIGINT triggers clean shutdown that drains pending events and releases lock",
+        "--once flag: drain pending events then exit (tests/CI use this)",
+        "Integration test: spawn `talon watch --once` against temp vault, verify exit + DB state",
+        "talon watch --help renders",
+        "just verify passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Scaffold ts/ npm package with binary resolver",
+      "description": "As a Node consumer, I want a `@talon/cli` npm package that resolves the right prebuilt binary at runtime via optionalDependencies, matching the esbuild/biome/oxc pattern.",
+      "acceptanceCriteria": [
+        "New ts/ workspace with package.json declaring optionalDependencies: @talon/cli-darwin-arm64, -darwin-x64, -linux-x64, -linux-arm64, -win32-x64",
+        "ts/src/binary.ts: resolveBinary() walks optionalDependencies matching process.platform + process.arch, returns the binary path",
+        "ts/src/child.ts: mcpChildSpec(): { command, args: ['--mcp'], env: NodeJS.ProcessEnv } per design spec §9",
+        "ts/src/index.ts barrel export",
+        "Vitest tests for resolution logic with mocked platform/arch",
+        "npm pack produces a valid tarball; npm test clean"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Cross-build per-platform binaries with cargo zigbuild",
+      "description": "As a release engineer, I want `cargo zigbuild` to produce stripped release binaries for darwin-arm64, darwin-x64, linux-x64, linux-aarch64, win32-x64 so each npm subpackage ships a working binary.",
+      "acceptanceCriteria": [
+        "Document zig + cargo-zigbuild install in DEVELOPMENT.md (or equivalent)",
+        "Build matrix script (justfile or shell) runs: cargo zigbuild --release --target aarch64-apple-darwin / x86_64-apple-darwin / x86_64-unknown-linux-gnu / aarch64-unknown-linux-gnu / x86_64-pc-windows-gnu",
+        "Each target output is stripped and < 30 MB",
+        "Each binary runs --version on its target platform (CI matrix or qemu/wine smoke)",
+        "Per-platform npm subpackage layout: package.json + the prebuilt binary, no JS",
+        "just verify passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Add release workflow and version tagging",
+      "description": "As a release engineer, I want a tag push to trigger the cross-build matrix and publish all platform packages plus the meta package to npm in one shot.",
+      "acceptanceCriteria": [
+        "New .github/workflows/release.yml triggered by v* tag push",
+        "Matrix invokes US-021 build script, packages each platform binary, npm publish each subpackage and the meta package",
+        "Version is read from Cargo.toml; ts/package.json version stays in lockstep",
+        "Dry-run mode (workflow_dispatch with input) goes through every step except publish",
+        "Dry-run succeeds end-to-end on a clean checkout"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Embed SKILL.md and wire --skill flag",
+      "description": "As an MCP client, I want `talon --skill` to print an embedded SKILL.md so agents can self-load Talon usage instructions.",
+      "acceptanceCriteria": [
+        "Author docs/SKILL.md (port the agent prompt from the TS reference)",
+        "include_str!(\"../../docs/SKILL.md\") embeds it into the binary",
+        "--skill prints the contents and exits 0",
+        "Test: assert_cmd verifies non-empty output + exit 0",
+        "just verify passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Polish human CLI output",
+      "description": "As a CLI user, I want terminal-width-aware wrapping, colored headings, compact result cards, and a spinner during search so the human output is pleasant.",
+      "acceptanceCriteria": [
+        "Add terminal_size dep (full semver) if not present",
+        "Search results render as compact cards: path, score, snippet — wrapped to terminal width",
+        "Headings use existing anstyle/anstream styling",
+        "Spinner from existing spinner module wired for search command",
+        "Snapshot tests via insta (one snapshot per command's human output)",
+        "just verify passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Add ranking regression test suite",
+      "description": "As a maintainer, I want golden expected ranks for canonical queries so silent ranking drift is caught in CI.",
+      "acceptanceCriteria": [
+        "Port tests/services/talon/ranking-regression.test.ts to crates/talon-core/tests/ranking_regression.rs",
+        "Golden expected top-K paths for ~10 fixture queries",
+        "Score drift tolerated within 1e-3; rank order changes fail the test",
+        "Any TS-vs-Rust intentional divergence documented in a comment with reason",
+        "Suite green; just verify passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Add CLI contract test suite",
+      "description": "As a maintainer, I want assert_cmd-driven contract tests so the CLI's exit codes, help text, and JSON envelope shape are pinned and cannot regress silently.",
+      "acceptanceCriteria": [
+        "New crates/talon-cli/tests/cli.rs using assert_cmd + predicates",
+        "Covers: help text shape, exit code per error class, JSON envelope shape (action, ok, data/error fields) for every command",
+        "Ports relevant assertions from tests/services/talon/cli.test.ts and contract.test.ts",
+        "Suite green; just verify passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Final verification: release build, parity, manual smokes",
+      "description": "As a release engineer, I want every shippable surface verified: release build, parity against TS for canonical queries, manual smoke of every command — before tagging v0.1.0.",
+      "acceptanceCriteria": [
+        "just verify green",
+        "cargo build --release succeeds; stripped binary < 30 MB",
+        "talon --version, talon --help, talon --skill all work",
+        "talon init creates ~/.config/talon/config.toml from template",
+        "talon sync indexes a real vault end-to-end",
+        "talon embed populates vec_chunks against a live TEI sidecar (manual smoke; document command in NOTES.md)",
+        "talon search '<query>' returns real ranked results (manual smoke)",
+        "talon related <path>, talon meta --tag-counts, talon lint orphans all work on real data",
+        "talon watch reacts to fs events (manual smoke)",
+        "talon --mcp survives tools/list + tools/call from an MCP inspector or hand-crafted JSON-RPC (manual smoke)",
+        "Parity: 5+ canonical search queries return matching top-10 paths against TS reference (top-K order must match; score drift allowed)",
+        "v0.1.0 tag pushed; US-022 release workflow publishes successfully (dry-run first if uncertain)"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

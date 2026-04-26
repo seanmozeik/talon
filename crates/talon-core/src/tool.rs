@@ -1,14 +1,22 @@
 //! MCP and CLI tool input/output contracts.
 
-use crate::constants::{DEFAULT_LIMIT, DEFAULT_SNIPPET_LENGTH, RELATED_DEFAULT_DEPTH};
-use crate::error::{TalonError, TalonResult};
+use crate::constants::{DEFAULT_LIMIT, RELATED_DEFAULT_DEPTH};
+use crate::error::{ErrorCode, TalonError, TalonResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+
+// ── Positive count ──────────────────────────────────────────────────────────
 
 /// A positive count accepted at the tool boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(try_from = "u16", into = "u16")]
 pub struct PositiveCount(u16);
+
+impl Default for PositiveCount {
+    fn default() -> Self {
+        Self(DEFAULT_LIMIT)
+    }
+}
 
 impl PositiveCount {
     /// Builds a positive count.
@@ -46,6 +54,8 @@ impl From<PositiveCount> for u16 {
         value.0
     }
 }
+
+// ── Path types ──────────────────────────────────────────────────────────────
 
 /// Vault-relative path returned by Talon.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -104,6 +114,8 @@ impl ContainerPath {
         &self.0
     }
 }
+
+// ── Enums ───────────────────────────────────────────────────────────────────
 
 /// Search mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +185,58 @@ pub enum FrontmatterValue {
     Boolean(bool),
 }
 
+/// Frontmatter value type for storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum FrontmatterValueType {
+    String,
+    Number,
+    Bool,
+    Date,
+    List,
+}
+
+/// `--where` filter operator.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum WhereOperator {
+    Equals,
+    NotEquals,
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
+    Contains,
+    Exists,
+}
+
+/// A single `--where` filter clause.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WhereClause {
+    /// Frontmatter key to filter on.
+    pub key: String,
+    /// Comparison operator.
+    pub op: WhereOperator,
+    /// Value to compare against (omitted for `exists`).
+    pub value: Option<String>,
+}
+
+/// Lint check type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LintCheck {
+    /// Files with no incoming wikilinks.
+    Orphans,
+    /// Links whose targets don't resolve to indexed files.
+    BrokenLinks,
+    /// Frontmatter `sources:` pointing to non-existent paths.
+    DanglingRefs,
+    /// Files with no incoming AND no outgoing wikilinks.
+    Unreferenced,
+}
+
+// ── Input types ─────────────────────────────────────────────────────────────
+
 /// Tool input envelope.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
@@ -183,41 +247,68 @@ pub enum TalonInput {
     Read(ReadInput),
     /// Sync/index request.
     Sync(SyncInput),
+    /// Embed pass request.
+    Embed(EmbedInput),
     /// Status request.
-    Status,
+    Status(StatusInput),
+    /// Related-note request.
+    Related(RelatedInput),
+    /// Frontmatter query request.
+    Meta(MetaInput),
+    /// Change feed request.
+    Changes(ChangesInput),
+    /// Lint check request.
+    Lint(LintInput),
 }
 
 /// Search request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct SearchInput {
     /// Primary query.
     pub query: Option<String>,
     /// Batch queries.
+    #[serde(default)]
     pub queries: Vec<String>,
     /// Search mode.
+    #[serde(default)]
     pub mode: SearchMode,
     /// Lexical-only search when true.
+    #[serde(default)]
     pub fast: bool,
     /// Result limit.
+    #[serde(default)]
     pub limit: PositiveCount,
-    /// Snippet length.
-    pub snippet_length: PositiveCount,
     /// Optional path scope.
+    #[serde(default)]
     pub path: Option<String>,
     /// Optional tag scope.
+    #[serde(default)]
     pub tag: Vec<String>,
-    /// Optional path/text scope.
-    pub scope: Vec<String>,
     /// Optional frontmatter filter.
+    #[serde(default)]
     pub frontmatter: Option<FrontmatterFilter>,
     /// Include related notes.
+    #[serde(default)]
     pub related: bool,
     /// Related traversal depth.
+    #[serde(default = "default_depth")]
     pub depth: u8,
     /// Related traversal direction.
+    #[serde(default)]
     pub direction: Direction,
+    /// Scope names to include (additive).
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// Scope names to search exclusively (mutually exclusive with `scope`).
+    #[serde(default)]
+    pub scope_only: Vec<String>,
+    /// Frontmatter `--where` filters (AND-composed).
+    #[serde(default)]
+    pub where_: Vec<WhereClause>,
+    /// Filter results indexed since this timestamp.
+    #[serde(default)]
+    pub since: Option<String>,
 }
 
 impl Default for SearchInput {
@@ -228,14 +319,16 @@ impl Default for SearchInput {
             mode: SearchMode::Hybrid,
             fast: false,
             limit: PositiveCount(DEFAULT_LIMIT),
-            snippet_length: PositiveCount(DEFAULT_SNIPPET_LENGTH),
             path: None,
             tag: Vec::new(),
-            scope: Vec::new(),
             frontmatter: None,
             related: false,
             depth: RELATED_DEFAULT_DEPTH,
             direction: Direction::Both,
+            scope: Vec::new(),
+            scope_only: Vec::new(),
+            where_: Vec::new(),
+            since: None,
         }
     }
 }
@@ -268,38 +361,154 @@ impl SearchInput {
 /// Read request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct ReadInput {
-    /// Single path.
+    /// Single path to read.
     pub path: Option<String>,
-    /// Multiple paths.
-    pub paths: Vec<String>,
     /// Include raw content.
+    #[serde(default)]
     pub raw: bool,
     /// First line to include.
+    #[serde(default)]
     pub from_line: Option<PositiveCount>,
     /// Maximum lines to include.
+    #[serde(default)]
     pub max_lines: Option<PositiveCount>,
-    /// Include line numbers.
-    pub line_numbers: bool,
 }
 
 /// Sync request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct SyncInput {
-    /// Single path.
-    pub path: Option<String>,
-    /// Multiple paths.
+    /// Specific paths to sync (empty = full pass).
+    #[serde(default)]
     pub paths: Vec<String>,
-    /// Skip embeddings.
+    /// Skip embeddings (lexical-only pass).
+    #[serde(default)]
     pub fast: bool,
     /// Reset vector state before syncing.
+    #[serde(default)]
     pub force: bool,
+    /// Return immediately if sync is already running.
+    #[serde(default)]
+    pub no_wait: bool,
 }
 
-/// Tool response envelope.
+/// Status request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct StatusInput {
+    /// Emit JSON output.
+    #[serde(default)]
+    pub json: bool,
+}
+
+/// Related-note request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedInput {
+    /// Path to find related notes for.
+    pub path: String,
+    /// Graph traversal depth.
+    #[serde(default = "default_depth")]
+    pub depth: u8,
+    /// Traversal direction.
+    #[serde(default)]
+    pub direction: Direction,
+    /// Scope names to include.
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// Scope names to search exclusively.
+    #[serde(default)]
+    pub scope_only: Vec<String>,
+}
+
+/// Frontmatter query request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaInput {
+    /// Frontmatter `--where` filters (AND-composed).
+    #[serde(default)]
+    pub where_: Vec<WhereClause>,
+    /// Filter results indexed since this timestamp.
+    #[serde(default)]
+    pub since: Option<String>,
+    /// Scope names to include.
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// Scope names to search exclusively.
+    #[serde(default)]
+    pub scope_only: Vec<String>,
+    /// Frontmatter fields to select (comma-separated).
+    #[serde(default)]
+    pub select: Vec<String>,
+    /// Emit tag counts.
+    #[serde(default)]
+    pub tag_counts: bool,
+    /// Reverse-source index: return files listed in a path's `sources:` frontmatter.
+    #[serde(default)]
+    pub sources: Option<String>,
+    /// Result limit.
+    #[serde(default)]
+    pub limit: PositiveCount,
+}
+
+impl Default for MetaInput {
+    fn default() -> Self {
+        Self {
+            where_: Vec::new(),
+            since: None,
+            scope: Vec::new(),
+            scope_only: Vec::new(),
+            select: Vec::new(),
+            tag_counts: false,
+            sources: None,
+            limit: PositiveCount(DEFAULT_LIMIT),
+        }
+    }
+}
+
+/// Change feed request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesInput {
+    /// Return changes since this timestamp.
+    pub since: String,
+    /// Scope names to include.
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// Scope names to search exclusively.
+    #[serde(default)]
+    pub scope_only: Vec<String>,
+    /// Result limit.
+    #[serde(default)]
+    pub limit: PositiveCount,
+}
+
+/// Lint check request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LintInput {
+    /// Which lint check to run.
+    pub check: LintCheck,
+    /// Scope names to include.
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// Scope names to search exclusively.
+    #[serde(default)]
+    pub scope_only: Vec<String>,
+}
+
+const fn default_depth() -> u8 {
+    RELATED_DEFAULT_DEPTH
+}
+
+// ── Response types ──────────────────────────────────────────────────────────
+
+/// Unified output envelope for all Talon responses.
+///
+/// Every JSON response uses this shape:
+/// - Success: `{ action, version, ok: true, data: ..., meta: ... }`
+/// - Error: `{ action, version, ok: false, error: { code, message, detail } }`
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "action", rename_all = "kebab-case")]
 pub enum TalonResponse {
@@ -309,14 +518,54 @@ pub enum TalonResponse {
     Read(ReadResponse),
     /// Sync response.
     Sync(SyncResponse),
+    /// Embed response.
+    Embed(EmbedResponse),
     /// Status response.
     Status(StatusResponse),
+    /// Related-note response.
+    Related(RelatedResponse),
+    /// Frontmatter query response.
+    Meta(MetaResponse),
+    /// Change feed response.
+    Changes(ChangesResponse),
+    /// Lint check response.
+    Lint(LintResponse),
 }
 
-/// Search response scaffold.
+/// Error envelope used when `ok: false`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ErrorEnvelope {
+    /// Error code from the fixed enum.
+    pub code: ErrorCode,
+    /// Human-readable error message.
+    pub message: String,
+    /// Optional structured context.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<serde_json::Value>,
+}
+
+/// Metadata included in every successful response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ResponseMeta {
+    /// Duration in milliseconds.
+    pub duration_ms: u64,
+    /// Number of results returned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub result_count: Option<u32>,
+    /// Warnings produced during the call.
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    /// Resolved active scope set, where applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope_set: Option<Vec<String>>,
+    /// Resolved absolute timestamp, if `--since` was given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub since: Option<String>,
+}
+
+/// Search response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct SearchResponse {
     /// Effective query.
     pub query: Option<String>,
@@ -353,10 +602,9 @@ impl SearchResponse {
     }
 }
 
-/// Search result scaffold.
+/// Search result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct SearchResult {
     /// Vault-relative path.
     pub vault_path: VaultPath,
@@ -366,25 +614,39 @@ pub struct SearchResult {
     pub title: String,
     /// Result snippet.
     pub snippet: String,
-    /// Result score.
+    /// Result score (after scope multiplier).
     pub score: f32,
+    /// Pre-multiplier score (before scope boost).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_score: Option<f32>,
     /// Match provenance.
     pub match_kind: MatchKind,
+    /// Resolved scope name, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
 }
 
-/// Read response scaffold.
+/// Read response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct ReadResponse {
     /// Read results.
     pub results: Vec<ReadResult>,
 }
 
-/// Read result scaffold.
+impl ReadResponse {
+    /// Builds a stub read response for CLI scaffolding.
+    #[must_use]
+    pub const fn stub() -> Self {
+        Self {
+            results: Vec::new(),
+        }
+    }
+}
+
+/// Read result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct ReadResult {
     /// Whether the note was found.
     pub found: bool,
@@ -393,23 +655,28 @@ pub struct ReadResult {
     /// Container path.
     pub path: ContainerPath,
     /// Optional note title.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
     /// Optional note content.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
     /// Outgoing links.
+    #[serde(default)]
     pub links: Vec<String>,
     /// Backlinks.
+    #[serde(default)]
     pub backlinks: Vec<String>,
     /// Tags.
+    #[serde(default)]
     pub tags: Vec<String>,
     /// Aliases.
+    #[serde(default)]
     pub aliases: Vec<String>,
 }
 
-/// Sync response scaffold.
+/// Sync response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct SyncResponse {
     /// Whether the sync completed.
     pub completed: bool,
@@ -433,6 +700,49 @@ pub struct SyncResponse {
     pub duration_ms: u64,
 }
 
+/// Embed pass request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbedInput {
+    /// Restrict to these vault-relative paths (empty = whole vault).
+    #[serde(default)]
+    pub paths: Vec<String>,
+    /// Re-embed every chunk regardless of `embedding_status`.
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// Embed pass response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EmbedResponse {
+    /// Whether the pass ran to completion.
+    pub completed: bool,
+    /// Whether `force` was set.
+    pub force: bool,
+    /// Number of paths in scope (0 = full pass).
+    pub path_count: u32,
+    /// Notes encountered.
+    pub processed: u32,
+    /// Notes embedded successfully.
+    pub succeeded: u32,
+    /// Notes that failed (HTTP, dim mismatch, ...).
+    pub failed: u32,
+    /// True if any vector dimension differed mid-pass; semantic search is
+    /// disabled until the next consistent pass succeeds.
+    pub dimension_mismatch: bool,
+    /// Operator-facing remediation hint (present when the pass detected a
+    /// recoverable problem; e.g. dim mismatch tells the user to re-run
+    /// with `--force`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remediation: Option<String>,
+    /// Up to 20 redacted detail strings.
+    #[serde(default)]
+    pub diagnostics: Vec<String>,
+    /// Duration in milliseconds.
+    pub duration_ms: u64,
+}
+
 /// Sync status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -443,18 +753,20 @@ pub enum SyncStatus {
     Partial,
     /// Sync failed.
     Failed,
+    /// Sync busy (lock held by another process).
+    Busy,
 }
 
 /// Status response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct StatusResponse {
     /// Readiness state.
     pub state: StatusState,
     /// Whether Talon is enabled.
     pub enabled: bool,
     /// Optional reason for non-ready states.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
     /// Container mount path.
     pub container_mount: ContainerPath,
@@ -462,6 +774,9 @@ pub struct StatusResponse {
     pub index_version: String,
     /// Index statistics.
     pub index: IndexStats,
+    /// Scope report.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scopes: Option<ScopeReport>,
 }
 
 impl StatusResponse {
@@ -480,10 +795,10 @@ impl StatusResponse {
             index: IndexStats {
                 active_notes: 0,
                 chunk_count: 0,
-                pending_embeddings: 0,
                 failed_embeddings: 0,
                 vector_dimensions: None,
             },
+            scopes: None,
         })
     }
 }
@@ -503,16 +818,135 @@ pub enum StatusState {
 /// Index statistics.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[non_exhaustive]
 pub struct IndexStats {
     /// Active notes.
     pub active_notes: u32,
     /// Indexed chunks.
     pub chunk_count: u32,
-    /// Pending embeddings.
-    pub pending_embeddings: u32,
     /// Failed embeddings.
     pub failed_embeddings: u32,
     /// Vector dimensions, if known.
     pub vector_dimensions: Option<u16>,
+}
+
+/// Scope report from status.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopeReport {
+    /// Total number of configured scopes.
+    pub total_scopes: u32,
+    /// Default scope names.
+    pub default_scopes: Vec<String>,
+    /// Files not matching any scope.
+    pub unscoped_count: u32,
+}
+
+/// Related-note response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedResponse {
+    /// Source path.
+    pub path: VaultPath,
+    /// Direction traversed.
+    pub direction: Direction,
+    /// Related notes.
+    pub results: Vec<RelatedResult>,
+}
+
+/// A single related-note result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedResult {
+    /// Vault-relative path.
+    pub vault_path: VaultPath,
+    /// Display title.
+    pub title: String,
+    /// Link text from source.
+    pub link_text: String,
+    /// Direction: outgoing or backlink.
+    pub relation: RelationKind,
+}
+
+/// Relation kind (outgoing vs backlink).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RelationKind {
+    Outgoing,
+    Backlink,
+}
+
+/// Frontmatter query response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaResponse {
+    /// Frontmatter entries.
+    pub entries: Vec<MetaEntry>,
+    /// Tag counts, if requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tag_counts: Option<BTreeMap<String, u32>>,
+}
+
+/// A single frontmatter entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MetaEntry {
+    /// Vault-relative path.
+    pub path: VaultPath,
+    /// Frontmatter key-value pairs.
+    pub frontmatter: BTreeMap<String, serde_json::Value>,
+}
+
+/// Change feed response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangesResponse {
+    /// Files newly indexed since the timestamp.
+    pub added: Vec<ChangeEntry>,
+    /// Files re-indexed since the timestamp.
+    pub modified: Vec<ChangeEntry>,
+    /// Files deleted (from tombstones).
+    pub deleted: Vec<TombstoneEntry>,
+}
+
+/// A change entry (added or modified).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangeEntry {
+    /// Vault-relative path.
+    pub path: VaultPath,
+    /// When this file was last indexed (millis since epoch).
+    pub indexed_at: u64,
+}
+
+/// A tombstone entry (deleted file).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TombstoneEntry {
+    /// Vault-relative path.
+    pub path: VaultPath,
+    /// When the file was detected as deleted (millis since epoch).
+    pub deleted_at: u64,
+}
+
+/// Lint check response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LintResponse {
+    /// The check that was run.
+    pub check: LintCheck,
+    /// Lint findings.
+    pub findings: Vec<LintFinding>,
+}
+
+/// A single lint finding.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LintFinding {
+    /// Vault-relative path of the file.
+    pub path: VaultPath,
+    /// Description of the issue.
+    pub message: String,
+    /// Line number, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<u32>,
 }

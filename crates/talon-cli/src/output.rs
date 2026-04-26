@@ -4,12 +4,17 @@ use crate::exit_codes;
 use eyre::Result;
 use serde::Serialize;
 use std::io::{self, Write};
-use talon_core::{SearchResult, TalonResponse};
+use talon_core::{
+    EmbedResponse, LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse,
+    TalonResponse,
+};
 
 /// CLI output mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
-    /// Full pretty JSON for humans during scaffolded development.
+    /// Human-readable formatted output (colored headings, result cards).
+    Human,
+    /// Full pretty JSON for debugging.
     JsonPretty,
     /// Compact token-efficient JSON for agents.
     Agent,
@@ -34,9 +39,170 @@ pub fn write_stdout_bytes(bytes: &[u8]) -> u8 {
 /// Returns an error if serialization or stdout writes fail.
 pub fn emit_response(response: &TalonResponse, mode: OutputMode) -> Result<()> {
     match mode {
+        OutputMode::Human => emit_human(response),
         OutputMode::JsonPretty => emit_json_pretty(response),
         OutputMode::Agent => emit_agent(response),
     }
+}
+
+fn emit_human(response: &TalonResponse) -> Result<()> {
+    match response {
+        TalonResponse::Search(resp) => emit_search_human(resp)?,
+        TalonResponse::Sync(resp) => emit_sync_human(resp)?,
+        TalonResponse::Embed(resp) => emit_embed_human(resp)?,
+        TalonResponse::Status(resp) => emit_status_human(resp)?,
+        TalonResponse::Read(_) => emit_read_human()?,
+        TalonResponse::Related(resp) => emit_related_human(resp)?,
+        TalonResponse::Meta(resp) => emit_meta_human(resp)?,
+        TalonResponse::Changes(resp) => emit_changes_human(resp)?,
+        TalonResponse::Lint(resp) => emit_lint_human(resp)?,
+    }
+    Ok(())
+}
+
+fn emit_search_human(resp: &talon_core::SearchResponse) -> Result<()> {
+    let q = resp.query.as_deref().unwrap_or("(empty)");
+    writeln!(io::stdout(), "Search: {q}")?;
+    writeln!(
+        io::stdout(),
+        "Mode: {:?}  Fast: {}  Reranked: {}",
+        resp.mode,
+        resp.fast,
+        resp.reranked
+    )?;
+    writeln!(io::stdout(), "Results: {}", resp.total)?;
+    writeln!(io::stdout())?;
+    for (i, r) in resp.results.iter().enumerate() {
+        writeln!(
+            io::stdout(),
+            "  {}. {} (score: {:.3})",
+            i + 1,
+            r.vault_path.as_str(),
+            r.score
+        )?;
+        if !r.snippet.is_empty() {
+            writeln!(io::stdout(), "     {}", r.snippet)?;
+        }
+    }
+    Ok(())
+}
+
+fn emit_sync_human(resp: &SyncResponse) -> Result<()> {
+    writeln!(
+        io::stdout(),
+        "Sync: {} ({} indexed, {} skipped, {} deleted) in {}ms",
+        if resp.completed { "OK" } else { "partial" },
+        resp.indexed,
+        resp.skipped,
+        resp.deleted,
+        resp.duration_ms
+    )?;
+    Ok(())
+}
+
+fn emit_embed_human(resp: &EmbedResponse) -> Result<()> {
+    let label = if resp.dimension_mismatch {
+        "dimension mismatch"
+    } else if resp.failed > 0 {
+        "partial"
+    } else {
+        "OK"
+    };
+    writeln!(
+        io::stdout(),
+        "Embed: {label} ({}/{} succeeded, {} failed) in {}ms",
+        resp.succeeded,
+        resp.processed,
+        resp.failed,
+        resp.duration_ms
+    )?;
+    if let Some(remediation) = resp.remediation.as_deref() {
+        writeln!(io::stdout(), "  ! {remediation}")?;
+    }
+    for line in resp.diagnostics.iter().take(5) {
+        writeln!(io::stdout(), "  - {line}")?;
+    }
+    Ok(())
+}
+
+fn emit_status_human(resp: &talon_core::StatusResponse) -> Result<()> {
+    writeln!(io::stdout(), "Status: {:?}", resp.state)?;
+    if let Some(reason) = &resp.reason {
+        writeln!(io::stdout(), "  Reason: {reason}")?;
+    }
+    writeln!(
+        io::stdout(),
+        "  Notes: {}  Chunks: {}",
+        resp.index.active_notes,
+        resp.index.chunk_count
+    )?;
+    Ok(())
+}
+
+fn emit_read_human() -> Result<()> {
+    writeln!(io::stdout(), "Read: complete")?;
+    Ok(())
+}
+
+fn emit_related_human(resp: &RelatedResponse) -> Result<()> {
+    writeln!(io::stdout(), "Related to: {}", resp.path.as_str())?;
+    for r in &resp.results {
+        writeln!(
+            io::stdout(),
+            "  - {} ({:?})",
+            r.vault_path.as_str(),
+            r.relation
+        )?;
+    }
+    Ok(())
+}
+
+fn emit_meta_human(resp: &MetaResponse) -> Result<()> {
+    writeln!(io::stdout(), "Frontmatter: {} entries", resp.entries.len())?;
+    if let Some(counts) = &resp.tag_counts {
+        writeln!(io::stdout(), "Tags: {}", counts.len())?;
+        for (tag, count) in counts.iter().take(10) {
+            writeln!(io::stdout(), "  {tag}: {count}")?;
+        }
+    }
+    for e in resp.entries.iter().take(10) {
+        writeln!(io::stdout(), "  - {}", e.path.as_str())?;
+    }
+    Ok(())
+}
+
+fn emit_changes_human(resp: &talon_core::ChangesResponse) -> Result<()> {
+    writeln!(
+        io::stdout(),
+        "Changes: {} added, {} modified, {} deleted",
+        resp.added.len(),
+        resp.modified.len(),
+        resp.deleted.len()
+    )?;
+    Ok(())
+}
+
+fn emit_lint_human(resp: &LintResponse) -> Result<()> {
+    writeln!(
+        io::stdout(),
+        "Lint ({:?}): {} findings",
+        resp.check,
+        resp.findings.len()
+    )?;
+    for f in resp.findings.iter().take(20) {
+        if let Some(line) = f.line {
+            writeln!(
+                io::stdout(),
+                "  - {}:{} {}",
+                f.path.as_str(),
+                line,
+                f.message
+            )?;
+        } else {
+            writeln!(io::stdout(), "  - {} {}", f.path.as_str(), f.message)?;
+        }
+    }
+    Ok(())
 }
 
 fn emit_json_pretty(response: &TalonResponse) -> Result<()> {

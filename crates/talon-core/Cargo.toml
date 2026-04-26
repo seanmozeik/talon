@@ -10,9 +10,26 @@ documentation.workspace = true
 readme.workspace = true
 
 [dependencies]
+fs-err.workspace = true
+glob.workspace = true
+regex.workspace = true
+reqwest.workspace = true
+rusqlite.workspace = true
+rustix.workspace = true
+sqlite-vec.workspace = true
 serde.workspace = true
+serde_json.workspace = true
+serde_yaml_ng.workspace = true
+sha2.workspace = true
 thiserror.workspace = true
 time.workspace = true
+tracing.workspace = true
+unicode-normalization.workspace = true
+walkdir.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true }
+wiremock = { workspace = true }
 
 [lints]
 workspace = true

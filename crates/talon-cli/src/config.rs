@@ -1,19 +1,31 @@
 //! Config loading and initialization for the CLI process boundary.
 
-use eyre::{Context, Result, bail};
+use eyre::{Result, WrapErr as _, bail};
+use fs_err as fs;
 use std::path::{Path, PathBuf};
-use talon_core::TalonConfig;
+use talon_core::{InferenceConfig, InferenceModels, Scope, ScopePriority, TalonConfig};
 
 /// Default config filename.
 pub const CONFIG_FILE_NAME: &str = "config.toml";
 
-const CONFIG_TEMPLATE: &str = r#"# Talon configuration.
+/// Default config directory.
+pub const CONFIG_DIR_NAME: &str = "talon";
+
+/// Default config path: `~/.config/talon/config.toml`.
+#[must_use]
+pub fn default_config_path() -> PathBuf {
+    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config"));
+    path.push(CONFIG_DIR_NAME);
+    path.push(CONFIG_FILE_NAME);
+    path
+}
+
+/// Config template written by `talon init`.
+pub const CONFIG_TEMPLATE: &str = r#"# Talon configuration.
+# Location: ~/.config/talon/config.toml
 
 vault_path = "/Users/you/path/to/obsidian"
 db_path = "~/.local/share/talon/index.sqlite"
-index_on_start = true
-watch = true
-embedding_schedule = ["03:00", "15:00"]
 include_patterns = ["**/*.md"]
 ignore_patterns = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
 
@@ -30,104 +42,178 @@ reranker = "rerank"
 provider = "openai-compatible"
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
+
+# ── Scopes ─────────────────────────────────────────────────────────────────
+# Named vault partitions with priority-based ranking.
+# See docs/CONFIG.md for full reference.
+# Uncomment and edit the Karpathy preset below.
+#
+# [scopes.wiki]
+# glob     = ["wiki/**", "concepts/**"]
+# priority = "boosted"
+# default  = true
+#
+# ... additional scopes ...
 "#;
 
-/// Loads a JSON or TOML config file.
+/// Loads a config file from the given path.
 ///
 /// # Errors
 ///
 /// Returns an error if the file cannot be read or parsed.
 pub fn load_config_file(path: &Path) -> Result<TalonConfig> {
-    let raw = fs_err::read_to_string(path)
-        .wrap_err_with(|| format!("failed to read config file {}", path.display()))?;
+    let content = fs::read_to_string(path)
+        .wrap_err_with(|| format!("failed to read config file: {}", path.display()))?;
 
-    let extension = path.extension().and_then(std::ffi::OsStr::to_str);
-    match extension {
-        Some("json") => serde_json::from_str(&raw)
-            .wrap_err_with(|| format!("failed to parse JSON config {}", path.display())),
-        _ => toml::from_str(&raw)
-            .wrap_err_with(|| format!("failed to parse TOML config {}", path.display())),
+    let config: TalonConfig = toml::from_str(&content)
+        .wrap_err_with(|| format!("failed to parse config file: {}", path.display()))?;
+
+    Ok(config)
+}
+
+/// Loads config from the default path or an explicit path.
+///
+/// # Errors
+///
+/// Returns an error if the config file cannot be found or parsed.
+pub fn load_config(explicit_path: Option<&Path>) -> Result<TalonConfig> {
+    let path = explicit_path
+        .map(std::path::Path::to_path_buf)
+        .or_else(|| std::env::var("TALON_CONFIG_FILE").ok().map(PathBuf::from))
+        .unwrap_or_else(default_config_path);
+
+    if !path.exists() {
+        bail!(
+            "config not found at {}, run `talon init` first",
+            path.display()
+        );
     }
+
+    load_config_file(&path)
 }
 
-/// Returns Talon's default config path.
+/// Initializes the config file at the default path.
+///
+/// Creates the directory if it doesn't exist. Does not overwrite an existing file.
 ///
 /// # Errors
 ///
-/// Returns an error when `$HOME` is not available.
-pub fn default_config_path() -> Result<PathBuf> {
-    let Some(home) = std::env::var_os("HOME") else {
-        bail!("HOME is not set; pass --config <path> explicitly");
-    };
-    Ok(PathBuf::from(home)
-        .join(".config")
-        .join("talon")
-        .join(CONFIG_FILE_NAME))
-}
-
-/// Creates the default config directory and template file if missing.
-///
-/// # Errors
-///
-/// Returns an error when the config path cannot be resolved or written.
-pub fn init_default_config() -> Result<InitConfigResult> {
-    let path = default_config_path()?;
-    let Some(parent) = path.parent() else {
-        bail!("invalid config path {}", path.display());
-    };
-
-    fs_err::create_dir_all(parent)
-        .wrap_err_with(|| format!("failed to create config directory {}", parent.display()))?;
-    set_private_dir_permissions(parent)?;
+/// Returns an error if the config directory cannot be created or the file cannot be written.
+pub fn init_config() -> Result<bool> {
+    let path = default_config_path();
 
     if path.exists() {
-        return Ok(InitConfigResult {
-            path,
-            created: false,
-        });
+        return Ok(false);
     }
 
-    fs_err::write(&path, CONFIG_TEMPLATE)
-        .wrap_err_with(|| format!("failed to write config file {}", path.display()))?;
-    set_private_file_permissions(&path)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .wrap_err_with(|| format!("failed to create config directory: {}", parent.display()))?;
+    }
 
-    Ok(InitConfigResult {
-        path,
-        created: true,
-    })
+    fs::write(&path, CONFIG_TEMPLATE)
+        .wrap_err_with(|| format!("failed to write config file: {}", path.display()))?;
+
+    Ok(true)
 }
 
-/// Result of `talon init`.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct InitConfigResult {
-    /// Config path.
-    pub path: PathBuf,
-    /// Whether the file was created by this invocation.
-    pub created: bool,
+/// Builds a default config from a vault path.
+#[must_use]
+pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
+    let db_path = vault_path.parent().map_or_else(
+        || PathBuf::from("~/.local/share/talon/index.sqlite"),
+        |p| p.join(".talon").join("index.sqlite"),
+    );
+
+    TalonConfig {
+        vault_path,
+        db_path,
+        include_patterns: vec!["**/*.md".to_string()],
+        ignore_patterns: vec![
+            ".obsidian/**".to_string(),
+            ".git/**".to_string(),
+            "templates/**".to_string(),
+            "*.canvas".to_string(),
+        ],
+        inference: InferenceConfig {
+            base_url: "http://localhost:8080".to_string(),
+            models: InferenceModels {
+                query_embedding: "embed".to_string(),
+                document_embedding: "embed".to_string(),
+                chunk_embedding: "embed_chunked".to_string(),
+                reranker: "rerank".to_string(),
+            },
+        },
+        expansion: talon_core::ExpansionConfig {
+            provider: "openai-compatible".to_string(),
+            base_url: "http://localhost:1234/v1".to_string(),
+            model: "gemma-smol".to_string(),
+        },
+        scopes: default_karpathy_scopes(),
+    }
 }
 
-#[cfg(unix)]
-fn set_private_dir_permissions(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let permissions = std::fs::Permissions::from_mode(0o700);
-    fs_err::set_permissions(path, permissions)
-        .wrap_err_with(|| format!("failed to chmod 0700 {}", path.display()))
-}
+/// Builds the Karpathy-shaped preset scopes.
+fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
+    use talon_core::ScopeGlob;
+    let mut scopes = std::collections::BTreeMap::new();
 
-#[cfg(not(unix))]
-fn set_private_dir_permissions(_path: &Path) -> Result<()> {
-    Ok(())
-}
+    scopes.insert(
+        "wiki".to_string(),
+        Scope {
+            glob: ScopeGlob::Multiple(vec!["wiki/**".to_string(), "concepts/**".to_string()]),
+            priority: ScopePriority::Boosted,
+            default: true,
+        },
+    );
+    scopes.insert(
+        "projects".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("projects/**".to_string()),
+            priority: ScopePriority::Elevated,
+            default: true,
+        },
+    );
+    scopes.insert(
+        "artifacts".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("artifacts/**".to_string()),
+            priority: ScopePriority::Normal,
+            default: true,
+        },
+    );
+    scopes.insert(
+        "raw".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("raw/**".to_string()),
+            priority: ScopePriority::Muted,
+            default: true,
+        },
+    );
+    scopes.insert(
+        "daily".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("daily/**".to_string()),
+            priority: ScopePriority::Muted,
+            default: true,
+        },
+    );
+    scopes.insert(
+        "archive".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("archive/**".to_string()),
+            priority: ScopePriority::Buried,
+            default: true,
+        },
+    );
+    scopes.insert(
+        "private".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("private/**".to_string()),
+            priority: ScopePriority::Normal,
+            default: false,
+        },
+    );
 
-#[cfg(unix)]
-fn set_private_file_permissions(path: &Path) -> Result<()> {
-    use std::os::unix::fs::PermissionsExt;
-    let permissions = std::fs::Permissions::from_mode(0o600);
-    fs_err::set_permissions(path, permissions)
-        .wrap_err_with(|| format!("failed to chmod 0600 {}", path.display()))
-}
-
-#[cfg(not(unix))]
-fn set_private_file_permissions(_path: &Path) -> Result<()> {
-    Ok(())
+    scopes
 }
