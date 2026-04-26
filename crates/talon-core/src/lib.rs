@@ -58,7 +58,8 @@ pub use migrations::{
     TRIGGER_MIGRATIONS, run_migrations,
 };
 pub use query::{
-    find_related, query_changes, query_lint, query_meta, query_status, run_read, run_search,
+    find_related, query_changes, query_lint, query_meta, query_status, run_read, run_recall,
+    run_search,
 };
 pub use store::open_database;
 pub use sync::{
@@ -70,11 +71,12 @@ pub use text::{
     parse_wikilink, split_lines, strip_heading_text, strip_outer_quotes,
 };
 pub use tool::{
-    AnchorKind, ChangesInput, ChangesResponse, ContainerPath, Direction, ErrorEnvelope,
-    FrontmatterFilter, IndexStats, LintCheck, LintFinding, LintInput, LintResponse, MatchAnchor,
-    MatchKind, MetaEntry, MetaInput, MetaResponse, PositiveCount, ReadInput, ReadResponse,
-    ReadResult, RelatedInput, RelatedResponse, RelatedResult, RelationKind, ResponseMeta,
-    ScopeReport, SearchInput, SearchMode, SearchResponse, SearchResult, StatusInput,
+    AnchorKind, ChangesInput, ChangesResponse, ContainerPath, Direction, EditedNote, ErrorEnvelope,
+    FrontmatterFact, FrontmatterFilter, FuzzyAnchor, IndexStats, LinkedNote, LintCheck,
+    LintFinding, LintInput, LintResponse, MatchAnchor, MatchKind, MetaEntry, MetaInput,
+    MetaResponse, NoteExcerpt, PositiveCount, ReadInput, ReadResponse, ReadResult, RecallFormat,
+    RecallInput, RecallResponse, RelatedInput, RelatedResponse, RelatedResult, RelationKind,
+    ResponseMeta, ScopeReport, SearchInput, SearchMode, SearchResponse, SearchResult, StatusInput,
     StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus, TalonEnvelope, TalonInput,
-    TalonResponseData, TalonResponseTrait, VaultPath, WhereClause, WhereOperator,
+    TalonResponseData, TalonResponseTrait, VaultPath, VaultRecall, WhereClause, WhereOperator,
 };

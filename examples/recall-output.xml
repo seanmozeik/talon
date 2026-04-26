@@ -1,0 +1,28 @@
+<vault_recall source="talon" vault="/home/user/vault" evidence_score="0.8734">
+  <active_notes>
+    <note path="Search/Orchard Notes.md" title="Orchard Notes" score="0.9120">
+      ## Summer Harvest
+      The orchard produced a record apple crop this season. Key varieties: Fuji, Honeycrisp, Gala.
+    </note>
+    <note path="Atlas/Agriculture.md" title="Agriculture" score="0.7230">
+      Overview of farming techniques including orcharding, viticulture, and market gardening.
+    </note>
+  </active_notes>
+  <linked_context>
+    <note path="Atlas/Seasons.md" title="Seasons" relation="Outgoing" hops="1"/>
+    <note path="Atlas/Markets.md" title="Farmers Markets" relation="Outgoing" hops="1"/>
+    <note path="Atlas/Index.md" title="Index" relation="Backlink" hops="1"/>
+  </linked_context>
+  <frontmatter>
+    <fact path="Search/Orchard Notes.md" key="tags">["apple","harvest","orchard"]</fact>
+    <fact path="Search/Orchard Notes.md" key="status">"active"</fact>
+    <fact path="Atlas/Agriculture.md" key="category">"reference"</fact>
+  </frontmatter>
+  <recent_edits>
+    <note path="Search/Orchard Notes.md" title="Orchard Notes" days_ago="0.5" score="0.9800"/>
+    <note path="Atlas/Agriculture.md" title="Agriculture" days_ago="2.1" score="0.5400"/>
+  </recent_edits>
+  <fuzzy_anchors>
+    <anchor path="Search/Apple Varieties.md" title="Apple Varieties" score="0.4200"/>
+  </fuzzy_anchors>
+</vault_recall>

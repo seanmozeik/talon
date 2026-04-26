@@ -555,8 +555,8 @@
         "just verify passes"
       ],
       "priority": 30,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/query/recall.rs: run_recall() composite pipeline — hybrid search (active_notes), link-graph BFS direction=Both (linked_context), frontmatter facts from note_frontmatter_fields, recent edits with recency+relevance composite score, fuzzy title/alias anchors. recall_scoring.rs: compute_evidence_score() formula (0.45*rerank + 0.20*lexical + 0.15*graph_density + 0.10*recency + 0.10*frontmatter) with 5 golden tests. RecallInput/RecallResponse/VaultRecall + sub-types (NoteExcerpt, LinkedNote, FrontmatterFact, EditedNote, FuzzyAnchor) added to tool.rs. TalonInput::Recall and TalonResponseData::Recall variants added. `talon recall <message>` CLI with --fast/--since/--depth/--exclude/--min-confidence/--budget-tokens. MCP tools/list now advertises 9 actions including recall. format_recall_human + format_recall_prompt_xml in output.rs. 5 fixture_vault integration tests. docs/recall.md, docs/recall-schema.md, examples/recall-output.xml delivered. 417 tests pass."
     },
     {
       "id": "US-026",

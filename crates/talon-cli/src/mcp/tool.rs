@@ -6,11 +6,11 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use talon_core::{
     ChangesInput, ErrorCode, ErrorEnvelope, ExpansionClient, IndexerConfig, LintInput, MetaInput,
-    ReadInput, RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse, SyncInput,
-    SyncResponse, SyncStatus, TalonConfig, TalonEnvelope, TalonError, TalonInput,
+    ReadInput, RecallInput, RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse,
+    SyncInput, SyncResponse, SyncStatus, TalonConfig, TalonEnvelope, TalonError, TalonInput,
     TalonResponseData, embed::EmbedPassOptions, find_related, inference::InferenceClient,
-    open_database, query_changes, query_lint, query_meta, query_status, run_read, run_search,
-    vec_ext::register_sqlite_vec,
+    open_database, query_changes, query_lint, query_meta, query_status, run_read, run_recall,
+    run_search, vec_ext::register_sqlite_vec,
 };
 
 use crate::config;
@@ -152,6 +152,7 @@ fn action_from_arguments(arguments: &Value) -> Option<&'static str> {
         "meta" => Some("meta"),
         "changes" => Some("changes"),
         "lint" => Some("lint"),
+        "recall" => Some("recall"),
         _ => Some("talon"),
     }
 }
@@ -166,6 +167,7 @@ const fn action_name(input: &TalonInput) -> &'static str {
         TalonInput::Meta(_) => "meta",
         TalonInput::Changes(_) => "changes",
         TalonInput::Lint(_) => "lint",
+        TalonInput::Recall(_) => "recall",
     }
 }
 
@@ -179,6 +181,7 @@ fn dispatch_input(input: TalonInput) -> Result<TalonEnvelope> {
         TalonInput::Meta(input) => dispatch_meta(&input),
         TalonInput::Changes(input) => dispatch_changes(&input),
         TalonInput::Lint(input) => dispatch_lint(&input),
+        TalonInput::Recall(input) => dispatch_recall(&input),
     }
 }
 
@@ -481,6 +484,46 @@ fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
     ))
 }
 
+fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
+    let started = Instant::now();
+    let config = config::load_config(None)?;
+    register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
+    let conn = open_database(&config.db_path)
+        .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
+    let fast = input.fast;
+    let (inference, expansion) = if fast {
+        (None, None)
+    } else {
+        (
+            InferenceClient::new(&config.inference.base_url).ok(),
+            ExpansionClient::new(config.expansion.base_url.clone(), &config.expansion.model).ok(),
+        )
+    };
+    let response = run_recall(
+        &conn,
+        inference.as_ref(),
+        expansion.as_ref(),
+        input,
+        Some(&config),
+    );
+    let result_count = response
+        .vault_recall
+        .as_ref()
+        .map(|r| u32::try_from(r.active_notes.len()).unwrap_or(u32::MAX));
+    let meta = ResponseMeta {
+        duration_ms: elapsed_ms(started),
+        result_count,
+        warnings: Vec::new(),
+        scope_set: Some(config.default_scope_names().into_iter().cloned().collect()),
+        since: input.since.clone(),
+    };
+    Ok(TalonEnvelope::ok(
+        "recall",
+        TalonResponseData::Recall(response),
+        meta,
+    ))
+}
+
 fn content_result(envelope: &TalonEnvelope) -> Value {
     json!({
         "content": [
@@ -506,7 +549,7 @@ fn input_schema() -> Value {
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["search", "read", "sync", "status", "related", "meta", "changes", "lint"]
+                "enum": ["search", "read", "sync", "status", "related", "meta", "changes", "lint", "recall"]
             },
             "query": { "type": ["string", "null"] },
             "queries": { "type": "array", "items": { "type": "string" } },
@@ -530,7 +573,14 @@ fn input_schema() -> Value {
             "select": { "type": "array", "items": { "type": "string" } },
             "tagCounts": { "type": "boolean" },
             "sources": { "type": ["string", "null"] },
-            "check": { "type": "string", "enum": ["orphans", "broken-links", "dangling-refs", "unreferenced"] }
+            "check": { "type": "string", "enum": ["orphans", "broken-links", "dangling-refs", "unreferenced"] },
+            "message": { "type": "string", "description": "User message for recall context" },
+            "priorMessages": { "type": "array", "items": { "type": "string" }, "description": "Prior conversation turns fed to expansion" },
+            "budgetTokens": { "type": "integer", "minimum": 1, "description": "Token budget for the recall payload (default 2000)" },
+            "exclude": { "type": "array", "items": { "type": "string" }, "description": "Vault paths to exclude from all retrieval" },
+            "format": { "type": "string", "enum": ["json", "prompt-xml"], "description": "Output format" },
+            "minConfidence": { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Minimum evidence score threshold" },
+            "recencyHalfLifeDays": { "type": "integer", "minimum": 1, "description": "Half-life days for recency scoring" }
         },
         "$defs": {
             "whereClause": {
@@ -567,10 +617,11 @@ mod tests {
         else {
             panic!("action enum missing");
         };
-        assert_eq!(actions.len(), 8);
+        assert_eq!(actions.len(), 9);
         assert!(!actions.contains(&Value::String("embed".to_owned())));
         assert!(actions.contains(&Value::String("search".to_owned())));
         assert!(actions.contains(&Value::String("lint".to_owned())));
+        assert!(actions.contains(&Value::String("recall".to_owned())));
     }
 
     #[test]

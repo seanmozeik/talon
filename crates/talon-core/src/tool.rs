@@ -263,6 +263,8 @@ pub enum TalonInput {
     Changes(ChangesInput),
     /// Lint check request.
     Lint(LintInput),
+    /// Vault-native context recall request.
+    Recall(RecallInput),
 }
 
 /// Search request.
@@ -507,6 +509,89 @@ pub struct LintInput {
     pub scope_only: Vec<String>,
 }
 
+/// Output format for the recall command.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecallFormat {
+    /// Structured JSON (default).
+    #[default]
+    Json,
+    /// Prompt-XML block ready for agent context injection.
+    PromptXml,
+}
+
+/// Context recall request.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallInput {
+    /// The current user message to recall context for.
+    pub message: String,
+    /// Prior conversation turns (last N user/assistant messages) fed to expansion.
+    #[serde(default)]
+    pub prior_messages: Vec<String>,
+    /// Token budget for the response payload (default 2000).
+    #[serde(default = "default_recall_budget")]
+    pub budget_tokens: u32,
+    /// Vault paths to exclude from all retrieval sections.
+    #[serde(default)]
+    pub exclude: Vec<String>,
+    /// Scope names to include (additive).
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// Scope names to search exclusively.
+    #[serde(default)]
+    pub scope_only: Vec<String>,
+    /// Filter results indexed since this timestamp (default: 7 days ago).
+    #[serde(default)]
+    pub since: Option<String>,
+    /// Output format.
+    #[serde(default)]
+    pub format: RecallFormat,
+    /// Link graph traversal depth for `linked_context` (1-3, default 1).
+    #[serde(default = "default_recall_depth")]
+    pub depth: u8,
+    /// Recency half-life in days for `recent_edits` scoring (default 7).
+    #[serde(default = "default_half_life")]
+    pub recency_half_life_days: u8,
+    /// Minimum `evidence_score` threshold; below this, return `skipped=true` (default 0.0).
+    #[serde(default)]
+    pub min_confidence: f64,
+    /// Skip expansion and rerank (fast lexical-only path).
+    #[serde(default)]
+    pub fast: bool,
+}
+
+const fn default_recall_budget() -> u32 {
+    2000
+}
+
+const fn default_recall_depth() -> u8 {
+    1
+}
+
+const fn default_half_life() -> u8 {
+    7
+}
+
+impl Default for RecallInput {
+    fn default() -> Self {
+        Self {
+            message: String::new(),
+            prior_messages: Vec::new(),
+            budget_tokens: default_recall_budget(),
+            exclude: Vec::new(),
+            scope: Vec::new(),
+            scope_only: Vec::new(),
+            since: None,
+            format: RecallFormat::Json,
+            depth: default_recall_depth(),
+            recency_half_life_days: default_half_life(),
+            min_confidence: 0.0,
+            fast: false,
+        }
+    }
+}
+
 const fn default_depth() -> u8 {
     RELATED_DEFAULT_DEPTH
 }
@@ -537,6 +622,8 @@ pub enum TalonResponseData {
     Changes(ChangesResponse),
     /// Lint check response.
     Lint(LintResponse),
+    /// Vault-native context recall response.
+    Recall(RecallResponse),
 }
 
 /// Unified output envelope for all Talon responses.
@@ -640,6 +727,7 @@ impl TalonResponseTrait for TalonResponseData {
             Self::Meta(_) => "meta",
             Self::Changes(_) => "changes",
             Self::Lint(_) => "lint",
+            Self::Recall(_) => "recall",
         }
     }
 }
@@ -1122,6 +1210,116 @@ pub struct LintFinding {
     pub line: Option<u32>,
 }
 
+// ── Recall response types ────────────────────────────────────────────────────
+
+/// A note excerpt returned in `recall.active_notes`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoteExcerpt {
+    /// Vault-relative path.
+    pub vault_path: VaultPath,
+    /// Display title.
+    pub title: String,
+    /// Result snippet (with heading breadcrumb when available).
+    pub snippet: String,
+    /// Hybrid retrieval score (post-rerank, post-scope-multiplier).
+    pub score: f64,
+    /// 1-based rank within `active_notes`.
+    pub rank: u32,
+}
+
+/// A note reachable via the link graph returned in `recall.linked_context`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LinkedNote {
+    /// Vault-relative path.
+    pub vault_path: VaultPath,
+    /// Display title.
+    pub title: String,
+    /// Raw link text that created this edge.
+    pub link_text: String,
+    /// Direction relative to the source note(s).
+    pub relation: RelationKind,
+    /// Number of graph hops from the top `active_note`.
+    pub hops: u8,
+}
+
+/// A single frontmatter key-value pair returned in `recall.frontmatter`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FrontmatterFact {
+    /// Vault-relative path of the containing note.
+    pub vault_path: VaultPath,
+    /// Frontmatter key.
+    pub key: String,
+    /// Frontmatter value.
+    pub value: serde_json::Value,
+}
+
+/// A recently-edited note returned in `recall.recent_edits`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EditedNote {
+    /// Vault-relative path.
+    pub vault_path: VaultPath,
+    /// Display title.
+    pub title: String,
+    /// When the note was last indexed (millis since epoch).
+    pub indexed_at: u64,
+    /// Days since last modification (fractional).
+    pub days_since_modified: f64,
+    /// Composite recency+relevance score used for ordering.
+    pub score: f64,
+}
+
+/// A fuzzy title/alias match returned in `recall.fuzzy_anchors`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FuzzyAnchor {
+    /// Vault-relative path.
+    pub vault_path: VaultPath,
+    /// Display title.
+    pub title: String,
+    /// Matching snippet or alias text.
+    pub snippet: String,
+    /// Title/alias match score.
+    pub match_score: f64,
+}
+
+/// The five recall sections bundled together.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VaultRecall {
+    /// Top search results (hybrid pipeline output).
+    pub active_notes: Vec<NoteExcerpt>,
+    /// Notes reachable via link graph from `active_notes`.
+    pub linked_context: Vec<LinkedNote>,
+    /// Frontmatter key-value facts from `active_notes`.
+    pub frontmatter: Vec<FrontmatterFact>,
+    /// Recently edited notes within the since window.
+    pub recent_edits: Vec<EditedNote>,
+    /// Fuzzy title/alias matches below the main score threshold.
+    pub fuzzy_anchors: Vec<FuzzyAnchor>,
+}
+
+/// Vault-native context recall response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallResponse {
+    /// The five recall sections, or null when skipped by confidence gate.
+    pub vault_recall: Option<VaultRecall>,
+    /// Calibrated evidence quality score in [0, 1].
+    pub evidence_score: f64,
+    /// Estimated tokens used in the payload (≤ `budget_tokens` within ±2%).
+    pub tokens_used: u32,
+    /// Paths suppressed by `--exclude` before budget allocation.
+    pub excluded: Vec<String>,
+    /// Paths retrieved but dropped during greedy budget trimming.
+    pub excluded_by_budget: Vec<String>,
+    /// True when `evidence_score` < `min_confidence` or zero results returned.
+    pub skipped: bool,
+}
+
 // ── Round-trip tests ────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1287,6 +1485,53 @@ mod envelope_tests {
         let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
         assert_eq!(round_trip.action, "lint");
         assert!(round_trip.ok);
+    }
+
+    #[test]
+    fn recall_success_round_trip() {
+        let data = TalonResponseData::Recall(RecallResponse {
+            vault_recall: Some(VaultRecall {
+                active_notes: Vec::new(),
+                linked_context: Vec::new(),
+                frontmatter: Vec::new(),
+                recent_edits: Vec::new(),
+                fuzzy_anchors: Vec::new(),
+            }),
+            evidence_score: 0.75,
+            tokens_used: 120,
+            excluded: Vec::new(),
+            excluded_by_budget: Vec::new(),
+            skipped: false,
+        });
+        let envelope = TalonEnvelope::ok("recall", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "recall");
+        assert!(round_trip.ok);
+        assert!(round_trip.data.is_some());
+    }
+
+    #[test]
+    fn recall_skipped_round_trip() {
+        let data = TalonResponseData::Recall(RecallResponse {
+            vault_recall: None,
+            evidence_score: 0.05,
+            tokens_used: 0,
+            excluded: Vec::new(),
+            excluded_by_budget: Vec::new(),
+            skipped: true,
+        });
+        let envelope = TalonEnvelope::ok("recall", data, success_meta());
+        let json = serde_json::to_string(&envelope).unwrap();
+        let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
+        assert_eq!(round_trip.action, "recall");
+        assert!(round_trip.ok);
+        if let Some(TalonResponseData::Recall(r)) = &round_trip.data {
+            assert!(r.skipped);
+            assert!(r.vault_recall.is_none());
+        } else {
+            panic!("expected Recall variant");
+        }
     }
 
     // ── Error envelope ────────────────────────────────────────────────

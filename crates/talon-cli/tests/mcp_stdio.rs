@@ -57,8 +57,8 @@ fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
             .collect();
     assert_eq!(
         actions.len(),
-        8,
-        "tools/list should advertise exactly 8 actions"
+        9,
+        "tools/list should advertise exactly 9 actions"
     );
     // Decision 10: embed is not a public MCP action; it runs inside talon sync.
     assert!(
@@ -66,7 +66,7 @@ fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
         "tools/list must not advertise an embed action (Decision 10)"
     );
     for expected in &[
-        "search", "read", "sync", "status", "related", "meta", "changes", "lint",
+        "search", "read", "sync", "status", "related", "meta", "changes", "lint", "recall",
     ] {
         assert!(
             actions.contains(expected),
