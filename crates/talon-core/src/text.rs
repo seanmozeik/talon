@@ -186,8 +186,8 @@ pub fn strip_heading_text(line: &str) -> String {
 /// use talon_core::text::estimate_tokens;
 ///
 /// assert_eq!(estimate_tokens(""), 1);
-/// assert_eq!(estimate_tokens("hello"), 1);
-/// assert_eq!(estimate_tokens("hello world"), 3);
+/// assert_eq!(estimate_tokens("hello"), 2);  // ceil(5/4) = 2
+/// assert_eq!(estimate_tokens("hello world"), 3);  // ceil(11/4) = 3
 /// ```
 #[must_use]
 pub fn estimate_tokens(text: &str) -> usize {

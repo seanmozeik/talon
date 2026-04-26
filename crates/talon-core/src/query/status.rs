@@ -133,6 +133,7 @@ mod tests {
                 model: "mistral".to_string(),
             },
             scopes: ScopesConfig::new(),
+            chunker: crate::config::ChunkerConfig::default(),
         }
     }
 
@@ -232,6 +233,7 @@ mod tests {
                 model: "mistral".to_string(),
             },
             scopes,
+            chunker: crate::config::ChunkerConfig::default(),
         };
 
         let resp = query_status(&conn, &config);

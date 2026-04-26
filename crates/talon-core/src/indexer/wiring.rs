@@ -10,7 +10,8 @@ use rusqlite::{Connection, params};
 
 use crate::TalonError;
 use crate::chunker::chunk_markdown;
-use crate::frontmatter::parse_frontmatter;
+use crate::config::ChunkerConfig;
+use crate::frontmatter::{extract_wikilinks, parse_frontmatter};
 use crate::links::{NoteReference, find_unresolved_links, resolve_wiki_links};
 
 use super::prelude::{extract_title, merge_current_path_for_linking};
@@ -56,12 +57,50 @@ pub fn index_one_note(
     size_bytes: i64,
     existing_for_linking: &[NoteReference],
 ) -> Result<IndexNoteOutcome, TalonError> {
+    index_one_note_with_config(
+        conn,
+        vault_path,
+        content,
+        mtime_ms,
+        size_bytes,
+        existing_for_linking,
+        &ChunkerConfig::default(),
+    )
+}
+
+/// Like [`index_one_note`] but accepts an explicit [`ChunkerConfig`].
+///
+/// # Errors
+///
+/// Returns [`TalonError::Sqlite`] for any database failure and
+/// [`TalonError::Internal`] for serialization failures encountered by the
+/// nested upsert helpers.
+pub fn index_one_note_with_config(
+    conn: &mut Connection,
+    vault_path: &str,
+    content: &str,
+    mtime_ms: i64,
+    size_bytes: i64,
+    existing_for_linking: &[NoteReference],
+    chunker_config: &ChunkerConfig,
+) -> Result<IndexNoteOutcome, TalonError> {
     let parsed = parse_frontmatter(content);
     let title = extract_title(vault_path, &parsed.frontmatter);
-    let chunks = chunk_markdown(content, &title, vault_path);
+
+    // Chunker receives body only — frontmatter must not appear in chunk text.
+    let chunks = chunk_markdown(&parsed.body, &title, vault_path, chunker_config);
+
     let updated_cache =
         merge_current_path_for_linking(existing_for_linking, vault_path, &title, &parsed.aliases);
-    let mut resolved = resolve_wiki_links(vault_path, &parsed.links, &updated_cache);
+
+    // Wikilink resolution sees both frontmatter and body so that links in
+    // frontmatter fields (e.g. `related: "[[Other Note]]"`) are indexed.
+    let full_for_links = if parsed.frontmatter_raw.is_empty() {
+        parsed.links.clone()
+    } else {
+        extract_wikilinks(&format!("{}\n{}", parsed.frontmatter_raw, parsed.body))
+    };
+    let mut resolved = resolve_wiki_links(vault_path, &full_for_links, &updated_cache);
     // Record unresolved links too: the broken-link lint and `links.to_path`
     // schema both require a non-empty target. Using `raw_target` as the
     // placeholder keeps the row addressable while clearly signaling that no

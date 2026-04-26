@@ -13,12 +13,13 @@ use fs_err as fs;
 use rusqlite::Connection;
 
 use crate::TalonError;
+use crate::config::ChunkerConfig;
 
 use super::prelude::{
     load_notes_for_linking, matches_ignore_patterns, matches_include_patterns, scan_vault_markdown,
 };
 use super::upsert::perform_note_deletion;
-use super::wiring::index_one_note;
+use super::wiring::index_one_note_with_config;
 
 /// Configuration for a vault scan.
 #[derive(Debug, Clone, Default)]
@@ -76,6 +77,20 @@ pub fn run_full_scan(
     vault_root: &Path,
     config: &IndexerConfig,
 ) -> Result<IndexerStats, TalonError> {
+    run_full_scan_with_chunker(conn, vault_root, config, &ChunkerConfig::default())
+}
+
+/// Like [`run_full_scan`] but with an explicit [`ChunkerConfig`].
+///
+/// # Errors
+///
+/// Returns the first error from any per-note indexing call.
+pub fn run_full_scan_with_chunker(
+    conn: &mut Connection,
+    vault_root: &Path,
+    config: &IndexerConfig,
+    chunker_config: &ChunkerConfig,
+) -> Result<IndexerStats, TalonError> {
     let mut stats = IndexerStats::default();
     let mut linking_cache = load_notes_for_linking(conn).map_err(|source| TalonError::Sqlite {
         context: "load notes for link cache",
@@ -124,13 +139,14 @@ pub fn run_full_scan(
             }
         };
 
-        let outcome = index_one_note(
+        let outcome = index_one_note_with_config(
             conn,
             &rel_path,
             &content,
             mtime_ms,
             size_bytes,
             &linking_cache,
+            chunker_config,
         )?;
         linking_cache = outcome.updated_links_cache;
         stats.indexed = stats.indexed.saturating_add(1);

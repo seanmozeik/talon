@@ -22,9 +22,11 @@ pub use prelude::{
     matches_ignore_patterns, matches_include_patterns, merge_current_path_for_linking,
     scan_vault_markdown,
 };
-pub use scan::{IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan};
+pub use scan::{
+    IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan, run_full_scan_with_chunker,
+};
 pub use upsert::{
     ChunkUpsertRow, NoteUpsertResult, UpsertNoteParams, perform_note_deletion, upsert_aliases,
     upsert_chunks, upsert_frontmatter_fields, upsert_links, upsert_note, upsert_tags,
 };
-pub use wiring::{IndexNoteOutcome, index_one_note};
+pub use wiring::{IndexNoteOutcome, index_one_note, index_one_note_with_config};

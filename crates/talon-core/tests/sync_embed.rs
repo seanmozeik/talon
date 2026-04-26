@@ -38,7 +38,7 @@ fn seed_vault(vault: &std::path::Path) {
     .unwrap();
     fs_err::write(
         vault.join("note-b.md"),
-        "# Note B\n\nNote B content with different text.",
+        "# Note B\n\nNote B content with different text for embedding and search testing.",
     )
     .unwrap();
 }

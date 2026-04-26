@@ -291,8 +291,8 @@
         "just verify passes (the gate is `just verify`, which runs fmt + cargo check + clippy -D warnings + cargo test; never substitute `just check` which skips tests)"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented text-splitter/tokenx-rs markdown chunking with body-only indexing, Obsidian comment stripping, token-aware chunk settings under [indexer], frontmatter-aware link resolution, config validation, release-note documentation, and regression coverage for parser fidelity, callouts, math/code blocks, trivial chunk filtering, and frontmatter exclusion. just verify passes."
     },
     {
       "id": "US-014",

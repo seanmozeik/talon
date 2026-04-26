@@ -29,6 +29,11 @@ db_path = "~/.local/share/talon/index.sqlite"
 include_patterns = ["**/*.md"]
 ignore_patterns = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
 
+[indexer]
+chunk_tokens = 512
+chunk_overlap = 64
+chunk_min_tokens = 16
+
 [inference]
 base_url = "http://localhost:8080"
 
@@ -67,6 +72,9 @@ pub fn load_config_file(path: &Path) -> Result<TalonConfig> {
 
     let config: TalonConfig = toml::from_str(&content)
         .wrap_err_with(|| format!("failed to parse config file: {}", path.display()))?;
+    if let Err(message) = config.chunker.validate() {
+        bail!("{message}");
+    }
 
     Ok(config)
 }
@@ -150,6 +158,7 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
             model: "gemma-smol".to_string(),
         },
         scopes: default_karpathy_scopes(),
+        chunker: talon_core::ChunkerConfig::default(),
     }
 }
 
@@ -216,4 +225,75 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
     );
 
     scopes
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{CONFIG_TEMPLATE, load_config_file};
+    use std::path::PathBuf;
+
+    fn temp_config_path(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("talon-{label}-{}.toml", std::process::id()))
+    }
+
+    #[test]
+    fn config_template_parses_indexer_chunk_settings() {
+        let path = temp_config_path("template-config");
+        if let Err(err) = fs_err::write(&path, CONFIG_TEMPLATE) {
+            panic!("write test config failed: {err}");
+        }
+
+        let config = match load_config_file(&path) {
+            Ok(config) => config,
+            Err(err) => panic!("template config should parse: {err}"),
+        };
+
+        assert_eq!(config.chunker.chunk_tokens, 512);
+        assert_eq!(config.chunker.chunk_overlap, 64);
+        assert_eq!(config.chunker.chunk_min_tokens, 16);
+
+        let _ = fs_err::remove_file(path);
+    }
+
+    #[test]
+    fn load_config_file_rejects_invalid_chunk_overlap() {
+        let path = temp_config_path("invalid-chunk-overlap");
+        let config = r#"
+vault_path = "/tmp/vault"
+db_path = "/tmp/index.sqlite"
+
+[indexer]
+chunk_tokens = 64
+chunk_overlap = 64
+chunk_min_tokens = 16
+
+[inference]
+base_url = "http://localhost:8080"
+
+[inference.models]
+query_embedding = "embed"
+document_embedding = "embed"
+chunk_embedding = "embed_chunked"
+reranker = "rerank"
+
+[expansion]
+provider = "openai-compatible"
+base_url = "http://localhost:1234/v1"
+model = "gemma-smol"
+"#;
+        if let Err(err) = fs_err::write(&path, config) {
+            panic!("write test config failed: {err}");
+        }
+
+        let Err(err) = load_config_file(&path) else {
+            panic!("invalid chunk overlap should fail");
+        };
+        assert!(
+            err.to_string()
+                .contains("indexer.chunk_overlap must be less than indexer.chunk_tokens"),
+            "unexpected error: {err}"
+        );
+
+        let _ = fs_err::remove_file(path);
+    }
 }

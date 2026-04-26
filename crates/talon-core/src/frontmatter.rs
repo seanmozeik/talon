@@ -426,8 +426,13 @@ fn extract_inline_tags(content: &str) -> Vec<String> {
 }
 
 /// Extracts wikilinks from markdown content.
+///
+/// # Panics
+///
+/// Panics if the internal wikilink regex fails to compile (should never happen).
+#[must_use]
 #[allow(clippy::expect_used, clippy::cast_possible_truncation)]
-fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
+pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
     let mut links = Vec::new();
     let mut inside_fence = false;
 

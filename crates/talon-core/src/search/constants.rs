@@ -106,3 +106,12 @@ pub const RERANK_TOP_K: u32 = 40;
 
 /// Default LRU size for the in-process hybrid result cache.
 pub const GLOBAL_HYBRID_CACHE_SIZE: usize = 100;
+
+/// Default chunk size in tokens for the `MarkdownSplitter`.
+pub const EMBED_CHUNK_TOKENS_DEFAULT: usize = 512;
+
+/// Default overlap in tokens between adjacent chunks.
+pub const EMBED_CHUNK_OVERLAP_DEFAULT: usize = 64;
+
+/// Minimum token count below which a post-split chunk is discarded.
+pub const CHUNK_MIN_TOKENS_DEFAULT: usize = 16;

@@ -15,8 +15,11 @@ use time::OffsetDateTime;
 
 use crate::TalonError;
 use crate::change_tracking::TOMBSTONE_RETENTION_MS;
+use crate::config::ChunkerConfig;
 use crate::embed::{EmbedPassOptions, EmbedPassStats, run_embed_pass};
-use crate::indexer::{IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan};
+use crate::indexer::{
+    IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan_with_chunker,
+};
 use crate::inference::InferenceClient;
 
 pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process};
@@ -46,8 +49,34 @@ pub fn run_sync(
     embed_config: Option<EmbedPassOptions>,
     inference: Option<&InferenceClient>,
 ) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
+    run_sync_with_chunker(
+        conn,
+        vault_root,
+        lock_path,
+        config,
+        embed_config,
+        inference,
+        &ChunkerConfig::default(),
+    )
+}
+
+/// Like [`run_sync`] but with an explicit [`ChunkerConfig`].
+///
+/// # Errors
+///
+/// See [`run_sync`] for error variants.
+pub fn run_sync_with_chunker(
+    conn: &mut Connection,
+    vault_root: &Path,
+    lock_path: &Path,
+    config: &IndexerConfig,
+    embed_config: Option<EmbedPassOptions>,
+    inference: Option<&InferenceClient>,
+    chunker_config: &ChunkerConfig,
+) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
     let _lock = acquire_sync_lock(lock_path).map_err(SyncError::from_lock)?;
-    let mut stats = run_full_scan(conn, vault_root, config).map_err(SyncError::Indexer)?;
+    let mut stats = run_full_scan_with_chunker(conn, vault_root, config, chunker_config)
+        .map_err(SyncError::Indexer)?;
     let deleted = reconcile_deletions(conn, vault_root).map_err(SyncError::Indexer)?;
     stats.deleted = stats.deleted.saturating_add(deleted);
 

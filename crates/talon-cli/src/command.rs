@@ -12,7 +12,7 @@ use talon_core::{
     RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse, SyncInput, SyncResponse,
     SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions, find_related,
     inference::InferenceClient, open_database, query_changes, query_lint, query_meta, run_read,
-    run_search, run_sync, vec_ext::register_sqlite_vec,
+    run_search, vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -259,13 +259,14 @@ async fn emit_sync_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
                 (Some(opts), Some(client))
             };
 
-            let (stats, embed_stats) = run_sync(
+            let (stats, embed_stats) = talon_core::run_sync_with_chunker(
                 &mut conn,
                 &vault_path,
                 &lock_path,
                 &indexer_config,
                 embed_opts,
                 inference.as_ref(),
+                &config.chunker,
             )
             .wrap_err("sync failed")?;
 
