@@ -5,17 +5,12 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use rusqlite::params;
 use serde_json::json;
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
 use talon_core::{
-    embed::EmbedPassOptions,
-    inference::InferenceClient,
-    indexer::IndexerConfig,
-    open_database,
-    run_sync,
-    vec_ext::register_sqlite_vec,
+    embed::EmbedPassOptions, indexer::IndexerConfig, inference::InferenceClient, open_database,
+    run_sync, vec_ext::register_sqlite_vec,
 };
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -67,21 +62,17 @@ fn sync_with_embed_populates_vec_chunks() {
     runtime.block_on(
         Mock::given(method("POST"))
             .and(path("/embed"))
-            .respond_with(
-                ResponseTemplate::new(200).set_body_json(json!([[0.1, 0.2, 0.3, 0.4]])),
-            )
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([[0.1, 0.2, 0.3, 0.4]])))
             .mount(&server),
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(&server.uri()).unwrap();
+    let client = InferenceClient::new(server.uri()).unwrap();
     let opts = EmbedPassOptions::defaults();
     let config = IndexerConfig::index_all();
 
-    let (stats, embed_stats) = run_sync(
-        &mut conn, &vault, &lock, &config, Some(opts.clone()), Some(&client),
-    )
-    .unwrap();
+    let (stats, embed_stats) =
+        run_sync(&mut conn, &vault, &lock, &config, Some(opts), Some(&client)).unwrap();
 
     // Full scan indexes both notes
     assert_eq!(stats.indexed, 2);
@@ -95,7 +86,7 @@ fn sync_with_embed_populates_vec_chunks() {
             |r| r.get(0),
         )
         .unwrap();
-    eprintln!("pending chunks after sync: {}", pending);
+    eprintln!("pending chunks after sync: {pending}");
 
     // Check chunk statuses
     let statuses: String = conn
@@ -105,11 +96,14 @@ fn sync_with_embed_populates_vec_chunks() {
             |r| r.get(0),
         )
         .unwrap_or_default();
-    eprintln!("chunk statuses: {}", statuses);
+    eprintln!("chunk statuses: {statuses}");
 
     // Embed pass runs and succeeds
     let embed = embed_stats.expect("embed_stats should be Some when not --fast");
-    eprintln!("embed succeeded={}, failed={}, processed={}, diagnostics={:?}", embed.succeeded, embed.failed, embed.processed, embed.diagnostics);
+    eprintln!(
+        "embed succeeded={}, failed={}, processed={}, diagnostics={:?}",
+        embed.succeeded, embed.failed, embed.processed, embed.diagnostics
+    );
     assert_eq!(embed.succeeded, 2, "both notes should be embedded");
     assert_eq!(embed.failed, 0);
 
@@ -117,7 +111,7 @@ fn sync_with_embed_populates_vec_chunks() {
     let chunk_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM vec_chunks", [], |r| r.get(0))
         .unwrap();
-    eprintln!("vec_chunks count: {}", chunk_count);
+    eprintln!("vec_chunks count: {chunk_count}");
     assert!(chunk_count > 0, "vec_chunks should have embeddings");
 
     let active_notes: i64 = conn
@@ -143,10 +137,7 @@ fn sync_fast_skips_embed_pass() {
     let config = IndexerConfig::index_all();
 
     // No embed config, no inference client — simulates --fast
-    let (stats, embed_stats) = run_sync(
-        &mut conn, &vault, &lock, &config, None, None,
-    )
-    .unwrap();
+    let (stats, embed_stats) = run_sync(&mut conn, &vault, &lock, &config, None, None).unwrap();
 
     // Full scan indexes both notes
     assert_eq!(stats.indexed, 2);
@@ -165,7 +156,10 @@ fn sync_fast_skips_embed_pass() {
             |r| r.get(0),
         )
         .unwrap();
-    assert!(!vec_exists, "vec_chunks table should not exist in fast mode");
+    assert!(
+        !vec_exists,
+        "vec_chunks table should not exist in fast mode"
+    );
 
     drop(conn);
     cleanup(&vault);
@@ -193,14 +187,12 @@ fn sync_embed_http_error_marks_chunks_failed() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(&server.uri()).unwrap();
+    let client = InferenceClient::new(server.uri()).unwrap();
     let opts = EmbedPassOptions::defaults();
     let config = IndexerConfig::index_all();
 
-    let (stats, embed_stats) = run_sync(
-        &mut conn, &vault, &lock, &config, Some(opts), Some(&client),
-    )
-    .unwrap();
+    let (stats, embed_stats) =
+        run_sync(&mut conn, &vault, &lock, &config, Some(opts), Some(&client)).unwrap();
 
     assert_eq!(stats.indexed, 2);
 

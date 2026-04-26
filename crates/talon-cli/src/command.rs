@@ -10,8 +10,8 @@ use std::time::Instant;
 use talon_core::{
     IndexerConfig, LintCheck, LintResponse, MetaInput, MetaResponse, ReadResponse, RelatedInput,
     RelatedResponse, SearchInput, SearchResponse, StatusResponse, SyncInput, SyncResponse,
-    SyncStatus, TalonResponse, embed::EmbedPassOptions, inference::InferenceClient,
-    open_database, run_sync, vec_ext::register_sqlite_vec,
+    SyncStatus, TalonResponse, embed::EmbedPassOptions, inference::InferenceClient, open_database,
+    run_sync, vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -150,18 +150,15 @@ async fn emit_sync_stub(args: &CliArgs, rest: &[String]) -> Result<()> {
             .wrap_err("sync failed")?;
 
             let (embedded, embed_failed, dimension_mismatch, embed_remediation, embed_diagnostics) =
-                embed_stats.map_or(
-                    (0, 0, false, None, Vec::new()),
-                    |s| {
-                        (
-                            s.succeeded,
-                            s.failed,
-                            s.dimension_mismatch,
-                            s.remediation,
-                            s.diagnostics,
-                        )
-                    },
-                );
+                embed_stats.map_or((0, 0, false, None, Vec::new()), |s| {
+                    (
+                        s.succeeded,
+                        s.failed,
+                        s.dimension_mismatch,
+                        s.remediation,
+                        s.diagnostics,
+                    )
+                });
 
             Ok(SyncResponse {
                 completed: true,

@@ -13,11 +13,11 @@ use std::path::Path;
 use rusqlite::Connection;
 use time::OffsetDateTime;
 
-use crate::embed::{EmbedPassOptions, EmbedPassStats, run_embed_pass};
-use crate::inference::InferenceClient;
 use crate::TalonError;
 use crate::change_tracking::TOMBSTONE_RETENTION_MS;
+use crate::embed::{EmbedPassOptions, EmbedPassStats, run_embed_pass};
 use crate::indexer::{IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan};
+use crate::inference::InferenceClient;
 
 pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process};
 
@@ -121,14 +121,30 @@ mod tests {
         let lock = vault.join(".talon").join("sync.lock");
         let mut conn = open_database(&db).unwrap();
 
-        let (first, embed) = run_sync(&mut conn, &vault, &lock, &IndexerConfig::index_all(), None, None).unwrap();
+        let (first, embed) = run_sync(
+            &mut conn,
+            &vault,
+            &lock,
+            &IndexerConfig::index_all(),
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(first.indexed, 2);
         assert_eq!(first.deleted, 0);
         assert!(embed.is_none());
 
         // Remove one note and re-sync — reconciler should soft-delete it.
         fs::remove_file(vault.join("b.md")).unwrap();
-        let (second, _) = run_sync(&mut conn, &vault, &lock, &IndexerConfig::index_all(), None, None).unwrap();
+        let (second, _) = run_sync(
+            &mut conn,
+            &vault,
+            &lock,
+            &IndexerConfig::index_all(),
+            None,
+            None,
+        )
+        .unwrap();
         assert_eq!(second.indexed, 0);
         assert_eq!(second.deleted, 1);
 

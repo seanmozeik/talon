@@ -4,8 +4,8 @@ use crate::exit_codes;
 use eyre::Result;
 use serde::Serialize;
 use std::io::{self, Write};
-use talon_core::{LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse,
-    TalonResponse,
+use talon_core::{
+    LintResponse, MetaResponse, RelatedResponse, SearchResult, SyncResponse, TalonResponse,
 };
 
 /// CLI output mode.

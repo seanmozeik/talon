@@ -61,8 +61,12 @@ pub fn run_hybrid_pipeline(
 ) -> Vec<RawSearchResult> {
     // Lexical-only probe to detect high-confidence matches before paying for
     // the embedding + expansion + rerank round-trips.
-    let bm25_probe =
-        search_bm25(conn, query, HYBRID_PROBE_LEXICAL_LIMIT, DEFAULT_SNIPPET_LENGTH);
+    let bm25_probe = search_bm25(
+        conn,
+        query,
+        HYBRID_PROBE_LEXICAL_LIMIT,
+        DEFAULT_SNIPPET_LENGTH,
+    );
     let title_probe = search_title_parts(conn, query, HYBRID_PROBE_TITLE_LIMIT);
 
     let has_supplied = !options.queries.is_empty();
@@ -90,13 +94,13 @@ pub fn run_hybrid_pipeline(
         if variants.is_empty() {
             vec![query.to_owned()]
         } else {
-            variants.clone()
+            variants
         }
     } else if variants.is_empty() {
         vec![query.to_owned()]
     } else {
         let mut v = vec![query.to_owned()];
-        v.extend(variants.clone());
+        v.extend(variants);
         v
     };
 
@@ -105,7 +109,7 @@ pub fn run_hybrid_pipeline(
         .iter()
         .map(|q| {
             let embedding = inference
-                .embed(&[q.clone()])
+                .embed(std::slice::from_ref(q))
                 .ok()
                 .and_then(|mut vecs| vecs.pop());
             let single = run_hybrid_single(conn, q, embedding.as_deref(), options.limit);
@@ -227,9 +231,7 @@ mod tests {
         rt.block_on(
             Mock::given(method("POST"))
                 .and(path("/embed"))
-                .respond_with(
-                    ResponseTemplate::new(200).set_body_json(dummy_embed_response()),
-                )
+                .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
                 .mount(&server),
         );
 
@@ -261,8 +263,18 @@ mod tests {
         let conn = open_database(&db_path).unwrap();
 
         // Seed: a few background notes + one target.
-        insert_note(&conn, "unrelated-a.md", "Chemistry Notes", "periodic table elements");
-        insert_note(&conn, "unrelated-b.md", "History Notes", "ancient civilizations events");
+        insert_note(
+            &conn,
+            "unrelated-a.md",
+            "Chemistry Notes",
+            "periodic table elements",
+        );
+        insert_note(
+            &conn,
+            "unrelated-b.md",
+            "History Notes",
+            "ancient civilizations events",
+        );
         insert_note(
             &conn,
             "target.md",
@@ -282,7 +294,10 @@ mod tests {
         let results =
             run_hybrid_pipeline(&conn, &inference, Some(&expansion), "atomic notes", &opts);
 
-        assert!(!results.is_empty(), "pipeline must return at least one result");
+        assert!(
+            !results.is_empty(),
+            "pipeline must return at least one result"
+        );
         assert!(
             results.iter().any(|r| r.path == "target.md"),
             "target.md must appear in results"
@@ -303,19 +318,17 @@ mod tests {
         rt.block_on(
             Mock::given(method("POST"))
                 .and(path("/embed"))
-                .respond_with(
-                    ResponseTemplate::new(200).set_body_json(dummy_embed_response()),
-                )
+                .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
                 .mount(&server),
         );
 
         let db_path = unique_db_path();
         let conn = open_database(&db_path).unwrap();
 
-        // Insert 20 dummy notes to raise IDF for the unique query term, then
-        // the one target note with "crystallophosphene" only in its title.
+        // Insert 100 dummy notes to raise IDF for the unique query term,
+        // then the one target note with "crystallophosphene" in its title.
         // High IDF + title weight=10 → BM25 score >= 0.85 → strong signal.
-        for i in 0..20 {
+        for i in 0..100 {
             insert_note(
                 &conn,
                 &format!("dummy-{i}.md"),
@@ -349,26 +362,24 @@ mod tests {
 
         // The probe should detect a strong signal and skip expansion + rerank.
         let received = rt.block_on(server.received_requests()).unwrap_or_default();
-        let expansion_calls: Vec<_> = received
+        let expansion_count = received
             .iter()
             .filter(|r| r.url.path() == "/chat/completions")
-            .collect();
-        let rerank_calls: Vec<_> = received
+            .count();
+        let rerank_count = received
             .iter()
             .filter(|r| r.url.path() == "/rerank")
-            .collect();
+            .count();
 
         assert!(
-            expansion_calls.is_empty(),
+            expansion_count == 0,
             "expansion must not be called when probe is decisive; \
-             got {} calls to /chat/completions",
-            expansion_calls.len()
+             got {expansion_count} calls to /chat/completions"
         );
         assert!(
-            rerank_calls.is_empty(),
+            rerank_count == 0,
             "rerank must not be called when probe is decisive; \
-             got {} calls to /rerank",
-            rerank_calls.len()
+             got {rerank_count} calls to /rerank"
         );
 
         assert!(
@@ -390,15 +401,18 @@ mod tests {
         rt.block_on(
             Mock::given(method("POST"))
                 .and(path("/embed"))
-                .respond_with(
-                    ResponseTemplate::new(200).set_body_json(dummy_embed_response()),
-                )
+                .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
                 .mount(&server),
         );
 
         let db_path = unique_db_path();
         let conn = open_database(&db_path).unwrap();
-        insert_note(&conn, "note.md", "Fast Search Note", "fast lexical search content");
+        insert_note(
+            &conn,
+            "note.md",
+            "Fast Search Note",
+            "fast lexical search content",
+        );
 
         let inference = InferenceClient::new(server.uri()).unwrap();
         let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
@@ -412,21 +426,12 @@ mod tests {
         let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "fast", &opts);
 
         let received = rt.block_on(server.received_requests()).unwrap_or_default();
-        let expansion_calls: Vec<_> = received
-            .iter()
-            .filter(|r| r.url.path() == "/chat/completions")
-            .collect();
-        let rerank_calls: Vec<_> = received
-            .iter()
-            .filter(|r| r.url.path() == "/rerank")
-            .collect();
-
         assert!(
-            expansion_calls.is_empty(),
+            !received.iter().any(|r| r.url.path() == "/chat/completions"),
             "fast mode must not call expansion"
         );
         assert!(
-            rerank_calls.is_empty(),
+            !received.iter().any(|r| r.url.path() == "/rerank"),
             "fast mode must not call rerank"
         );
         assert!(!results.is_empty(), "fast mode must still return results");
@@ -445,9 +450,7 @@ mod tests {
         rt.block_on(
             Mock::given(method("POST"))
                 .and(path("/embed"))
-                .respond_with(
-                    ResponseTemplate::new(200).set_body_json(dummy_embed_response()),
-                )
+                .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
                 .mount(&server),
         );
         rt.block_on(
@@ -475,10 +478,12 @@ mod tests {
         };
 
         // expansion=None: pipeline must degrade gracefully (no LLM call).
-        let results =
-            run_hybrid_pipeline(&conn, &inference, None, "knowledge management", &opts);
+        let results = run_hybrid_pipeline(&conn, &inference, None, "knowledge management", &opts);
 
-        assert!(!results.is_empty(), "pipeline must return results without expansion client");
+        assert!(
+            !results.is_empty(),
+            "pipeline must return results without expansion client"
+        );
 
         drop(conn);
         cleanup(&db_path);
@@ -494,9 +499,7 @@ mod tests {
         rt.block_on(
             Mock::given(method("POST"))
                 .and(path("/embed"))
-                .respond_with(
-                    ResponseTemplate::new(200).set_body_json(dummy_embed_response()),
-                )
+                .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
                 .mount(&server),
         );
         rt.block_on(
@@ -535,16 +538,14 @@ mod tests {
             run_hybrid_pipeline(&conn, &inference, Some(&expansion), "memory systems", &opts);
 
         let received = rt.block_on(server.received_requests()).unwrap_or_default();
-        let expansion_calls: Vec<_> = received
-            .iter()
-            .filter(|r| r.url.path() == "/chat/completions")
-            .collect();
-
         assert!(
-            expansion_calls.is_empty(),
+            !received.iter().any(|r| r.url.path() == "/chat/completions"),
             "pre-supplied queries must bypass LLM expansion"
         );
-        assert!(!results.is_empty(), "must return results with pre-supplied queries");
+        assert!(
+            !results.is_empty(),
+            "must return results with pre-supplied queries"
+        );
 
         drop(conn);
         cleanup(&db_path);

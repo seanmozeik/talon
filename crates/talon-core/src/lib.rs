@@ -67,7 +67,7 @@ pub use tool::{
     ChangesResponse, ContainerPath, Direction, FrontmatterFilter, IndexStats, LintCheck,
     LintFinding, LintInput, LintResponse, MatchKind, MetaEntry, MetaInput, MetaResponse,
     PositiveCount, ReadInput, ReadResponse, ReadResult, RelatedInput, RelatedResponse,
-    RelatedResult, RelationKind, SearchInput, SearchMode, SearchResponse, SearchResult, StatusInput,
-    StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus, TalonInput, TalonResponse,
-    VaultPath, WhereClause, WhereOperator,
+    RelatedResult, RelationKind, SearchInput, SearchMode, SearchResponse, SearchResult,
+    StatusInput, StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus, TalonInput,
+    TalonResponse, VaultPath, WhereClause, WhereOperator,
 };

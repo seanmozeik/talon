@@ -100,8 +100,8 @@
         "just verify passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Module talon-core/src/search/hybrid_pipeline.rs already implemented with 5 wiremock tests. Fixed clippy violations blocking verification: redundant clones in variant query assembly, uninlined format args in sync_embed.rs tests, #[ignore] without reason in bm25 diagnostic test. 232 tests pass."
     },
     {
       "id": "US-005b",

@@ -673,6 +673,7 @@ pub struct ReadResult {
 /// Sync response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+#[allow(clippy::struct_excessive_bools)] // pre-existing: 4 bools from US-004b embed fields
 pub struct SyncResponse {
     /// Whether the sync completed.
     pub completed: bool,
