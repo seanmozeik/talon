@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use unicode_normalization::UnicodeNormalization;
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -100,10 +101,14 @@ pub fn normalize_keyword(value: &str) -> String {
         .to_string()
 }
 
-/// Normalizes a vault path: backslashes to forward slashes, NFD normalization.
+/// Normalizes a vault path: backslashes to forward slashes, NFD normalization, lowercase.
 #[must_use]
 pub fn normalize_vault_path(value: &str) -> String {
-    value.replace('\\', "/").to_lowercase()
+    value
+        .replace('\\', "/")
+        .nfd()
+        .collect::<String>()
+        .to_lowercase()
 }
 
 /// Parses YAML frontmatter from markdown content.

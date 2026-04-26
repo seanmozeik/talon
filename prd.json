@@ -501,8 +501,8 @@
         "just verify passes"
       ],
       "priority": 28,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "NFD path normalization: normalize_vault_path in text.rs and frontmatter.rs now applies .nfd().collect() via unicode-normalization; applied at index_one_note_with_config so all stored paths are NFD. Trigram FTS: added tests for accented-title match (Café/cafe) and Cyrillic substring search — both pass with tokenize='trigram'. Short-alias: confirmed alias_norm exact-match path finds 2-char aliases via search_by_alias_exact; new regression test. Vector unit-norm: persist_chunk_vector normalises embeddings to unit length (||v||=1) before storage; test reads back via vec_to_json and verifies norm within 1e-4. Per-note vector dedup: search_vector keeps only the best (lowest-distance) chunk per note by deduplicating on note_id; new unit test with 5 chunks from 1 note. Candidate pool: expanded to 5× candidate_limit before dedup, truncated after. sqlite-vec discovery: k= must be a literal in the MATCH query (bind parameters not recognised by xBestIndex); removed conflicting LIMIT clause. Cosine L2: already correct (1 - d/2); existing tests confirmed. WAL: already correct; existing test confirmed. RRF score ≤ 1.0: explicit test across three 20-item lists asserts all scores ≤ 1.0+ε. Rerank min-max: explicit test confirms hybrid01 = 0.9/0.9 = 1.0 after normalisation. Cache versioning: make_versioned_key and read_db_version added to search/cache.rs with 3 tests. prepare_cached: hot-path fixed SQL in bm25 (search_by_alias_exact), fuzzy_title (search_title_parts), upsert.rs, scan.rs, and prelude.rs switched to Connection::prepare_cached. just verify passes."
     },
     {
       "id": "US-024",

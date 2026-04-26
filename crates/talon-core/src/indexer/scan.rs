@@ -184,7 +184,7 @@ fn existing_is_up_to_date(
 pub fn reconcile_deletions(conn: &mut Connection, vault_root: &Path) -> Result<u32, TalonError> {
     let active_paths: Vec<(i64, String)> = {
         let mut stmt = conn
-            .prepare("SELECT id, vault_path FROM notes WHERE active = 1")
+            .prepare_cached("SELECT id, vault_path FROM notes WHERE active = 1")
             .map_err(|source| TalonError::Sqlite {
                 context: "prepare active-notes lookup",
                 source,
@@ -302,7 +302,7 @@ mod tests {
         let stats = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
         assert_eq!(stats.indexed, 1);
         let active_paths: Vec<String> = conn
-            .prepare("SELECT vault_path FROM notes WHERE active = 1 ORDER BY vault_path")
+            .prepare_cached("SELECT vault_path FROM notes WHERE active = 1 ORDER BY vault_path")
             .unwrap()
             .query_map([], |r| r.get::<_, String>(0))
             .unwrap()
@@ -331,7 +331,7 @@ mod tests {
         assert_eq!(deleted, 1);
 
         let active_paths: Vec<String> = conn
-            .prepare("SELECT vault_path FROM notes WHERE active = 1")
+            .prepare_cached("SELECT vault_path FROM notes WHERE active = 1")
             .unwrap()
             .query_map([], |r| r.get::<_, String>(0))
             .unwrap()

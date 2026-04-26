@@ -348,4 +348,62 @@ mod tests {
         // 0.75 * 1.0 + 0.25 * sigmoid(100) ≈ 1.0.
         assert!((out[0].score - 1.0).abs() < 1e-3);
     }
+
+    #[test]
+    fn rrf_hybrid_score_never_exceeds_one() {
+        // RRF normalization divides by Σweights/(k+1) so the theoretical
+        // maximum is 1.0.  Verify this holds with many lists and many results.
+        // Reference: obsidian-hybrid-search searcher.ts:748-759.
+        let l1: Vec<RawSearchResult> = (0..20).map(|i| r(&format!("{i}.md"), 0.0)).collect();
+        let l2: Vec<RawSearchResult> = (0..20).map(|i| r(&format!("{i}.md"), 0.0)).collect();
+        let l3: Vec<RawSearchResult> = (0..20).map(|i| r(&format!("{i}.md"), 0.0)).collect();
+        let lists: Vec<&[RawSearchResult]> = vec![&l1, &l2, &l3];
+        let out = fuse_hybrid_result_lists(&lists, 20);
+        for result in &out {
+            assert!(
+                result.score <= 1.0 + f64::EPSILON,
+                "RRF hybrid score must be ≤ 1.0, got {} for {}",
+                result.score,
+                result.path
+            );
+        }
+    }
+
+    #[test]
+    fn blend_rerank_min_max_normalizes_hybrid_scores() {
+        // When hybrid scores span [0.1, 0.9], the min-max step divides each by
+        // max (0.9) so hybrid01 for the top note becomes 1.0 instead of 0.9.
+        // Without normalization: 0.75 * 0.9 + 0.25 * 0.0 = 0.675.
+        // With normalization:    0.75 * 1.0 + 0.25 * 0.0 = 0.750.
+        // Reference: obsidian-hybrid-search searcher.ts:1299-1325.
+        let candidates = vec![
+            r_with_hybrid("high.md", 0.9_f64),
+            r_with_hybrid("low.md", 0.1_f64),
+        ];
+        // Rerank scores in [0,1] are used directly (no sigmoid).
+        // high.md: rerank = 0.0 → rerank01 = 0.0
+        // low.md:  rerank = 100.0 (outside [0,1]) → rerank01 = sigmoid(100) ≈ 1.0
+        let scores = vec![Some(0.0_f64), Some(100.0_f64)];
+        let out = blend_rerank_candidates(&candidates, &scores);
+
+        let high = out.iter().find(|r| r.path == "high.md").unwrap();
+        let low = out.iter().find(|r| r.path == "low.md").unwrap();
+
+        // high.md (rank 0, w=0.75): hybrid01 = 0.9/0.9 = 1.0, rerank01 = 0.0
+        //   → 0.75 * 1.0 + 0.25 * 0.0 = 0.750  ← proves min-max fired
+        assert!(
+            (high.score - 0.75).abs() < 1e-9,
+            "min-max normalization must produce hybrid01=1.0; expected 0.75, got {}",
+            high.score
+        );
+
+        // low.md (rank 1, w=0.75): hybrid01 = 0.1/0.9 ≈ 0.111, rerank01 = sigmoid(100) ≈ 1.0
+        //   → 0.75 * 0.111 + 0.25 * 1.0 ≈ 0.333
+        let expected_low = 0.75_f64.mul_add(0.1_f64 / 0.9_f64, 0.25 * sigmoid(100.0_f64));
+        assert!(
+            (low.score - expected_low).abs() < 1e-3,
+            "low.md score mismatch: expected {expected_low:.4}, got {}",
+            low.score
+        );
+    }
 }

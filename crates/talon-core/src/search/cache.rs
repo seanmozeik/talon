@@ -94,6 +94,34 @@ impl<V> Default for SearchCache<V> {
     }
 }
 
+/// Builds a cache key that embeds `db_version` and `model` so a stale
+/// in-process cache automatically misses when either changes.
+///
+/// `base_key` is typically the serialised search input. This function makes
+/// the key opaque to callers: they do not need to remember to include version
+/// information when constructing keys.
+///
+/// The `db_version` value should be read from `settings WHERE key = 'db_version'`.
+/// Reference: obsidian-hybrid-search searcher.ts:982.
+#[must_use]
+pub fn make_versioned_key(base_key: &str, db_version: &str, model: &str) -> String {
+    format!("{db_version}:{model}:{base_key}")
+}
+
+/// Reads `db_version` from the `settings` table.
+///
+/// Returns `"0"` if the settings table is missing or the row is absent
+/// (matches the migration seed value).
+#[must_use]
+pub fn read_db_version(conn: &rusqlite::Connection) -> String {
+    conn.query_row(
+        "SELECT value FROM settings WHERE key = 'db_version'",
+        [],
+        |r| r.get::<_, String>(0),
+    )
+    .unwrap_or_else(|_| "0".to_string())
+}
+
 /// Trims, lowercases, and dedupes a list of query variants. Empty strings
 /// are dropped. Order is preserved (first occurrence wins).
 #[must_use]
@@ -191,5 +219,42 @@ mod tests {
         let input = vec!["Foo Bar".into(), "foo bar".into()];
         let out = dedupe_query_variants(&input);
         assert_eq!(out, vec!["Foo Bar"]);
+    }
+
+    #[test]
+    fn make_versioned_key_embeds_version_and_model() {
+        let k1 = make_versioned_key("search:foo", "1", "embed-v1");
+        let k2 = make_versioned_key("search:foo", "2", "embed-v1");
+        let k3 = make_versioned_key("search:foo", "1", "embed-v2");
+        // Same base key with different db_version or model must differ.
+        assert_ne!(k1, k2, "db_version change must invalidate key");
+        assert_ne!(k1, k3, "model change must invalidate key");
+        // Same inputs must produce the same key.
+        assert_eq!(k1, make_versioned_key("search:foo", "1", "embed-v1"));
+    }
+
+    #[test]
+    fn read_db_version_returns_seeded_value() {
+        use crate::store::open_database;
+        use std::env::temp_dir;
+        use std::sync::atomic::{AtomicU64, Ordering};
+
+        static CTR: AtomicU64 = AtomicU64::new(0);
+        let n = CTR.fetch_add(1, Ordering::Relaxed);
+        let path = temp_dir().join(format!("talon-cache-ver-{}-{n}.sqlite", std::process::id()));
+        let conn = open_database(&path).unwrap();
+        let ver = read_db_version(&conn);
+        assert_eq!(ver, "0", "migration seeds db_version as '0'");
+        drop(conn);
+        let _ = fs_err::remove_file(&path);
+        let _ = fs_err::remove_file(path.with_extension("sqlite-wal"));
+        let _ = fs_err::remove_file(path.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn read_db_version_falls_back_on_missing_table() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        // No settings table → falls back to "0".
+        assert_eq!(read_db_version(&conn), "0");
     }
 }

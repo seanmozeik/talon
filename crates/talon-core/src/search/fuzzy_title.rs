@@ -65,7 +65,7 @@ pub fn search_title_parts(conn: &Connection, query: &str, limit: u32) -> TitleSe
                WHERE notes_fts_fuzzy MATCH ? AND n.active = 1
                ORDER BY rank
                LIMIT ?";
-    let Ok(mut stmt) = conn.prepare(sql) else {
+    let Ok(mut stmt) = conn.prepare_cached(sql) else {
         return TitleSearchParts {
             exact_alias,
             fuzzy: Vec::new(),
@@ -246,6 +246,42 @@ mod tests {
         let b = out.iter().find(|r| r.path == "b.md").unwrap();
         assert_eq!(a.score, 1.0);
         assert!(b.score > 0.0 && b.score < 1.0);
+        drop(conn);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn trigram_matches_accented_title_without_accent_in_query() {
+        // "Cafe" (no accent) should fuzzy-match "Café del Sol" via trigram
+        // overlap — the trigram tokenizer decomposes Unicode characters so 'e'
+        // trigrams overlap with the composed 'é' form.
+        let path = unique_path();
+        let conn = open_database(&path).unwrap();
+        insert_note(&conn, "cafe.md", "Café del Sol", "[]");
+
+        let parts = search_title_parts(&conn, "cafe", 10);
+        assert!(
+            parts.fuzzy.iter().any(|r| r.path == "cafe.md"),
+            "trigram search should match accented title with unaccented query"
+        );
+        drop(conn);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn trigram_cyrillic_substring_search() {
+        // Cyrillic characters should be indexable and searchable without any
+        // external collation — SQLite's trigram tokenizer is byte-aware and
+        // treats each UTF-8 sequence as a token boundary.
+        let path = unique_path();
+        let conn = open_database(&path).unwrap();
+        insert_note(&conn, "ru.md", "Концепция zettelkasten", "[]");
+
+        let parts = search_title_parts(&conn, "Концепция", 10);
+        assert!(
+            parts.fuzzy.iter().any(|r| r.path == "ru.md"),
+            "trigram search should find Cyrillic title substring"
+        );
         drop(conn);
         cleanup(&path);
     }

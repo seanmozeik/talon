@@ -104,7 +104,7 @@ pub fn search_by_alias_exact(conn: &Connection, query: &str, limit: u32) -> Vec<
                JOIN notes n ON n.id = a.note_id
                WHERE a.alias_norm = ? AND n.active = 1
                LIMIT ?";
-    let Ok(mut stmt) = conn.prepare(sql) else {
+    let Ok(mut stmt) = conn.prepare_cached(sql) else {
         return Vec::new();
     };
     let Ok(mapped) = stmt.query_map(
@@ -266,6 +266,34 @@ mod tests {
         let id = insert_note(&conn, "a.md", "Atomic", "body", "[]");
         insert_alias(&conn, id, "Atomic");
         assert!(search_by_alias_exact(&conn, "completely-other", 10).is_empty());
+        drop(conn);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn alias_exact_finds_two_char_alias() {
+        // Aliases shorter than FUZZY_ALIAS_MIN_LEN (3) produce no trigrams and
+        // are invisible to the FTS5 MATCH operator.  The alias_norm exact-match
+        // path must find them regardless.
+        let path = unique_path();
+        let conn = open_database(&path).unwrap();
+        let id = insert_note(
+            &conn,
+            "ai.md",
+            "Artificial Intelligence",
+            "body",
+            "[\"AI\"]",
+        );
+        insert_alias(&conn, id, "AI");
+
+        let results = search_by_alias_exact(&conn, "AI", 10);
+        assert_eq!(
+            results.len(),
+            1,
+            "2-char alias must be findable via exact match"
+        );
+        assert_eq!(results[0].path, "ai.md");
+        assert!((results[0].score - 1.0).abs() < f64::EPSILON);
         drop(conn);
         cleanup(&path);
     }

@@ -229,7 +229,7 @@ fn load_existing_chunks_by_index(
     note_id: i64,
 ) -> Result<BTreeMap<i64, (i64, String)>, TalonError> {
     let mut stmt = conn
-        .prepare("SELECT id, chunk_index, chunk_hash FROM chunks WHERE note_id = ?")
+        .prepare_cached("SELECT id, chunk_index, chunk_hash FROM chunks WHERE note_id = ?")
         .map_err(|source| TalonError::Sqlite {
             context: "prepare existing chunks query",
             source,
@@ -529,7 +529,7 @@ pub fn perform_note_deletion(
 ) -> Result<(), TalonError> {
     let chunk_ids: Vec<i64> = {
         let mut stmt = conn
-            .prepare("SELECT id FROM chunks WHERE note_id = ?")
+            .prepare_cached("SELECT id FROM chunks WHERE note_id = ?")
             .map_err(|source| TalonError::Sqlite {
                 context: "prepare chunk-id lookup",
                 source,

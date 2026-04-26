@@ -84,7 +84,8 @@ pub fn matches_include_patterns(file_path: &str, patterns: &[String]) -> bool {
 /// Returns the underlying `rusqlite::Error` if the query fails (the table
 /// must exist — call [`crate::store::open_database`] first).
 pub fn load_notes_for_linking(conn: &Connection) -> rusqlite::Result<Vec<NoteReference>> {
-    let mut stmt = conn.prepare("SELECT vault_path, title, aliases FROM notes WHERE active = 1")?;
+    let mut stmt =
+        conn.prepare_cached("SELECT vault_path, title, aliases FROM notes WHERE active = 1")?;
     let rows = stmt.query_map([], |row| {
         let vault_path: String = row.get(0)?;
         let title: Option<String> = row.get(1)?;

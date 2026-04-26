@@ -53,7 +53,16 @@ pub fn persist_chunk_vector(
         source,
     })?;
 
-    let json = serde_json::to_string(embedding).unwrap_or_else(|_| "[]".to_string());
+    // Normalize to unit length so the cosine-from-L2 identity holds:
+    //   similarity = max(0, 1 - distance² / 2)
+    // sqlite-vec uses distance_metric=cosine which assumes ||v|| = 1.
+    let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let normalized: Vec<f32> = if norm > 0.0 {
+        embedding.iter().map(|x| x / norm).collect()
+    } else {
+        embedding.to_vec()
+    };
+    let json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".to_string());
     let _ = conn.execute(
         "INSERT OR REPLACE INTO vec_chunks(chunk_id, embedding) VALUES (?, json(?))",
         params![chunk_id, json],
@@ -188,6 +197,33 @@ mod tests {
             model: "m".into(),
         };
         assert!(first_non_empty_batch(&response).is_none());
+    }
+
+    #[test]
+    fn persist_normalizes_vector_to_unit_norm() {
+        register_sqlite_vec().unwrap();
+        let path = unique_path("unit-norm");
+        let conn = open_database(&path).unwrap();
+        ensure_vec_chunks(&conn, 3).unwrap();
+        let chunk_id = seed_chunk(&conn);
+        // Non-unit embedding: [3, 4, 0] has ||v|| = 5.
+        persist_chunk_vector(&conn, chunk_id, "test-model", 3, 1, &[3.0, 4.0, 0.0]).unwrap();
+
+        let raw: String = conn
+            .query_row(
+                "SELECT vec_to_json(embedding) FROM vec_chunks WHERE chunk_id = ?",
+                params![chunk_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let stored: Vec<f32> = serde_json::from_str(&raw).unwrap();
+        let norm: f32 = stored.iter().map(|x| x * x).sum::<f32>().sqrt();
+        assert!(
+            (norm - 1.0_f32).abs() < 1e-4,
+            "stored vector must be unit-normed, got ||v|| = {norm}"
+        );
+        drop(conn);
+        cleanup(&path);
     }
 
     #[test]

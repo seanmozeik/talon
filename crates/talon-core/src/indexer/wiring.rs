@@ -13,6 +13,7 @@ use crate::chunker::chunk_markdown;
 use crate::config::ChunkerConfig;
 use crate::frontmatter::{extract_wikilinks, parse_frontmatter};
 use crate::links::{NoteReference, find_unresolved_links, resolve_wiki_links};
+use crate::text::normalize_vault_path;
 
 use super::prelude::{extract_title, merge_current_path_for_linking};
 use super::upsert::{
@@ -84,6 +85,10 @@ pub fn index_one_note_with_config(
     existing_for_linking: &[NoteReference],
     chunker_config: &ChunkerConfig,
 ) -> Result<IndexNoteOutcome, TalonError> {
+    // Normalize to NFD so NFC and NFD forms of the same Unicode filename map
+    // to the same DB row (macOS HFS+ stores paths in NFD; Linux typically NFC).
+    let vault_path_normalized = normalize_vault_path(vault_path);
+    let vault_path = vault_path_normalized.as_str();
     let parsed = parse_frontmatter(content);
     let title = extract_title(vault_path, &parsed.frontmatter);
 

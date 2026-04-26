@@ -4,6 +4,7 @@
 //! and keyword/path normalization. Ported from the TypeScript Talon implementation.
 
 use regex::Regex;
+use unicode_normalization::UnicodeNormalization;
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -232,7 +233,9 @@ pub fn normalize_keyword(value: &str) -> String {
 /// ```
 #[must_use]
 pub fn normalize_vault_path(value: &str) -> String {
-    value.replace('\\', "/")
+    // NFD so NFC and NFD forms of the same Unicode filename round-trip to the
+    // same DB row (macOS HFS+ stores paths in NFD; Linux typically NFC).
+    value.replace('\\', "/").nfd().collect()
 }
 
 // ── Wikilink parsing ────────────────────────────────────────────────────────
@@ -497,6 +500,20 @@ mod tests {
         assert_eq!(normalize_vault_path("notes\\hello.md"), "notes/hello.md");
         assert_eq!(normalize_vault_path("notes/hello.md"), "notes/hello.md");
         assert_eq!(normalize_vault_path("a\\b\\c.md"), "a/b/c.md");
+    }
+
+    #[test]
+    fn normalize_vault_path_nfc_and_nfd_produce_same_form() {
+        // é as a single precomposed codepoint (NFC)
+        let nfc = "notes/caf\u{00e9}.md";
+        // e + combining acute accent (NFD)
+        let nfd = "notes/cafe\u{0301}.md";
+        assert_ne!(nfc, nfd, "precondition: raw strings differ");
+        assert_eq!(
+            normalize_vault_path(nfc),
+            normalize_vault_path(nfd),
+            "NFC and NFD paths must normalize to the same form"
+        );
     }
 
     // ── Wikilink parsing tests ────────────────────────────────────────────
