@@ -128,6 +128,7 @@ fn search_hybrid_mode_returns_results() {
         scope_only: Vec::new(),
         where_: Vec::new(),
         since: None,
+        anchors: None,
     };
 
     let response = run_search(&conn, &input, Some(&client), Some(&expansion), None);
@@ -195,6 +196,7 @@ fn search_fulltext_mode_returns_results() {
         scope_only: Vec::new(),
         where_: Vec::new(),
         since: None,
+        anchors: None,
     };
 
     let response = run_search(&conn, &input, None, None, None);
@@ -262,6 +264,7 @@ fn search_title_mode_returns_results() {
         scope_only: Vec::new(),
         where_: Vec::new(),
         since: None,
+        anchors: None,
     };
 
     let response = run_search(&conn, &input, None, None, None);
@@ -336,6 +339,7 @@ fn search_where_filter_applies() {
         scope_only: Vec::new(),
         where_: vec![where_clause],
         since: None,
+        anchors: None,
     };
 
     let response = run_search(&conn, &input, None, None, None);
@@ -398,6 +402,7 @@ fn search_since_filter_applies() {
         scope_only: Vec::new(),
         where_: Vec::new(),
         since: Some("9999999999999".to_string()), // far future
+        anchors: None,
     };
 
     let response = run_search(&conn, &input, None, None, None);
@@ -458,6 +463,7 @@ fn search_empty_query_returns_empty() {
         scope_only: Vec::new(),
         where_: Vec::new(),
         since: None,
+        anchors: None,
     };
 
     let response = run_search(&conn, &input, Some(&client), None, None);

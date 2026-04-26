@@ -77,6 +77,9 @@ pub fn search_bm25(
                     bm25: Some(score),
                     ..Default::default()
                 },
+                semantic_heading: None,
+                semantic_char_start: None,
+                semantic_char_end: None,
             })
         },
     ) else {
@@ -122,6 +125,9 @@ pub fn search_by_alias_exact(conn: &Connection, query: &str, limit: u32) -> Vec<
                     fuzzy_title: Some(1.0),
                     ..Default::default()
                 },
+                semantic_heading: None,
+                semantic_char_start: None,
+                semantic_char_end: None,
             })
         },
     ) else {

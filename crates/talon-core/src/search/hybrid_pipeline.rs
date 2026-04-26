@@ -167,6 +167,9 @@ fn hybrid_data_to_raw(h: &HybridScoreData) -> RawSearchResult {
             semantic: h.semantic,
             rerank: None,
         },
+        semantic_heading: h.semantic_heading.clone(),
+        semantic_char_start: h.semantic_char_start,
+        semantic_char_end: h.semantic_char_end,
     }
 }
 

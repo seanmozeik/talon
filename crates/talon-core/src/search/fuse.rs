@@ -57,6 +57,13 @@ pub fn estimate_strong_signal(results: &[RawSearchResult]) -> bool {
 struct FuseAcc {
     base: RawSearchResult,
     score: f64,
+    /// Preserved semantic chunk metadata from whichever strategy provided it.
+    /// When BM25 wins the base (higher raw score), the semantic heading/offsets
+    /// would otherwise be discarded — we stash them here so anchor building
+    /// can still produce a Semantic anchor alongside the BM25 one.
+    semantic_heading: Option<String>,
+    semantic_char_start: Option<u32>,
+    semantic_char_end: Option<u32>,
 }
 
 /// Fuses multiple ranked result lists with unweighted RRF, normalizes by the
@@ -87,8 +94,18 @@ pub fn fuse_hybrid_result_lists(
                         entry.base = result.clone();
                     }
                     entry.score += contribution;
+                    // Merge semantic chunk metadata: take the first non-None
+                    // value so it survives even when BM25 wins the base slot.
+                    if entry.semantic_heading.is_none() {
+                        entry.semantic_heading.clone_from(&result.semantic_heading);
+                        entry.semantic_char_start = result.semantic_char_start;
+                        entry.semantic_char_end = result.semantic_char_end;
+                    }
                 })
                 .or_insert_with(|| FuseAcc {
+                    semantic_heading: result.semantic_heading.clone(),
+                    semantic_char_start: result.semantic_char_start,
+                    semantic_char_end: result.semantic_char_end,
                     base: result.clone(),
                     score: contribution,
                 });
@@ -99,24 +116,35 @@ pub fn fuse_hybrid_result_lists(
     let max_possible = active_count * (1.0 / (RRF_K + 1.0));
     let mut out: Vec<RawSearchResult> = acc
         .into_values()
-        .map(|FuseAcc { base, score }| {
-            let norm = if max_possible == 0.0 {
-                0.0
-            } else {
-                clamp01(score / max_possible)
-            };
-            let mut scores = base.scores.clone();
-            scores.hybrid = Some(norm);
-            RawSearchResult {
-                path: base.path,
-                title: base.title,
-                tags: base.tags,
-                aliases: base.aliases,
-                snippet: base.snippet,
-                score: norm,
-                scores,
-            }
-        })
+        .map(
+            |FuseAcc {
+                 base,
+                 score,
+                 semantic_heading,
+                 semantic_char_start,
+                 semantic_char_end,
+             }| {
+                let norm = if max_possible == 0.0 {
+                    0.0
+                } else {
+                    clamp01(score / max_possible)
+                };
+                let mut scores = base.scores.clone();
+                scores.hybrid = Some(norm);
+                RawSearchResult {
+                    path: base.path,
+                    title: base.title,
+                    tags: base.tags,
+                    aliases: base.aliases,
+                    snippet: base.snippet,
+                    score: norm,
+                    scores,
+                    semantic_heading,
+                    semantic_char_start,
+                    semantic_char_end,
+                }
+            },
+        )
         .collect();
     out.sort_by(|a, b| {
         b.score
@@ -179,6 +207,9 @@ pub fn blend_rerank_candidates(
                 snippet: candidate.snippet.clone(),
                 score: final_score,
                 scores,
+                semantic_heading: candidate.semantic_heading.clone(),
+                semantic_char_start: candidate.semantic_char_start,
+                semantic_char_end: candidate.semantic_char_end,
             }
         })
         .collect();
@@ -205,6 +236,9 @@ mod tests {
             snippet: format!("snip {path}"),
             score,
             scores: SearchScores::default(),
+            semantic_heading: None,
+            semantic_char_start: None,
+            semantic_char_end: None,
         }
     }
 

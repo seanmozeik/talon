@@ -108,6 +108,11 @@ async fn emit_search(args: &CliArgs, rest: &[String]) -> Result<()> {
         scope_only: Vec::new(),
         where_: where_clauses,
         since: args.since.clone(),
+        anchors: if args.anchors.enabled() {
+            Some(true)
+        } else {
+            None
+        },
     };
 
     let started = Instant::now();

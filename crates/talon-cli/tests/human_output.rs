@@ -68,6 +68,7 @@ fn snapshot_search_results() -> Result<()> {
                 raw_score: None,
                 match_kind: MatchKind::Fulltext,
                 scope: None,
+                preview_anchors: None,
             },
             SearchResult {
                 vault_path: make_vault_path("Graph/Hub.md")?,
@@ -78,6 +79,7 @@ fn snapshot_search_results() -> Result<()> {
                 raw_score: None,
                 match_kind: MatchKind::Semantic,
                 scope: Some("research".to_string()),
+                preview_anchors: None,
             },
         ],
     };

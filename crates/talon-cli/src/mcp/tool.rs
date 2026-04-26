@@ -526,6 +526,7 @@ fn input_schema() -> Value {
             "scopeOnly": { "type": "array", "items": { "type": "string" } },
             "where": { "type": "array", "items": { "$ref": "#/$defs/whereClause" } },
             "since": { "type": ["string", "null"] },
+            "anchors": { "type": ["boolean", "null"], "description": "Include previewAnchors (BM25 + semantic) in each search result. Opt-in; adds one DB lookup per result." },
             "select": { "type": "array", "items": { "type": "string" } },
             "tagCounts": { "type": "boolean" },
             "sources": { "type": ["string", "null"] },

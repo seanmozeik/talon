@@ -70,11 +70,11 @@ pub use text::{
     parse_wikilink, split_lines, strip_heading_text, strip_outer_quotes,
 };
 pub use tool::{
-    ChangesInput, ChangesResponse, ContainerPath, Direction, ErrorEnvelope, FrontmatterFilter,
-    IndexStats, LintCheck, LintFinding, LintInput, LintResponse, MatchKind, MetaEntry, MetaInput,
-    MetaResponse, PositiveCount, ReadInput, ReadResponse, ReadResult, RelatedInput,
-    RelatedResponse, RelatedResult, RelationKind, ResponseMeta, ScopeReport, SearchInput,
-    SearchMode, SearchResponse, SearchResult, StatusInput, StatusResponse, StatusState, SyncInput,
-    SyncResponse, SyncStatus, TalonEnvelope, TalonInput, TalonResponseData, TalonResponseTrait,
-    VaultPath, WhereClause, WhereOperator,
+    AnchorKind, ChangesInput, ChangesResponse, ContainerPath, Direction, ErrorEnvelope,
+    FrontmatterFilter, IndexStats, LintCheck, LintFinding, LintInput, LintResponse, MatchAnchor,
+    MatchKind, MetaEntry, MetaInput, MetaResponse, PositiveCount, ReadInput, ReadResponse,
+    ReadResult, RelatedInput, RelatedResponse, RelatedResult, RelationKind, ResponseMeta,
+    ScopeReport, SearchInput, SearchMode, SearchResponse, SearchResult, StatusInput,
+    StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus, TalonEnvelope, TalonInput,
+    TalonResponseData, TalonResponseTrait, VaultPath, WhereClause, WhereOperator,
 };

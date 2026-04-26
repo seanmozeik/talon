@@ -313,6 +313,10 @@ pub struct SearchInput {
     /// Filter results indexed since this timestamp.
     #[serde(default)]
     pub since: Option<String>,
+    /// Include per-result `previewAnchors` (BM25 + semantic). Opt-in; adds
+    /// one extra DB lookup per result so is off by default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub anchors: Option<bool>,
 }
 
 impl Default for SearchInput {
@@ -333,6 +337,7 @@ impl Default for SearchInput {
             scope_only: Vec::new(),
             where_: Vec::new(),
             since: None,
+            anchors: None,
         }
     }
 }
@@ -787,6 +792,37 @@ impl SearchResponse {
     }
 }
 
+/// Which retrieval strategy produced an anchor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AnchorKind {
+    /// BM25 / lexical match — positionally precise, fragment-level.
+    Bm25,
+    /// Semantic / vector match — chunk-level with char offsets.
+    Semantic,
+}
+
+/// A scroll-to / highlight anchor for a specific block inside the source note.
+///
+/// Ports `MatchAnchor` from `obsidian-hybrid-search` (MIT licensed).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MatchAnchor {
+    /// Retrieval strategy that produced this anchor.
+    pub kind: AnchorKind,
+    /// Heading chain above the matching block (e.g. `"Section > Sub"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heading_path: Option<String>,
+    /// DOM-matchable text derived from the block (first 80 chars, syntax stripped).
+    pub match_text: String,
+    /// UTF-8 char offset of the block start relative to note body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub char_start: Option<u32>,
+    /// UTF-8 char offset of the block end relative to note body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub char_end: Option<u32>,
+}
+
 /// Search result.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -797,7 +833,7 @@ pub struct SearchResult {
     pub path: ContainerPath,
     /// Display title.
     pub title: String,
-    /// Result snippet.
+    /// Result snippet (with heading breadcrumb prepended when available).
     pub snippet: String,
     /// Result score (after scope multiplier).
     pub score: f64,
@@ -809,6 +845,9 @@ pub struct SearchResult {
     /// Resolved scope name, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
+    /// Per-result match anchors (populated when `SearchInput.anchors == true`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preview_anchors: Option<Vec<MatchAnchor>>,
 }
 
 /// Read response.

@@ -462,8 +462,8 @@
         "just verify passes"
       ],
       "priority": 26,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented AnchorKind/MatchAnchor types in tool.rs; SearchResult.preview_anchors (opt-in via SearchInput.anchors=true); --anchors CLI flag; search/match_text.rs with build_match_text() ported from obsidian-hybrid-search (strips headings, fenced code, callouts, HTML, wikilinks, bold/italic, list markers); search/anchor.rs with BM25 heading lookup (strategy 1: chunk LIKE query, strategy 2: content scan) and semantic anchor from chunk metadata; RawSearchResult extended with semantic_heading/char_start/char_end; fuse.rs preserves semantic chunk metadata through RRF fusion; vector.rs SELECT extended to fetch heading_path/char_start/char_end; heading breadcrumb prepended unconditionally; anchor dedup suppresses semantic when match_text matches BM25; MCP schema updated; 4 anchor tests, 11 match_text tests, 1 fixture vault integration test. 368 tests pass."
     },
     {
       "id": "US-023",

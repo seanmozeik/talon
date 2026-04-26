@@ -10,6 +10,7 @@ use rusqlite::Connection;
 use crate::config::TalonConfig;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
+use crate::search::anchor::{build_anchors, resolve_snippet_heading};
 use crate::tool::{MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause};
 
 use crate::search::bm25::search_bm25;
@@ -108,6 +109,7 @@ pub fn run_search(
         && input.mode == SearchMode::Hybrid;
     let reranked = input.mode == SearchMode::Hybrid && !input.fast;
 
+    let anchors_requested = input.anchors.unwrap_or(false);
     SearchResponse {
         query: Some(query),
         mode: input.mode,
@@ -118,29 +120,58 @@ pub fn run_search(
         total,
         results: scored
             .into_iter()
-            .filter_map(|r| raw_to_search_result(&r, input.mode))
+            .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested))
             .collect(),
     }
 }
 
 /// Converts a [`RawSearchResult`] to a [`SearchResult`] for the response.
 ///
+/// - Prepends a heading breadcrumb to the snippet unconditionally when one
+///   can be resolved (ports searcher.ts:265-273).
+/// - Populates `preview_anchors` when `anchors_requested` is true.
+///
 /// Returns `None` if the path stored in the database cannot be parsed (corrupt data).
-fn raw_to_search_result(raw: &RawSearchResult, mode: SearchMode) -> Option<SearchResult> {
+fn raw_to_search_result(
+    raw: &RawSearchResult,
+    mode: SearchMode,
+    conn: &Connection,
+    anchors_requested: bool,
+) -> Option<SearchResult> {
     let match_kind = match mode {
         SearchMode::Hybrid | SearchMode::Fulltext => MatchKind::Fulltext,
         SearchMode::Semantic => MatchKind::Semantic,
         SearchMode::Title => MatchKind::Title,
     };
+
+    // Heading breadcrumb prepended unconditionally (independent of anchors flag).
+    let heading = resolve_snippet_heading(conn, raw);
+    let snippet = match heading {
+        Some(ref h) if !h.is_empty() => format!("{h}\n{}", raw.snippet),
+        _ => raw.snippet.clone(),
+    };
+
+    let preview_anchors = if anchors_requested {
+        let anchors = build_anchors(conn, raw);
+        if anchors.is_empty() {
+            None
+        } else {
+            Some(anchors)
+        }
+    } else {
+        None
+    };
+
     Some(SearchResult {
         vault_path: crate::tool::VaultPath::parse(&raw.path).ok()?,
         path: crate::tool::ContainerPath::parse(&raw.path).ok()?,
         title: raw.title.clone(),
-        snippet: raw.snippet.clone(),
+        snippet,
         score: raw.score,
         raw_score: Some(raw.score),
         match_kind,
         scope: None,
+        preview_anchors,
     })
 }
 

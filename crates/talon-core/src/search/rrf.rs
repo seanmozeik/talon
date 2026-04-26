@@ -164,6 +164,9 @@ pub fn normalize_and_merge_rrf_results(
                 fuzzy_title: path_scores.get(&RrfList::Fuzzy).copied(),
                 semantic: path_scores.get(&RrfList::Semantic).copied(),
                 hybrid_before_norm: Some(hybrid_before_norm),
+                semantic_heading: base.semantic_heading.clone(),
+                semantic_char_start: base.semantic_char_start,
+                semantic_char_end: base.semantic_char_end,
             })
         })
         .collect();
@@ -193,6 +196,9 @@ mod tests {
             snippet: format!("snip {path}"),
             score,
             scores: SearchScores::default(),
+            semantic_heading: None,
+            semantic_char_start: None,
+            semantic_char_end: None,
         }
     }
 

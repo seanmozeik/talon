@@ -118,6 +118,9 @@ pub fn search_title_parts(conn: &Connection, query: &str, limit: u32) -> TitleSe
                         fuzzy_title: Some(score),
                         ..Default::default()
                     },
+                    semantic_heading: None,
+                    semantic_char_start: None,
+                    semantic_char_end: None,
                 }
             },
         )

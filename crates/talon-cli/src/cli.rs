@@ -41,6 +41,8 @@ pub struct CliArgs {
     pub where_clauses: Vec<String>,
     /// Filter results indexed since this timestamp.
     pub since: Option<String>,
+    /// Include per-result match anchors (BM25 + semantic). Opt-in.
+    pub anchors: AnchorsFlag,
     /// Meta-command specific flags.
     pub meta: MetaArgs,
     /// Positional command and command arguments.
@@ -92,6 +94,7 @@ flag_type!(JsonFlag);
 flag_type!(RawFlag);
 flag_type!(FastFlag);
 flag_type!(ForceFlag);
+flag_type!(AnchorsFlag);
 
 /// Parses CLI args or exits through `bpaf`.
 #[must_use]
@@ -170,10 +173,9 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .help("Filter results indexed since this timestamp (ISO 8601 or epoch ms).")
         .argument::<String>("SINCE")
         .optional();
+    let anchors = anchors_parser();
     let meta = meta_parser();
-    let positionals = positional::<String>("ARGS")
-        .help("Command and command arguments.")
-        .many();
+    let positionals = positionals_parser();
 
     bpaf::construct!(CliArgs {
         mcp,
@@ -193,6 +195,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         direction,
         where_clauses,
         since,
+        anchors,
         meta,
         positionals
     })
@@ -215,6 +218,19 @@ fn meta_parser() -> impl bpaf::Parser<MetaArgs> {
         tag_counts,
         sources
     })
+}
+
+fn anchors_parser() -> impl bpaf::Parser<AnchorsFlag> {
+    long("anchors")
+        .help("Include per-result match anchors (BM25 + semantic) in the response.")
+        .switch()
+        .map(AnchorsFlag::from)
+}
+
+fn positionals_parser() -> impl bpaf::Parser<Vec<String>> {
+    positional::<String>("ARGS")
+        .help("Command and command arguments.")
+        .many()
 }
 
 fn parse_search_mode(value: &str) -> Result<SearchMode, String> {

@@ -38,6 +38,13 @@ pub struct RawSearchResult {
     pub score: f64,
     /// Per-signal score breakdown.
     pub scores: SearchScores,
+    /// Heading breadcrumb for the matching chunk (set by vector search; None
+    /// for BM25/title results, which use a post-hoc DB lookup instead).
+    pub semantic_heading: Option<String>,
+    /// UTF-8 char start offset of the matching chunk within the note body.
+    pub semantic_char_start: Option<u32>,
+    /// UTF-8 char end offset of the matching chunk within the note body.
+    pub semantic_char_end: Option<u32>,
 }
 
 /// Intermediate hybrid score data produced by the RRF normalization step.
@@ -61,4 +68,10 @@ pub struct HybridScoreData {
     pub semantic: Option<f64>,
     /// Hybrid score before per-pipeline normalization (clamped to `[0, 1]`).
     pub hybrid_before_norm: Option<f64>,
+    /// Heading breadcrumb from the best-matching semantic chunk (if any).
+    pub semantic_heading: Option<String>,
+    /// Char start offset from the semantic chunk (if any).
+    pub semantic_char_start: Option<u32>,
+    /// Char end offset from the semantic chunk (if any).
+    pub semantic_char_end: Option<u32>,
 }

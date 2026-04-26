@@ -82,6 +82,9 @@ mod tests {
                 hybrid: Some(score),
                 ..SearchScores::default()
             },
+            semantic_heading: None,
+            semantic_char_start: None,
+            semantic_char_end: None,
         }
     }
 

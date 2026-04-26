@@ -69,6 +69,8 @@ pub fn search_vector(
         .filter_map(|(id, distance)| {
             let c = by_id.remove(&id)?;
             let score = distance_to_score(distance);
+            let char_start = c.char_start.and_then(|v| u32::try_from(v).ok());
+            let char_end = c.char_end.and_then(|v| u32::try_from(v).ok());
             Some(RawSearchResult {
                 path: c.vault_path,
                 title: c.title.unwrap_or_default(),
@@ -80,6 +82,9 @@ pub fn search_vector(
                     semantic: Some(score),
                     ..Default::default()
                 },
+                semantic_heading: c.heading_path,
+                semantic_char_start: char_start,
+                semantic_char_end: char_end,
             })
         })
         .collect()
@@ -112,6 +117,9 @@ struct ChunkMetadata {
     title: Option<String>,
     tags: Option<String>,
     aliases: Option<String>,
+    heading_path: Option<String>,
+    char_start: Option<i64>,
+    char_end: Option<i64>,
 }
 
 fn fetch_chunk_metadata(
@@ -125,7 +133,8 @@ fn fetch_chunk_metadata(
         .collect::<Vec<_>>()
         .join(",");
     let sql = format!(
-        "SELECT c.id, c.text, n.vault_path, n.title, n.tags, n.aliases
+        "SELECT c.id, c.text, n.vault_path, n.title, n.tags, n.aliases,
+                c.heading_path, c.char_start, c.char_end
          FROM chunks c
          JOIN notes n ON n.id = c.note_id
          WHERE c.id IN ({placeholders}) AND n.active = 1"
@@ -142,6 +151,9 @@ fn fetch_chunk_metadata(
             title: row.get(3)?,
             tags: row.get(4)?,
             aliases: row.get(5)?,
+            heading_path: row.get(6)?,
+            char_start: row.get(7)?,
+            char_end: row.get(8)?,
         })
     })?;
     rows.collect()

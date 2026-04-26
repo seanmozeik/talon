@@ -14,6 +14,7 @@
 //! - [`fuse`] — strong-signal detection, hybrid result fusion, rerank blending.
 //! - [`cache`] — in-process LRU cache used by the hybrid pipeline.
 
+pub mod anchor;
 pub mod bm25;
 pub mod cache;
 pub mod constants;
@@ -21,6 +22,7 @@ pub mod fuse;
 pub mod fuzzy_title;
 pub mod hybrid_pipeline;
 pub mod hybrid_single;
+pub mod match_text;
 pub mod rerank_pipeline;
 pub mod rrf;
 pub mod text_fts;
