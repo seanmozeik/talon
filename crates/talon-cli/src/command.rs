@@ -11,8 +11,8 @@ use talon_core::{
     ExpansionClient, IndexerConfig, LintCheck, LintResponse, MetaInput, PositiveCount, ReadInput,
     RelatedInput, ResponseMeta, SearchInput, SearchMode, StatusResponse, SyncInput, SyncResponse,
     SyncStatus, TalonEnvelope, TalonResponseData, embed::EmbedPassOptions, find_related,
-    inference::InferenceClient, open_database, query_meta, run_read, run_search, run_sync,
-    vec_ext::register_sqlite_vec,
+    inference::InferenceClient, open_database, query_changes, query_meta, run_read, run_search,
+    run_sync, vec_ext::register_sqlite_vec,
 };
 
 /// Runs the selected command.
@@ -41,7 +41,7 @@ pub async fn run(args: &CliArgs) -> Result<()> {
         "related" => emit_related(args, rest).await,
         "status" => emit_status_stub(args),
         "meta" => emit_meta(args, rest).await,
-        "changes" => bail!("changes is scaffolded but not implemented yet"),
+        "changes" => emit_changes(args, rest).await,
         "lint" => emit_lint_stub(args, rest).await,
         "help" => bail!("use `talon --help` for command help"),
         other => bail!("unknown command `{other}`"),
@@ -421,6 +421,52 @@ async fn emit_meta(args: &CliArgs, _rest: &[String]) -> Result<()> {
     };
     let response = if should_spin(args) {
         spinner::with_spinner("Querying frontmatter...".to_string(), work).await?
+    } else {
+        work.await?
+    };
+    emit_response(&response, output_mode(args))
+}
+
+async fn emit_changes(args: &CliArgs, _rest: &[String]) -> Result<()> {
+    let since = args
+        .since
+        .clone()
+        .ok_or_else(|| eyre::eyre!("changes requires --since <timestamp>"))?;
+    let since_str = since.clone();
+
+    let input = talon_core::ChangesInput {
+        since,
+        scope: Vec::new(),
+        scope_only: Vec::new(),
+        limit: PositiveCount::new(
+            args.limit.unwrap_or(talon_core::constants::DEFAULT_LIMIT),
+            "limit",
+        )?,
+    };
+
+    let config = config::load_config(args.config_file.as_deref())?;
+    let db_path: PathBuf = config.db_path.clone();
+
+    let started = Instant::now();
+    let work = async move {
+        let conn = open_database(&db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+        let response = query_changes(&conn, &input);
+        let result_count =
+            u32::try_from(response.added.len() + response.modified.len() + response.deleted.len())
+                .unwrap_or(u32::MAX);
+        let meta = ResponseMeta {
+            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            result_count: Some(result_count),
+            warnings: Vec::new(),
+            scope_set: None,
+            since: Some(since_str),
+        };
+        let data = TalonResponseData::Changes(response);
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("changes", data, meta))
+    };
+    let response = if should_spin(args) {
+        spinner::with_spinner("Fetching changes...".to_string(), work).await?
     } else {
         work.await?
     };

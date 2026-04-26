@@ -209,8 +209,8 @@
         "just verify passes"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented talon-core/src/query/changes.rs: query_changes(conn, &ChangesInput) -> ChangesResponse. Reads all event_log rows, parses RFC3339 timestamps to ms via rfc3339_to_ms helper, and classifies: added (first 'index' event in window), modified ('index' in window with prior 'index' before window), deleted ('delete' event in window). Reuses change_tracking::parse_since. Scope filter applied per-entry; results sorted by timestamp; limit respected. Replaced bail! stub in command.rs with emit_changes handler. Exported query_changes from query::mod and lib.rs; added ChangesInput to lib.rs pub use. 5 unit tests. 279 tests pass."
     },
     {
       "id": "US-011",
