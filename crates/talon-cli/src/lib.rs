@@ -29,7 +29,27 @@ pub async fn run() -> u8 {
     match command::run(&args).await {
         Ok(()) => exit_codes::SUCCESS,
         Err(error) => {
-            eprintln!("Error: {error:#}");
+            // When JSON output was requested, emit a structured error envelope so the caller
+            // always receives machine-readable output — even on failure (Decision 8).
+            if args.json.enabled() || args.agent.enabled() {
+                let action = args.positionals.first().map_or("unknown", String::as_str);
+                let envelope = talon_core::TalonEnvelope::err(
+                    action,
+                    talon_core::ErrorEnvelope {
+                        code: talon_core::ErrorCode::Internal,
+                        message: format!("{error:#}"),
+                        detail: None,
+                    },
+                );
+                let mode = if args.json.enabled() {
+                    output::OutputMode::JsonPretty
+                } else {
+                    output::OutputMode::Agent
+                };
+                let _ = output::emit_response(&envelope, mode);
+            } else {
+                eprintln!("Error: {error:#}");
+            }
             exit_codes::GENERIC_ERROR
         }
     }

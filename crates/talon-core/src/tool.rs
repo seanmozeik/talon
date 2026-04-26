@@ -581,7 +581,7 @@ impl TalonEnvelope {
 
     /// Builds an error envelope.
     #[must_use]
-    pub fn err(action: &'static str, error: ErrorEnvelope) -> Self {
+    pub fn err(action: &str, error: ErrorEnvelope) -> Self {
         Self {
             action: action.to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),

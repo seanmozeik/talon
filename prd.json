@@ -477,8 +477,8 @@
         "Suite green; just verify passes"
       ],
       "priority": 27,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented crates/talon-cli/tests/cli.rs with assert_cmd + predicates: (A) flag smoke tests (--help mentions 'talon', --version prints semver); (B) exit-code tests for unknown command, search/lint/read/related missing required args; (C) JSON success envelope shape for all 8 commands (status, sync, search, read, related, meta, changes, lint) verified against a live TempVault with {action, version, ok, data, meta} exactly; (D) JSON error envelope shape ({action, version, ok:false, error}) verified for lint and search when config is missing. Also wired JSON error envelopes in lib.rs (--json/--agent failure path) and relaxed TalonEnvelope::err() action param to &str. Added assert_cmd 2.0.17 + predicates 3.1.3 workspace deps. 385 tests pass."
     },
     {
       "id": "US-023a",
