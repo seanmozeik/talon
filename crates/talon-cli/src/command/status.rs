@@ -27,6 +27,9 @@ pub(super) fn emit(args: &CliArgs) -> Result<()> {
                     vector_dimensions: None,
                 },
                 scopes: None,
+                vault_path: None,
+                config_path: None,
+                db_path: None,
             };
             let meta = ResponseMeta {
                 duration_ms: elapsed_ms(started),
@@ -62,6 +65,12 @@ pub(super) fn emit(args: &CliArgs) -> Result<()> {
                     vector_dimensions: None,
                 },
                 scopes: None,
+                vault_path: Some(vault_path.to_string_lossy().into_owned()),
+                config_path: config
+                    .config_file_path
+                    .as_ref()
+                    .map(|p| p.to_string_lossy().into_owned()),
+                db_path: Some(db_path.to_string_lossy().into_owned()),
             }
         }
     };

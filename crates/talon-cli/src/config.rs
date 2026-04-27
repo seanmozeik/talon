@@ -123,6 +123,7 @@ pub fn load_config(explicit_path: Option<&Path>) -> Result<TalonConfig> {
     }
 
     let mut config = load_config_file(&path)?;
+    config.config_file_path = Some(path);
 
     // TALON_VAULT overrides vault_path so callers (e.g. Hermes plugin) can
     // target a specific vault without modifying the config file.
@@ -169,6 +170,7 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
     TalonConfig {
         vault_path,
         db_path,
+        config_file_path: None,
         include_patterns: vec!["**/*.md".to_string()],
         ignore_patterns: vec![
             ".obsidian/**".to_string(),

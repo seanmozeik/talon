@@ -118,6 +118,15 @@ pub struct StatusResponse {
     /// Scope report.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scopes: Option<ScopeReport>,
+    /// Resolved vault path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault_path: Option<String>,
+    /// Config file path used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub config_path: Option<String>,
+    /// Database path used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub db_path: Option<String>,
 }
 
 /// A single lint finding.

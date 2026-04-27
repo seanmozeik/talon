@@ -85,6 +85,15 @@ pub fn format_status_human(w: &mut impl Write, resp: &talon_core::StatusResponse
     if let Some(reason) = &resp.reason {
         writeln!(w, "  Reason: {reason}")?;
     }
+    if let Some(vault) = &resp.vault_path {
+        writeln!(w, "  Vault:  {vault}")?;
+    }
+    if let Some(config) = &resp.config_path {
+        writeln!(w, "  Config: {config}")?;
+    }
+    if let Some(db) = &resp.db_path {
+        writeln!(w, "  Index:  {db}")?;
+    }
     writeln!(
         w,
         "  Notes: {}  Chunks: {}  Failed: {}",

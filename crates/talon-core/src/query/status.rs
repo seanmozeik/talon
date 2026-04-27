@@ -40,6 +40,12 @@ pub fn query_status(conn: &Connection, config: &TalonConfig) -> StatusResponse {
             vector_dimensions,
         },
         scopes: Some(scopes),
+        vault_path: Some(config.vault_path.to_string_lossy().into_owned()),
+        config_path: config
+            .config_file_path
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned()),
+        db_path: Some(config.db_path.to_string_lossy().into_owned()),
     }
 }
 
@@ -118,6 +124,7 @@ mod tests {
         TalonConfig {
             vault_path: PathBuf::from(vault_path),
             db_path: PathBuf::from(":memory:"),
+            config_file_path: None,
             include_patterns: vec![],
             ignore_patterns: vec![],
             inference: InferenceConfig {
@@ -219,6 +226,7 @@ mod tests {
         let config = TalonConfig {
             vault_path: PathBuf::from("/vault"),
             db_path: PathBuf::from(":memory:"),
+            config_file_path: None,
             include_patterns: vec![],
             ignore_patterns: vec![],
             inference: InferenceConfig {
@@ -264,6 +272,9 @@ mod tests {
                 vector_dimensions: None,
             },
             scopes: None,
+            vault_path: None,
+            config_path: None,
+            db_path: None,
         };
         assert_eq!(resp.state, StatusState::ConfigError);
         assert!(!resp.enabled);

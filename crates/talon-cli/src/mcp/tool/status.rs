@@ -56,6 +56,9 @@ fn status_config_error(
                 vector_dimensions: None,
             },
             scopes: None,
+            vault_path: None,
+            config_path: None,
+            db_path: None,
         },
         ResponseMeta {
             duration_ms: elapsed_ms(started),

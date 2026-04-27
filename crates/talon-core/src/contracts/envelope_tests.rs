@@ -104,6 +104,9 @@ fn status_success_round_trip() {
             vector_dimensions: Some(384),
         },
         scopes: None,
+        vault_path: None,
+        config_path: None,
+        db_path: None,
     });
     let envelope = TalonEnvelope::ok("status", data, success_meta());
     let json = serde_json::to_string(&envelope).unwrap();

@@ -1,7 +1,10 @@
 ---
 source: crates/talon-cli/tests/human_output.rs
-expression: "String::from_utf8(buf).unwrap()"
+expression: "String::from_utf8(buf)?"
 ---
 Status: Ready
+  Vault:  /vault
+  Config: /home/user/.config/talon/config.toml
+  Index:  /home/user/.local/share/talon/obsidian.sqlite
   Notes: 21  Chunks: 63  Failed: 0
   Dimensions: 384

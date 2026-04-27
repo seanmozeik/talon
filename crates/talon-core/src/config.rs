@@ -98,6 +98,9 @@ pub struct TalonConfig {
     pub vault_path: PathBuf,
     /// `SQLite` index path.
     pub db_path: PathBuf,
+    /// Path to the loaded config file (not serialized; injected at load time).
+    #[serde(skip)]
+    pub config_file_path: Option<PathBuf>,
     /// Glob-style include patterns.
     #[serde(default)]
     pub include_patterns: Vec<String>,

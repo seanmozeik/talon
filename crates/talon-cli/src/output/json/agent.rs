@@ -149,6 +149,12 @@ struct AgentStatus<'a> {
     failed_embeddings: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     vector_dimensions: Option<u16>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault_path: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    config_path: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    db_path: Option<&'a str>,
 }
 
 impl<'a> From<&'a StatusResponse> for AgentStatus<'a> {
@@ -160,6 +166,9 @@ impl<'a> From<&'a StatusResponse> for AgentStatus<'a> {
             chunks: status.index.chunk_count,
             failed_embeddings: non_zero(status.index.failed_embeddings),
             vector_dimensions: status.index.vector_dimensions,
+            vault_path: status.vault_path.as_deref(),
+            config_path: status.config_path.as_deref(),
+            db_path: status.db_path.as_deref(),
         }
     }
 }

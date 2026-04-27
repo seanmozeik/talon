@@ -111,6 +111,7 @@ fn minimal_config(vault: &std::path::Path) -> TalonConfig {
     TalonConfig {
         vault_path: vault.to_path_buf(),
         db_path: vault.join("idx.sqlite"),
+        config_file_path: None,
         include_patterns: Vec::new(),
         ignore_patterns: Vec::new(),
         inference: InferenceConfig {

@@ -156,6 +156,9 @@ fn snapshot_status_ready() -> Result<()> {
             vector_dimensions: Some(384),
         },
         scopes: None,
+        vault_path: Some("/vault".to_string()),
+        config_path: Some("/home/user/.config/talon/config.toml".to_string()),
+        db_path: Some("/home/user/.local/share/talon/obsidian.sqlite".to_string()),
     };
     let mut buf = Vec::new();
     format_status_human(&mut buf, &resp)?;
