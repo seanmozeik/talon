@@ -256,7 +256,7 @@ Split `crates/talon-core/tests/search_integration.rs`.
 
 ---
 
-### Task 16 — Split tests/ranking_regression.rs (440 lines) [ ]
+### Task 16 — Split tests/ranking_regression.rs (440 lines) [x]
 
 Split `crates/talon-core/tests/ranking_regression.rs`.  
 `cargo check --all-targets` must pass.
