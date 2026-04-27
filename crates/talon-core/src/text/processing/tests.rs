@@ -128,7 +128,7 @@ fn test_estimate_tokens_long() {
 fn test_normalize_keyword_basic() {
     assert_eq!(normalize_keyword("Hello World"), "hello world");
     assert_eq!(normalize_keyword("  Test  "), "test");
-    assert_eq!(normalize_keyword("CAFÉ"), "café");
+    assert_eq!(normalize_keyword("CAFÉ"), "cafe\u{0301}");
 }
 
 #[test]

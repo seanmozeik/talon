@@ -5,6 +5,7 @@
 
 use crate::numeric::count_u32;
 use crate::text::frontmatter::{WikiLink, normalize_keyword, normalize_vault_path};
+use crate::text::nfd;
 use serde::{Deserialize, Serialize};
 
 // ── Link graph types ────────────────────────────────────────────────────────
@@ -85,7 +86,7 @@ pub fn resolve_wiki_link_target(target: &str, notes: &[NoteReference]) -> Option
         .strip_suffix(".md")
         .unwrap_or(&normalized_target)
         .to_string();
-    let normalized_with_ext = if target.to_lowercase().ends_with(".md") {
+    let normalized_with_ext = if nfd::normalize(target).to_lowercase().ends_with(".md") {
         target.to_string()
     } else {
         format!("{target}.md")

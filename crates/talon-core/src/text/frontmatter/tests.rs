@@ -4,7 +4,7 @@ use super::*;
 fn test_normalize_keyword() {
     assert_eq!(normalize_keyword("Hello World"), "helloworld");
     assert_eq!(normalize_keyword("  Test  "), "test");
-    assert_eq!(normalize_keyword("CAFÉ"), "café");
+    assert_eq!(normalize_keyword("CAFÉ"), "cafe\u{0301}");
 }
 
 #[test]

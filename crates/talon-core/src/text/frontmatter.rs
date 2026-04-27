@@ -5,7 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use unicode_normalization::UnicodeNormalization;
+
+use super::nfd;
 
 // ── Constants ───────────────────────────────────────────────────────────────
 
@@ -94,21 +95,15 @@ pub struct WikiLink {
 /// Matches the TS `normalizeTalonKeyword` behavior exactly.
 #[must_use]
 pub fn normalize_keyword(value: &str) -> String {
-    value
+    nfd::normalize(value.trim())
         .to_lowercase()
         .replace(char::is_whitespace, "")
-        .trim()
-        .to_string()
 }
 
 /// Normalizes a vault path: backslashes to forward slashes, NFD normalization, lowercase.
 #[must_use]
 pub fn normalize_vault_path(value: &str) -> String {
-    value
-        .replace('\\', "/")
-        .nfd()
-        .collect::<String>()
-        .to_lowercase()
+    nfd::normalize(&value.replace('\\', "/")).to_lowercase()
 }
 
 mod links;

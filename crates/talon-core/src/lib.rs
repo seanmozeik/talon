@@ -74,6 +74,7 @@ pub use text::frontmatter::{
     normalize_vault_path, parse_frontmatter,
 };
 
+pub use text::nfd::normalize as normalize_text_nfd;
 pub use text::{
     LineSpan, ParsedWikiLink, TOKEN_CHAR_RATIO, estimate_tokens, is_fence_line, is_heading_line,
     parse_wikilink, split_lines, strip_heading_text, strip_outer_quotes,

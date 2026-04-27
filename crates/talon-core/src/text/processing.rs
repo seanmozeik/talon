@@ -4,7 +4,8 @@
 //! and keyword/path normalization. Ported from the TypeScript Talon implementation.
 
 use regex::Regex;
-use unicode_normalization::UnicodeNormalization;
+
+use super::nfd;
 
 /// Token-to-character ratio for rough token estimation.
 pub const TOKEN_CHAR_RATIO: u8 = 4;
@@ -202,11 +203,11 @@ pub fn estimate_tokens(text: &str) -> usize {
 ///
 /// assert_eq!(normalize_keyword("Hello World"), "hello world");
 /// assert_eq!(normalize_keyword("  Test  "), "test");
-/// assert_eq!(normalize_keyword("CAFÉ"), "café");
+/// assert_eq!(normalize_keyword("CAFÉ"), "cafe\u{0301}");
 /// ```
 #[must_use]
 pub fn normalize_keyword(value: &str) -> String {
-    value.to_lowercase().trim().to_string()
+    nfd::normalize(value.trim()).to_lowercase()
 }
 
 /// Normalizes a vault path: backslashes to forward slashes, NFD normalization.
@@ -223,9 +224,7 @@ pub fn normalize_keyword(value: &str) -> String {
 /// ```
 #[must_use]
 pub fn normalize_vault_path(value: &str) -> String {
-    // NFD so NFC and NFD forms of the same Unicode filename round-trip to the
-    // same DB row (macOS HFS+ stores paths in NFD; Linux typically NFC).
-    value.replace('\\', "/").nfd().collect()
+    nfd::normalize(&value.replace('\\', "/"))
 }
 
 /// Parsed components of a wikilink.

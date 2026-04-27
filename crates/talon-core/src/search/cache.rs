@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 
 use super::constants::GLOBAL_HYBRID_CACHE_SIZE;
+use crate::text::nfd;
 
 /// Generic LRU cache. `get` is `&mut self` because access reorders the
 /// recency list; `set` evicts the oldest entry when over capacity.
@@ -133,7 +134,7 @@ pub fn dedupe_query_variants(variants: &[String]) -> Vec<String> {
         if normalized.is_empty() {
             continue;
         }
-        let key = normalized.to_lowercase();
+        let key = nfd::normalize(&normalized).to_lowercase();
         if seen.insert(key) {
             out.push(normalized);
         }

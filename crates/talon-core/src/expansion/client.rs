@@ -15,6 +15,7 @@ use std::time::Duration;
 use reqwest::blocking::Client as HttpClient;
 
 use crate::inference::redact;
+use crate::text::nfd;
 
 use super::error::ExpansionError;
 use super::types::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ExpansionBody};
@@ -207,7 +208,7 @@ fn strip_code_fences(content: &str) -> String {
 ///
 /// Ports `normalizeQueries` + `capExpansionQueries` from local-llm.ts.
 fn normalize_queries(original: &str, queries: Vec<String>, limit: u8) -> Vec<String> {
-    let normalized_original = original.trim().to_lowercase();
+    let normalized_original = nfd::normalize(original.trim()).to_lowercase();
     let limit = usize::from(limit);
     let mut seen: HashSet<String> = HashSet::new();
     let mut result = Vec::with_capacity(limit);
@@ -216,7 +217,7 @@ fn normalize_queries(original: &str, queries: Vec<String>, limit: u8) -> Vec<Str
         if trimmed.is_empty() {
             continue;
         }
-        let normalized = trimmed.to_lowercase();
+        let normalized = nfd::normalize(&trimmed).to_lowercase();
         if normalized != normalized_original && seen.insert(normalized) {
             result.push(trimmed);
             if result.len() >= limit {
