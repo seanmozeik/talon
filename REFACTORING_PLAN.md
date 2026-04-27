@@ -242,7 +242,7 @@ Update `mcp/mod.rs`.
 
 ---
 
-### Task 14 — Split tests/fixture_vault.rs (1388 lines) [ ]
+### Task 14 — Split tests/fixture_vault.rs (1388 lines) [x]
 
 Split `crates/talon-core/tests/fixture_vault.rs` into focused test helper modules.  
 `cargo check --all-targets` must pass.
