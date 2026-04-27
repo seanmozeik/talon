@@ -1,3 +1,4 @@
+use super::super::search_hybrid::infer_hybrid_match_kind;
 use super::*;
 use crate::search::types::SearchScores;
 use crate::store::open_database;
@@ -77,6 +78,92 @@ fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
     );
     drop(conn);
     cleanup(&path);
+}
+
+#[test]
+fn infer_hybrid_match_kind_picks_dominant_signal() {
+    let title_dominant = SearchScores {
+        bm25: Some(0.4),
+        fuzzy_title: Some(0.9),
+        semantic: Some(0.5),
+        ..Default::default()
+    };
+    assert_eq!(
+        infer_hybrid_match_kind(&title_dominant),
+        MatchKind::Title,
+        "highest title contribution should win"
+    );
+
+    let semantic_over_bm25 = SearchScores {
+        bm25: Some(0.3),
+        semantic: Some(0.7),
+        ..Default::default()
+    };
+    assert_eq!(
+        infer_hybrid_match_kind(&semantic_over_bm25),
+        MatchKind::Semantic,
+        "stronger semantic should beat weaker bm25"
+    );
+
+    let bm25_over_semantic = SearchScores {
+        bm25: Some(0.8),
+        semantic: Some(0.2),
+        ..Default::default()
+    };
+    assert_eq!(
+        infer_hybrid_match_kind(&bm25_over_semantic),
+        MatchKind::Fulltext,
+        "stronger bm25 should beat weaker semantic"
+    );
+
+    let semantic_only = SearchScores {
+        semantic: Some(0.4),
+        ..Default::default()
+    };
+    assert_eq!(
+        infer_hybrid_match_kind(&semantic_only),
+        MatchKind::Semantic,
+        "semantic-only candidate should map to Semantic"
+    );
+
+    let bm25_only = SearchScores {
+        bm25: Some(0.4),
+        ..Default::default()
+    };
+    assert_eq!(
+        infer_hybrid_match_kind(&bm25_only),
+        MatchKind::Fulltext,
+        "bm25-only candidate should map to Fulltext"
+    );
+
+    let weak_title = SearchScores {
+        bm25: Some(0.8),
+        fuzzy_title: Some(0.1),
+        semantic: None,
+        ..Default::default()
+    };
+    assert_eq!(
+        infer_hybrid_match_kind(&weak_title),
+        MatchKind::Fulltext,
+        "weak title should not steal credit from a dominant body signal"
+    );
+
+    let tied_with_bm25 = SearchScores {
+        bm25: Some(0.5),
+        semantic: Some(0.5),
+        ..Default::default()
+    };
+    assert_eq!(
+        infer_hybrid_match_kind(&tied_with_bm25),
+        MatchKind::Fulltext,
+        "exact tie keeps Fulltext (stable for deterministic ranking)"
+    );
+
+    assert_eq!(
+        infer_hybrid_match_kind(&SearchScores::default()),
+        MatchKind::Fulltext,
+        "empty breakdown falls back to Fulltext"
+    );
 }
 
 #[test]

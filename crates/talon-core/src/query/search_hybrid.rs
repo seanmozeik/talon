@@ -7,8 +7,8 @@ use rusqlite::Connection;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline_with_metadata};
-use crate::search::types::RawSearchResult;
-use crate::search::{SearchDiagnostics, SearchInput, SearchMode, SearchResponse};
+use crate::search::types::{RawSearchResult, SearchScores};
+use crate::search::{MatchKind, SearchDiagnostics, SearchInput, SearchMode, SearchResponse};
 
 pub(super) enum HybridOutcome {
     NoInference,
@@ -61,6 +61,35 @@ pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
         results: output.results,
         expanded_queries,
         diagnostics,
+    }
+}
+
+/// Picks a match kind for a hybrid result based on which retrieval signal
+/// dominated for that note.
+///
+/// All three buckets (`bm25`, `fuzzy_title`, `semantic`) are normalized to
+/// `[0, 1]` (see `types.rs` field docs), so a direct max comparison is fair.
+/// A title hit wins when its score is the largest non-zero contribution —
+/// title provenance is the most useful signal for the consumer ("the note's
+/// *title* matched"). Otherwise the larger of semantic vs BM25 wins, ties to
+/// Fulltext to keep ranking deterministic.
+pub(super) fn infer_hybrid_match_kind(scores: &SearchScores) -> MatchKind {
+    let title = scores.fuzzy_title.unwrap_or(0.0);
+    let bm25 = scores.bm25.unwrap_or(0.0);
+    let semantic = scores.semantic.unwrap_or(0.0);
+
+    if title > 0.0 && title >= bm25 && title >= semantic {
+        MatchKind::Title
+    } else if semantic > bm25 {
+        MatchKind::Semantic
+    } else if bm25 > 0.0 {
+        MatchKind::Fulltext
+    } else if semantic > 0.0 {
+        MatchKind::Semantic
+    } else {
+        // Post-fusion candidates always have at least one signal, but if the
+        // breakdown is empty for any reason fall back to the safe default.
+        MatchKind::Fulltext
     }
 }
 

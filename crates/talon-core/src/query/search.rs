@@ -18,7 +18,9 @@ use crate::search::{
     MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause,
 };
 
-use super::search_hybrid::{HybridArgs, HybridOutcome, empty_hybrid_response, run_hybrid_mode};
+use super::search_hybrid::{
+    HybridArgs, HybridOutcome, empty_hybrid_response, infer_hybrid_match_kind, run_hybrid_mode,
+};
 use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::fuzzy_title::search_fuzzy_title;
@@ -191,7 +193,8 @@ fn raw_to_search_result(
     query: &str,
 ) -> Option<SearchResult> {
     let match_kind = match mode {
-        SearchMode::Hybrid | SearchMode::Fulltext => MatchKind::Fulltext,
+        SearchMode::Hybrid => infer_hybrid_match_kind(&raw.scores),
+        SearchMode::Fulltext => MatchKind::Fulltext,
         SearchMode::Semantic => MatchKind::Semantic,
         SearchMode::Title => MatchKind::Title,
     };
