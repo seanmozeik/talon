@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -18,7 +19,14 @@ import pytest
 # ---------------------------------------------------------------------------
 # Stub the agent.memory_provider module so tests run without a Hermes install.
 # ---------------------------------------------------------------------------
+import abc
+
 _stub_module = types.ModuleType("agent.memory_provider")
+
+class _MemoryProviderStub(abc.ABC):
+    pass
+
+_stub_module.MemoryProvider = _MemoryProviderStub
 _agent_pkg = types.ModuleType("agent")
 sys.modules.setdefault("agent", _agent_pkg)
 sys.modules.setdefault("agent.memory_provider", _stub_module)
@@ -135,6 +143,19 @@ def test_prefetch_subprocess_exception_returns_empty(monkeypatch):
         side_effect=OSError("binary not executable"),
     ):
         result = p.prefetch("some query")
+
+    assert result == ""
+
+
+def test_prefetch_timeout_returns_empty(monkeypatch):
+    """When talon takes longer than 20s, prefetch returns '' without raising."""
+    p = _make_provider(monkeypatch)
+
+    with patch(
+        "hermes_talon_recall.provider.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(cmd=["talon"], timeout=20),
+    ):
+        result = p.prefetch("slow query")
 
     assert result == ""
 
@@ -286,7 +307,6 @@ def test_save_and_load_config(tmp_path, monkeypatch):
         "vault_path": "/my/vault",
         "budget_tokens": 1500,
         "min_confidence": 0.5,
-        "recency_half_life_days": 14,
         "fast": True,
         "prior_message_count": 3,
     }
@@ -301,6 +321,5 @@ def test_save_and_load_config(tmp_path, monkeypatch):
     assert reader._vault_path == "/my/vault"
     assert reader._budget_tokens == 1500
     assert reader._min_confidence == 0.5
-    assert reader._recency_half_life_days == 14
     assert reader._fast is True
     assert reader._prior_message_count == 3
