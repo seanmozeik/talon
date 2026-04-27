@@ -38,9 +38,8 @@ Or create `~/.hermes/talon-recall.json` manually:
 ```json
 {
   "vault_path": "/path/to/your/obsidian/vault",
-  "budget_tokens": 2000,
-  "min_confidence": 0.3,
-  "recency_half_life_days": 7,
+  "budget_tokens": 500,
+  "min_confidence": 0.4,
   "fast": false,
   "prior_message_count": 2
 }
@@ -49,9 +48,8 @@ Or create `~/.hermes/talon-recall.json` manually:
 | Key | Default | Description |
 |---|---|---|
 | `vault_path` | (TALON_VAULT env) | Absolute path to your Obsidian vault |
-| `budget_tokens` | `2000` | Token budget for the recall context block |
-| `min_confidence` | `0.3` | Evidence score floor; below this returns empty context |
-| `recency_half_life_days` | `7` | Half-life for recency decay weighting |
+| `budget_tokens` | `500` | Token budget for the recall context block |
+| `min_confidence` | `0.4` | Evidence score floor; below this returns empty context |
 | `fast` | `false` | Skip LLM expansion + reranking (faster, lower quality) |
 | `prior_message_count` | `2` | Last N user turns fed to talon to widen the query |
 
@@ -62,7 +60,7 @@ Or create `~/.hermes/talon-recall.json` manually:
 Before each agent turn, Hermes calls `prefetch(query)`:
 
 1. The plugin runs `talon recall <query> --format prompt-xml --budget-tokens N ...`
-2. Talon performs hybrid search + link traversal + frontmatter aggregation + recency scoring against your Obsidian vault.
+2. Talon performs hybrid search + link traversal against your Obsidian vault, returning the top notes with one-line excerpts and modification dates.
 3. The resulting `<vault_recall>` XML block is injected into the agent's context.
 
 When evidence is below `min_confidence`, talon returns `<vault_recall skipped="true" .../>` and the plugin returns `""` — the agent sees a clean context with no memory provider noise.
@@ -86,11 +84,8 @@ export TALON_VAULT=/path/to/obsidian
 ```
 
 **Agent gets no context → check min_confidence threshold:**
-Reduce `min_confidence` in `~/.hermes/talon-recall.json` (default 0.3).
+Reduce `min_confidence` in `~/.hermes/talon-recall.json` (default 0.4).
 Run `talon recall "<your query>" --format prompt-xml` manually to inspect the evidence_score.
-
-**Agent gets stale context → reduce recency_half_life_days:**
-Lower `recency_half_life_days` to weight recently-modified notes more heavily.
 
 ---
 
