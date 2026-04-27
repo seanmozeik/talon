@@ -50,10 +50,16 @@ pub fn compute_evidence_score(inputs: &EvidenceInputs) -> f64 {
     let graph_density = (f64::from(inputs.top_result_link_count) / 5.0).min(1.0);
     let recency = (-inputs.days_since_top_result_modified / 14.0).exp();
 
-    0.50 * inputs.top_rerank_score.clamp(0.0, 1.0)
-        + 0.20 * inputs.top_lexical_indicator.clamp(0.0, 1.0)
-        + 0.20 * graph_density.clamp(0.0, 1.0)
-        + 0.10 * recency.clamp(0.0, 1.0)
+    0.50_f64.mul_add(
+        inputs.top_rerank_score.clamp(0.0, 1.0),
+        0.20_f64.mul_add(
+            inputs.top_lexical_indicator.clamp(0.0, 1.0),
+            0.20_f64.mul_add(
+                graph_density.clamp(0.0, 1.0),
+                0.10 * recency.clamp(0.0, 1.0),
+            ),
+        ),
+    )
 }
 
 #[cfg(test)]
@@ -87,7 +93,7 @@ mod tests {
             top_result_link_count: 0,
             days_since_top_result_modified: 0.0,
         };
-        let expected = 0.50 * 0.8 + 0.10 * (-0.0_f64 / 14.0_f64).exp();
+        let expected = 0.50_f64.mul_add(0.8, 0.10 * (-0.0_f64 / 14.0_f64).exp());
         assert_approx(compute_evidence_score(&inputs), expected, "rerank only");
     }
 

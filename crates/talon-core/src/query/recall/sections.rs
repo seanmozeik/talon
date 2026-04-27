@@ -19,9 +19,8 @@ fn to_headline(snippet: &str) -> String {
         return first.to_owned();
     }
     first[..120]
-        .rfind(|c: char| c == '.' || c == '!' || c == '?')
-        .map(|i| first[..=i].to_owned())
-        .unwrap_or_else(|| format!("{}…", &first[..117]))
+        .rfind(['.', '!', '?'])
+        .map_or_else(|| format!("{}…", &first[..117]), |i| first[..=i].to_owned())
 }
 
 fn mtime_date(conn: &Connection, path: &str) -> String {
@@ -83,7 +82,7 @@ pub(super) fn to_note_excerpts(
                 title: r.title.clone(),
                 snippet: to_headline(&r.snippet),
                 score: r.score,
-                rank: (i + 1) as u32,
+                rank: u32::try_from(i + 1).unwrap_or(u32::MAX),
                 mtime: mtime_date(conn, &r.path),
             })
         })
@@ -114,6 +113,7 @@ fn now_millis() -> u64 {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use crate::indexing::migrations::run_migrations;
