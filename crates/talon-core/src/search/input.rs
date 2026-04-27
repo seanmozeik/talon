@@ -48,7 +48,7 @@ pub enum FrontmatterFilter {
     Fields(BTreeMap<String, FrontmatterValue>),
 }
 
-pub use crate::frontmatter::{FrontmatterValue, FrontmatterValueType};
+pub use crate::text::frontmatter::{FrontmatterValue, FrontmatterValueType};
 
 /// `--where` filter operator.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

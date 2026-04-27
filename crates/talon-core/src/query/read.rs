@@ -9,8 +9,8 @@ use std::path::Path;
 use rusqlite::{Connection, params};
 
 use crate::contracts::{ContainerPath, PositiveCount, VaultPath};
-use crate::frontmatter::parse_frontmatter;
 use crate::query::{ReadInput, ReadResponse, ReadResult};
+use crate::text::frontmatter::parse_frontmatter;
 
 struct NoteRow {
     id: i64,
@@ -187,7 +187,7 @@ mod tests {
     use rusqlite::Connection;
 
     use super::*;
-    use crate::migrations::run_migrations;
+    use crate::indexing::migrations::run_migrations;
 
     fn fresh_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();

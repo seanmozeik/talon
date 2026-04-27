@@ -102,7 +102,7 @@ fn is_unscoped(path: &str, config: &TalonConfig) -> bool {
 mod tests {
     use super::*;
     use crate::config::{ExpansionConfig, InferenceConfig, InferenceModels, ScopesConfig};
-    use crate::migrations::run_migrations;
+    use crate::indexing::migrations::run_migrations;
     use rusqlite::Connection;
     use std::collections::BTreeMap;
     use std::path::PathBuf;

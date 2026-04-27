@@ -14,12 +14,12 @@ use rusqlite::Connection;
 use time::OffsetDateTime;
 
 use crate::TalonError;
-use crate::change_tracking::TOMBSTONE_RETENTION_MS;
 use crate::config::ChunkerConfig;
 use crate::embed::{EmbedPassOptions, EmbedPassStats, run_embed_pass};
 use crate::indexer::{
     IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan_with_chunker,
 };
+use crate::indexing::change_tracking::TOMBSTONE_RETENTION_MS;
 use crate::inference::InferenceClient;
 
 pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process};
@@ -81,7 +81,7 @@ pub fn run_sync_with_chunker(
     stats.deleted = stats.deleted.saturating_add(deleted);
 
     // Tombstone state currently lives in the in-memory `ChangeIndex` (see
-    // `crate::change_tracking`); the persistent change-feed table will land in
+    // `crate::indexing::change_tracking`); the persistent change-feed table will land in
     // Phase 5 alongside `query::changes`. The constants below are referenced
     // here so the eventual prune wiring has an obvious home.
     let _ = TOMBSTONE_RETENTION_MS;

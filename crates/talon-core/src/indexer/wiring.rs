@@ -9,17 +9,17 @@
 use rusqlite::{Connection, params};
 
 use crate::TalonError;
-use crate::chunker::chunk_markdown;
 use crate::config::ChunkerConfig;
-use crate::frontmatter::{extract_wikilinks, parse_frontmatter};
-use crate::links::{NoteReference, find_unresolved_links, resolve_wiki_links};
-use crate::text::normalize_vault_path;
-
-use super::prelude::{extract_title, merge_current_path_for_linking};
-use super::upsert::{
+use crate::indexing::{
     ChunkUpsertRow, NoteUpsertResult, UpsertNoteParams, upsert_aliases, upsert_chunks,
     upsert_frontmatter_fields, upsert_links, upsert_note, upsert_tags,
 };
+use crate::links::{NoteReference, find_unresolved_links, resolve_wiki_links};
+use crate::text::chunker::chunk_markdown;
+use crate::text::frontmatter::{extract_wikilinks, parse_frontmatter};
+use crate::text::normalize_vault_path;
+
+use super::prelude::{extract_title, merge_current_path_for_linking};
 
 /// Outcome of [`index_one_note`].
 #[derive(Debug, Clone)]

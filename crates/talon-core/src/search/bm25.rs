@@ -11,7 +11,7 @@
 
 use rusqlite::{Connection, params};
 
-use crate::frontmatter::normalize_keyword;
+use crate::text::frontmatter::normalize_keyword;
 
 use super::constants::{BM25_FTS_SCORES, BM25_MIN_TOKENS, BM25_TOKENS_PER_CHAR_DIV};
 use super::text_fts::{FtsOperator, build_bm25_score, to_fts_query};
@@ -91,7 +91,7 @@ pub fn search_bm25(
 /// Looks up notes whose normalized alias exactly matches `query`.
 ///
 /// "Normalized" means NFD-decomposed lowercased form (per
-/// [`crate::frontmatter::normalize_keyword`]). The alias normalization is
+/// [`crate::text::frontmatter::normalize_keyword`]). The alias normalization is
 /// expected to already be present in `note_aliases.alias_norm` (written by
 /// the indexer's alias upsert path).
 ///

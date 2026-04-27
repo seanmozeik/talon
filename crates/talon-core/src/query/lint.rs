@@ -137,7 +137,7 @@ fn find_unreferenced(conn: &Connection, scope_only: &[String]) -> Vec<LintFindin
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::migrations::run_migrations;
+    use crate::indexing::migrations::run_migrations;
     use rusqlite::Connection;
     use rusqlite::params;
 

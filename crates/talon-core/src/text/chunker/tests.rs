@@ -50,7 +50,7 @@ fn test_make_chunk_hash() {
 #[test]
 fn test_parser_fidelity_body_is_byte_faithful() {
     let raw = "---\ntitle: Fidelity\nstatus: active\n---\n\n# Body\n\nContent here.\n";
-    let parsed = crate::frontmatter::parse_frontmatter(raw);
+    let parsed = crate::text::frontmatter::parse_frontmatter(raw);
     // body = content after the closing '---' (the \n terminating '---' is included)
     // so body starts with \n (from '---\n') then \n (blank line) then # Body...
     let expected_body = "\n\n# Body\n\nContent here.\n";

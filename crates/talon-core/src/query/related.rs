@@ -213,7 +213,7 @@ mod tests {
     use rusqlite::Connection;
 
     use super::*;
-    use crate::migrations::run_migrations;
+    use crate::indexing::migrations::run_migrations;
     use crate::search::Direction;
 
     fn fresh_db() -> Connection {

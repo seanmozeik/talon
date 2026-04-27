@@ -1,7 +1,7 @@
 //! Shared utilities used across the indexer pipeline.
 //!
 //! Ports `services/talon/indexer/prelude.ts`. All functions here are pure
-//! (or filesystem-pure) — DB-touching helpers live in [`super::upsert`].
+//! (or filesystem-pure) — DB-touching helpers live in [`crate::indexing::upsert`].
 
 use std::path::Path;
 
@@ -9,8 +9,8 @@ use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
-use crate::frontmatter::FrontmatterValue;
 use crate::links::NoteReference;
+use crate::text::frontmatter::FrontmatterValue;
 
 /// Hard-coded ignore patterns matching the `TypeScript` reference. These are
 /// always applied, in addition to whatever the caller passes through
@@ -177,7 +177,7 @@ pub fn scan_vault_markdown(vault_root: &Path) -> impl Iterator<Item = String> + 
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::frontmatter::FrontmatterValue;
+    use crate::text::frontmatter::FrontmatterValue;
     use fs_err as fs;
     use std::collections::BTreeMap;
 

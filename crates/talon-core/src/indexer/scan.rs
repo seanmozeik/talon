@@ -14,11 +14,11 @@ use rusqlite::Connection;
 
 use crate::TalonError;
 use crate::config::ChunkerConfig;
+use crate::indexing::perform_note_deletion;
 
 use super::prelude::{
     load_notes_for_linking, matches_ignore_patterns, matches_include_patterns, scan_vault_markdown,
 };
-use super::upsert::perform_note_deletion;
 use super::wiring::index_one_note_with_config;
 
 /// Configuration for a vault scan.

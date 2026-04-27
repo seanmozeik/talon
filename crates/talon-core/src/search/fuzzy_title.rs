@@ -147,8 +147,8 @@ pub fn search_fuzzy_title(conn: &Connection, query: &str, limit: u32) -> Vec<Raw
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
 mod tests {
     use super::*;
-    use crate::frontmatter::normalize_keyword;
     use crate::store::open_database;
+    use crate::text::frontmatter::normalize_keyword;
     use rusqlite::params;
     use std::env::temp_dir;
     use std::sync::atomic::{AtomicU64, Ordering};

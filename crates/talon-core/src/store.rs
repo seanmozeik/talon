@@ -10,7 +10,7 @@ use fs_err as fs;
 use rusqlite::{Connection, OpenFlags};
 
 use crate::TalonError;
-use crate::migrations::run_migrations;
+use crate::indexing::migrations::run_migrations;
 
 /// Opens (or creates) the Talon index database at `path` with the standard
 /// PRAGMA configuration and applies all migrations.

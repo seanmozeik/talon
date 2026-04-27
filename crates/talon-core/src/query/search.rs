@@ -216,7 +216,7 @@ fn apply_since_filter(
     };
 
     // Invalid timestamp: pass results through unchanged.
-    let Ok(timestamp) = crate::change_tracking::parse_since(since_str) else {
+    let Ok(timestamp) = crate::indexing::change_tracking::parse_since(since_str) else {
         return results;
     };
 

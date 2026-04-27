@@ -5,6 +5,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+mod time;
+
+pub use time::{TOMBSTONE_RETENTION_MS, now_ms, parse_since};
+
 // ── Change tracking types ───────────────────────────────────────────────────
 
 /// File state in the index.
@@ -314,164 +318,6 @@ impl ChangeIndex {
     }
 }
 
-/// Parses an `--since` timestamp string.
-///
-/// Accepts ISO 8601 format (e.g., `2024-01-15T10:30:00Z`) or milliseconds since epoch.
-///
-/// # Errors
-///
-/// Returns [`crate::TalonError::InvalidSince`] if the timestamp cannot be parsed.
-///
-/// # Panics
-///
-/// This function does not panic.
-pub fn parse_since(timestamp: &str) -> Result<u64, crate::TalonError> {
-    // Try parsing as milliseconds since epoch (numeric string)
-    if let Ok(ms) = timestamp.parse::<u64>() {
-        return Ok(ms);
-    }
-
-    // Try parsing as ISO 8601 / RFC 3339:
-    // - 2024-01-15T10:30:00Z
-    // - 2024-01-15T10:30:00+00:00
-    if let Ok(dt) =
-        time::OffsetDateTime::parse(timestamp, &time::format_description::well_known::Rfc3339)
-    {
-        return Ok(unix_millis(dt));
-    }
-
-    // Try date-only format (YYYY-MM-DD); midnight UTC is implied.
-    let date_format = time::macros::format_description!("[year]-[month]-[day]");
-    if let Ok(date) = time::Date::parse(timestamp, date_format) {
-        let dt = date
-            .with_hms(0, 0, 0)
-            .map(time::PrimitiveDateTime::assume_utc)
-            .map_err(|err| crate::TalonError::InvalidSince {
-                message: format!("00:00:00 is always valid (unreachable): {err}"),
-            })?;
-        return Ok(unix_millis(dt));
-    }
-
-    Err(crate::TalonError::InvalidSince {
-        message: format!("unable to parse timestamp: {timestamp}"),
-    })
-}
-
-/// Returns the current time in milliseconds since epoch.
-#[must_use]
-pub fn now_ms() -> u64 {
-    unix_millis(time::OffsetDateTime::now_utc())
-}
-
-fn unix_millis(dt: time::OffsetDateTime) -> u64 {
-    let nanos = dt.unix_timestamp_nanos();
-    if nanos < 0 {
-        return 0;
-    }
-    let millis = nanos / 1_000_000;
-    u64::try_from(millis).unwrap_or(u64::MAX)
-}
-
-/// Default tombstone retention period: 90 days in milliseconds.
-pub const TOMBSTONE_RETENTION_MS: u64 = 90 * 24 * 60 * 60 * 1000;
-
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_file_change_state_active() {
-        let state = FileChangeState::active("test.md".to_string(), 1000);
-        assert!(state.is_active());
-        assert!(!state.is_modified());
-    }
-
-    #[test]
-    fn test_file_change_state_modified() {
-        let mut state = FileChangeState::active("test.md".to_string(), 2000);
-        state.mark_indexed(1000);
-        assert!(state.is_modified());
-    }
-
-    #[test]
-    fn test_file_change_state_tombstoned() {
-        let mut state = FileChangeState::active("test.md".to_string(), 1000);
-        state.tombstone(2000);
-        assert!(!state.is_active());
-        assert!(state.tombstoned);
-        assert_eq!(state.tombstoned_at, Some(2000));
-    }
-
-    #[test]
-    fn test_change_index_register_and_update() {
-        let mut idx = ChangeIndex::default();
-        idx.register_active("a.md".to_string(), 1000, 1000);
-        idx.update_mtime("a.md", 2000);
-
-        let state = idx.states.get("a.md").unwrap();
-        assert_eq!(state.mtime, 2000);
-        assert!(state.is_modified());
-    }
-
-    #[test]
-    fn test_change_index_tombstone() {
-        let mut idx = ChangeIndex::default();
-        idx.register_active("a.md".to_string(), 1000, 1000);
-        idx.tombstone("a.md", 2000);
-
-        assert!(idx.states.get("a.md").unwrap().tombstoned);
-        assert_eq!(idx.tombstones.len(), 1);
-    }
-
-    #[test]
-    fn test_change_index_prune_tombstones() {
-        let mut idx = ChangeIndex::default();
-        idx.register_active("a.md".to_string(), 1000, 1000);
-        idx.tombstone("a.md", 1000);
-
-        // Prune tombstones older than 500ms (should prune)
-        let pruned = idx.prune_tombstones(500, 2000);
-        assert_eq!(pruned.len(), 1);
-        assert!(idx.tombstones.is_empty());
-    }
-
-    #[test]
-    fn test_parse_since_numeric() {
-        assert_eq!(parse_since("1700000000000").unwrap(), 1_700_000_000_000);
-    }
-
-    #[test]
-    fn test_parse_since_iso8601() {
-        let result = parse_since("2024-01-15T10:30:00Z").unwrap();
-        // Just verify it parses without error
-        assert!(result > 0);
-    }
-
-    #[test]
-    fn test_parse_since_date_only() {
-        let result = parse_since("2024-01-15").unwrap();
-        assert!(result > 0);
-    }
-
-    #[test]
-    fn test_parse_since_invalid() {
-        assert!(parse_since("not-a-timestamp").is_err());
-    }
-
-    #[test]
-    fn test_change_feed_computation() {
-        let mut idx = ChangeIndex::default();
-        idx.register_active("a.md".to_string(), 1000, 1000);
-        idx.register_active("b.md".to_string(), 2000, 2000);
-        idx.update_mtime("b.md", 3000);
-
-        let feed = idx.compute_change_feed(1500);
-
-        // a.md was indexed before since, so not in feed
-        // b.md was indexed after since and is modified
-        assert!(feed.added.is_empty());
-        assert_eq!(feed.modified.len(), 1);
-        assert_eq!(feed.modified[0].path, "b.md");
-    }
-}
+mod tests;

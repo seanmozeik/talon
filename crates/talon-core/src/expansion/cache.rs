@@ -3,7 +3,7 @@
 use rusqlite::Connection;
 
 use crate::TalonError;
-use crate::change_tracking::now_ms;
+use crate::indexing::change_tracking::now_ms;
 
 /// Persistent key-value cache backed by the `llm_cache` `SQLite` table.
 ///
@@ -99,7 +99,7 @@ mod tests {
     use super::*;
     use rusqlite::Connection;
 
-    use crate::migrations::run_migrations;
+    use crate::indexing::migrations::run_migrations;
 
     fn fresh_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();

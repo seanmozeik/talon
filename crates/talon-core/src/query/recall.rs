@@ -12,10 +12,10 @@ use std::collections::HashSet;
 use rusqlite::{Connection, params};
 use tokenx_rs::estimate_token_count;
 
-use crate::change_tracking;
 use crate::config::TalonConfig;
 use crate::contracts::VaultPath;
 use crate::expansion::client::ExpansionClient;
+use crate::indexing::change_tracking;
 use crate::inference::InferenceClient;
 use crate::query::{
     EditedNote, FrontmatterFact, FuzzyAnchor, LinkedNote, NoteExcerpt, RecallInput, RecallResponse,
@@ -537,7 +537,7 @@ mod tests {
     use rusqlite::Connection;
 
     use super::*;
-    use crate::migrations::run_migrations;
+    use crate::indexing::migrations::run_migrations;
 
     fn fresh_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();

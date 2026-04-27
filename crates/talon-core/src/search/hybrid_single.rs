@@ -55,8 +55,8 @@ pub fn run_hybrid_single(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::frontmatter::normalize_keyword;
     use crate::store::open_database;
+    use crate::text::frontmatter::normalize_keyword;
     use rusqlite::params;
     use std::env::temp_dir;
     use std::sync::atomic::{AtomicU64, Ordering};

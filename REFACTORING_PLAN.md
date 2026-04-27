@@ -148,7 +148,7 @@ Update `lib.rs`: `pub mod text;` already exists — since text/ directory replac
 
 ---
 
-### Task 3 — Create indexing/ module: move + split change_tracking.rs, migrations.rs, indexer/upsert.rs [ ]
+### Task 3 — Create indexing/ module: move + split change_tracking.rs, migrations.rs, indexer/upsert.rs [x]
 
 `crates/talon-core/src/indexing/` already exists (created in Task 1 with input.rs/output.rs).  
 Move and split into that directory:

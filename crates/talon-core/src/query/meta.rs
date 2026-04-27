@@ -9,8 +9,8 @@ use std::collections::BTreeMap;
 use rusqlite::{Connection, params};
 
 use crate::contracts::VaultPath;
-use crate::frontmatter::FrontmatterValue;
 use crate::query::{MetaEntry, MetaInput, MetaResponse};
+use crate::text::frontmatter::FrontmatterValue;
 
 struct NoteRow {
     note_id: i64,
@@ -33,7 +33,7 @@ pub fn query_meta(conn: &Connection, input: &MetaInput) -> MetaResponse {
     );
 
     if let Some(ref since_str) = input.since
-        && let Ok(ts) = crate::change_tracking::parse_since(since_str)
+        && let Ok(ts) = crate::indexing::change_tracking::parse_since(since_str)
     {
         notes.retain(|n| n.mtime_ms >= ts.cast_signed());
     }
@@ -167,7 +167,7 @@ mod tests {
     use rusqlite::{Connection, params};
 
     use super::*;
-    use crate::migrations::run_migrations;
+    use crate::indexing::migrations::run_migrations;
     use crate::query::MetaInput;
     use crate::search::{WhereClause, WhereOperator};
 

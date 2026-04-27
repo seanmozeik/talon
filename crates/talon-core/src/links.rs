@@ -3,7 +3,7 @@
 //! Implements wikilink resolution against the indexed note set, producing
 //! directed edges for the link graph with backlink computation.
 
-use crate::frontmatter::{WikiLink, normalize_keyword, normalize_vault_path};
+use crate::text::frontmatter::{WikiLink, normalize_keyword, normalize_vault_path};
 use serde::{Deserialize, Serialize};
 
 // ── Link graph types ────────────────────────────────────────────────────────
