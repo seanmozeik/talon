@@ -24,6 +24,7 @@ eyre = "0.6.12"
 fs-err = "3.3.0"
 glob = "0.3.3"
 indicatif = "0.18.4"
+lru = "0.18.0"
 rattles = "0.3.1"
 regex = "1.12.3"
 reqwest = { version = "0.13.2", default-features = false, features = ["json", "blocking"] }

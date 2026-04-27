@@ -12,6 +12,7 @@ readme.workspace = true
 [dependencies]
 fs-err.workspace = true
 glob.workspace = true
+lru.workspace = true
 regex.workspace = true
 reqwest.workspace = true
 rusqlite.workspace = true

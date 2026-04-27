@@ -12,7 +12,7 @@
 //! - [`vector`] — `sqlite-vec` cosine search against `vec_chunks` (DB-backed).
 //! - [`rrf`] — Reciprocal Rank Fusion across signal lists.
 //! - [`fuse`] — strong-signal detection, hybrid result fusion, rerank blending.
-//! - [`cache`] — in-process LRU cache used by the hybrid pipeline.
+//! - [`cache`] — query variant normalization helpers used by the hybrid pipeline.
 
 pub mod anchor;
 pub mod bm25;
@@ -32,7 +32,6 @@ pub mod text_fts;
 pub mod types;
 pub mod vector;
 
-pub use cache::SearchCache;
 pub use constants::{
     BM25_FTS_SCORES, BM25_MIN_TOKENS, BM25_TOKENS_PER_CHAR_DIV, CANDIDATE_FLOOR,
     COSINE_DISTANCE_MAX, DEFAULT_SNIPPET_LENGTH, FUZZY_ALIAS_MIN_LEN, GLOBAL_HYBRID_CACHE_SIZE,

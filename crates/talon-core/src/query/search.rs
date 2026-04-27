@@ -7,6 +7,7 @@
 
 use rusqlite::Connection;
 
+use crate::cache::search as search_cache;
 use crate::config::TalonConfig;
 use crate::contracts::VaultPath;
 use crate::expansion::client::ExpansionClient;
@@ -51,6 +52,11 @@ pub fn run_search(
         Some(q) if !q.trim().is_empty() => q.clone(),
         _ => return SearchResponse::empty_input(),
     };
+
+    let use_cache = inference.is_some();
+    if use_cache && let Some(response) = search_cache::lookup(conn, input, config) {
+        return response;
+    }
 
     let limit = u32::from(input.limit.get());
     let candidate_floor = u32::from(input.candidate_limit.get());
@@ -126,7 +132,7 @@ pub fn run_search(
     let reranked = input.mode == SearchMode::Hybrid && !input.fast;
 
     let anchors_requested = input.anchors.unwrap_or(false);
-    SearchResponse {
+    let response = SearchResponse {
         vault: None,
         query: Some(query),
         mode: input.mode,
@@ -139,7 +145,11 @@ pub fn run_search(
             .into_iter()
             .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested))
             .collect(),
+    };
+    if use_cache {
+        search_cache::store(conn, input, config, &response);
     }
+    response
 }
 
 /// Converts a [`RawSearchResult`] to a [`SearchResult`] for the response.

@@ -3,6 +3,7 @@
 //! The scaffold keeps parsing, configuration, constants, and response contracts
 //! in the library so the CLI remains a thin process boundary.
 
+pub mod cache;
 pub mod config;
 pub mod constants;
 pub mod contracts;

@@ -9,7 +9,7 @@ use serde_json::json;
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
 use talon_core::{
-    SearchInput, SearchMode, WhereClause, WhereOperator, embed::EmbedPassOptions,
+    SearchInput, SearchMode, WhereClause, WhereOperator, bump_db_version, embed::EmbedPassOptions,
     indexer::IndexerConfig, inference::InferenceClient, open_database, run_search, run_sync,
     vec_ext::register_sqlite_vec,
 };
@@ -24,6 +24,8 @@ mod fts_tokenchars;
 mod limit_with_filter;
 #[path = "search_integration/modes.rs"]
 mod modes;
+#[path = "search_integration/search_cache.rs"]
+mod search_cache;
 
 fn unique_path(label: &str) -> std::path::PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
