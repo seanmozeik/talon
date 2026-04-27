@@ -24,6 +24,7 @@ pub mod hooks;
 pub mod hybrid_pipeline;
 pub mod hybrid_single;
 pub mod input;
+pub mod intent;
 pub mod match_text;
 pub mod output;
 pub mod pool;

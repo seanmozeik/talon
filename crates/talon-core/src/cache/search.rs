@@ -122,6 +122,11 @@ pub fn key_for(conn: &Connection, input: &SearchInput, config: Option<&TalonConf
     let mut hasher = DefaultHasher::new();
     database_identity(conn).hash(&mut hasher);
     normalized_query(input.query.as_deref().unwrap_or_default()).hash(&mut hasher);
+    input
+        .intent
+        .as_deref()
+        .map(normalized_query)
+        .hash(&mut hasher);
     input.queries.iter().for_each(|query| {
         normalized_query(query).hash(&mut hasher);
     });

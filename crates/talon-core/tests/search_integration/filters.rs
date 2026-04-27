@@ -38,6 +38,7 @@ fn search_where_filter_applies() {
     let input = SearchInput {
         query: Some("notes".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Fulltext,
         fast: true,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),
@@ -98,6 +99,7 @@ fn search_since_filter_applies() {
     let input = SearchInput {
         query: Some("notes".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Fulltext,
         fast: true,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),
@@ -158,6 +160,7 @@ fn search_empty_query_returns_empty() {
     let input = SearchInput {
         query: Some(String::new()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Hybrid,
         fast: false,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),

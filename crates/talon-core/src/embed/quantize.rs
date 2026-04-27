@@ -20,17 +20,14 @@ pub fn f32_to_i8_normalized(v: &[f32]) -> Vec<i8> {
 fn rounded_unit_component_to_i8(value: f32) -> i8 {
     let rounded = value.round().clamp(-127.0, 127.0);
     if rounded >= 0.0 {
-        let mut candidate = 0_i8;
-        while f32::from(candidate) < rounded {
-            candidate += 1;
-        }
-        candidate
+        (0_i8..=127)
+            .find(|candidate| f32::from(*candidate) >= rounded)
+            .unwrap_or(127)
     } else {
-        let mut candidate = 0_i8;
-        while f32::from(candidate) > rounded {
-            candidate -= 1;
-        }
-        candidate
+        (-127_i8..=0)
+            .rev()
+            .find(|candidate| f32::from(*candidate) <= rounded)
+            .unwrap_or(-127)
     }
 }
 

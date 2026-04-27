@@ -85,6 +85,13 @@ pub struct SearchInput {
     /// Batch queries.
     #[serde(default)]
     pub queries: Vec<String>,
+    /// Disambiguating context for expansion, rerank, and chunk selection.
+    #[serde(
+        default,
+        deserialize_with = "crate::search::intent::deserialize_optional",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub intent: Option<String>,
     /// Search mode.
     #[serde(default)]
     pub mode: SearchMode,
@@ -138,6 +145,7 @@ impl Default for SearchInput {
         Self {
             query: None,
             queries: Vec::new(),
+            intent: None,
             mode: SearchMode::Hybrid,
             fast: false,
             limit: PositiveCount::from_const(DEFAULT_LIMIT),
@@ -167,6 +175,7 @@ impl SearchInput {
     #[allow(dead_code)]
     pub(crate) fn from_cli_query(
         query: String,
+        intent: Option<String>,
         mode: SearchMode,
         fast: bool,
         limit: Option<u16>,
@@ -174,6 +183,7 @@ impl SearchInput {
     ) -> TalonResult<Self> {
         let mut input = Self {
             query: Some(query),
+            intent: crate::search::intent::normalize_optional(intent),
             mode,
             fast,
             ..Self::default()

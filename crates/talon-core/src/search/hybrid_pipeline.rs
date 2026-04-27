@@ -24,8 +24,9 @@ use super::fuse::{estimate_strong_signal, fuse_hybrid_result_lists};
 use super::fuzzy_title::search_title_parts;
 use super::hooks::SearchHooks;
 use super::hybrid_single::{HybridSingleResult, run_hybrid_single};
+use super::intent;
 use super::pool;
-use super::rerank_pipeline::rerank_candidates_with_db_version;
+use super::rerank_pipeline::{IntentRerankOptions, rerank_candidates_with_intent};
 use super::rrf::{RrfInputs, RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 use super::types::{HybridScoreData, RawSearchResult, SearchScores};
 
@@ -43,6 +44,8 @@ pub struct HybridPipelineOptions {
     pub fast: bool,
     /// Pre-supplied query variants (bypass LLM call when non-empty).
     pub queries: Vec<String>,
+    /// Optional disambiguating context for expansion, rerank, and chunks.
+    pub intent: Option<String>,
     /// Optional stage instrumentation callbacks.
     pub hooks: SearchHooks,
 }
@@ -81,7 +84,8 @@ pub fn run_hybrid_pipeline(
 
     let has_supplied = !options.queries.is_empty();
     let has_exact_alias = !title_probe.exact_alias.is_empty();
-    let probe_decisive = estimate_strong_signal(&bm25_probe);
+    // Algorithm ported verbatim from qmd — store.ts:4025-4034
+    let probe_decisive = options.intent.is_none() && estimate_strong_signal(&bm25_probe);
 
     // A decisive probe or fast mode skips both expansion and reranking.
     let skip_expensive = options.fast || probe_decisive;
@@ -96,7 +100,10 @@ pub fn run_hybrid_pipeline(
     } else if let Some(exp) = expansion {
         options.hooks.emit_expand_start();
         let started = Instant::now();
-        let expanded = exp.expand(query, EXPANSION_N_VARIANTS).unwrap_or_default();
+        let expansion_query = intent::prefix_query(options.intent.as_deref(), query);
+        let expanded = exp
+            .expand(&expansion_query, EXPANSION_N_VARIANTS)
+            .unwrap_or_default();
         let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         options.hooks.emit_expand_end(elapsed_ms);
         expanded
@@ -154,14 +161,16 @@ pub fn run_hybrid_pipeline(
     if skip_expensive {
         fused
     } else {
-        rerank_candidates_with_db_version(
+        rerank_candidates_with_intent(IntentRerankOptions {
+            conn,
             inference,
             query,
-            fused,
-            RERANK_TOP_K,
-            &options.hooks,
-            read_db_version(conn),
-        )
+            intent: options.intent.as_deref(),
+            candidates: fused,
+            top_k: RERANK_TOP_K,
+            hooks: &options.hooks,
+            db_version: read_db_version(conn),
+        })
     }
 }
 
@@ -212,6 +221,9 @@ fn hybrid_data_to_raw(h: &HybridScoreData) -> RawSearchResult {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod hooks_tests;
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod intent_tests;
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod test_support;

@@ -56,6 +56,7 @@ fn limit_with_where_filter_returns_full_limit() {
     let input = SearchInput {
         query: Some("protocol".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Fulltext,
         fast: true,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),

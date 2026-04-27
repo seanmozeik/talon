@@ -60,6 +60,7 @@ fn search_hybrid_mode_returns_results() {
     let input = SearchInput {
         query: Some("atomic notes".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Hybrid,
         fast: false,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),
@@ -127,6 +128,7 @@ fn search_fulltext_mode_returns_results() {
     let input = SearchInput {
         query: Some("spaced repetition".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Fulltext,
         fast: true,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),
@@ -194,6 +196,7 @@ fn search_title_mode_returns_results() {
     let input = SearchInput {
         query: Some("zettelkasten".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Title,
         fast: true,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),

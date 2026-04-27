@@ -34,6 +34,7 @@ pub(super) fn retrieve_pipeline_results(
         candidate_limit: CANDIDATE_FLOOR,
         fast,
         queries: Vec::new(),
+        intent: None,
         hooks: crate::search::SearchHooks::default(),
     };
     inference.map_or_else(

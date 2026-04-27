@@ -12,6 +12,7 @@ pub(super) fn input_schema() -> Value {
             },
             "query": { "type": ["string", "null"] },
             "queries": { "type": "array", "items": { "type": "string" } },
+            "intent": { "type": "string" },
             "mode": { "type": "string", "enum": ["hybrid", "semantic", "fulltext", "title"] },
             "fast": { "type": "boolean" },
             "limit": { "type": "integer", "minimum": 1 },

@@ -33,6 +33,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
 
     let mut input = SearchInput {
         query: Some(query),
+        intent: talon_core::search::intent::normalize_optional(args.intent.clone()),
         mode,
         fast,
         where_: where_clauses,

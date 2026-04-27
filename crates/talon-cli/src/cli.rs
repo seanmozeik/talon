@@ -34,6 +34,8 @@ pub struct CliArgs {
     pub limit: Option<u16>,
     /// Rerank pool size.
     pub candidate_limit: Option<u16>,
+    /// Disambiguating context for the query.
+    pub intent: Option<String>,
     /// First line for read.
     pub from_line: Option<u16>,
     /// Maximum lines for read.
@@ -171,6 +173,12 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .help("Rerank pool size (default 40, configurable in talon.toml).")
         .argument::<u16>("N")
         .optional();
+    let intent = long("intent")
+        .help(
+            "Disambiguating context for the query (steers expansion, rerank, and chunk selection).",
+        )
+        .argument::<String>("STRING")
+        .optional();
     let from_line = long("from-line")
         .help("First line for read.")
         .argument::<u16>("N")
@@ -214,6 +222,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         mode,
         limit,
         candidate_limit,
+        intent,
         from_line,
         max_lines,
         depth,

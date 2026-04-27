@@ -44,6 +44,7 @@ fn fixture_vault_fulltext_search_orchard() {
     let input = SearchInput {
         query: Some("orchard".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Fulltext,
         fast: true,
         limit: PositiveCount::new(10, "limit").unwrap(),
@@ -121,6 +122,7 @@ fn fixture_vault_fulltext_search_banana() {
     let input = SearchInput {
         query: Some("banana grove".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Fulltext,
         fast: true,
         limit: PositiveCount::new(10, "limit").unwrap(),
@@ -200,6 +202,7 @@ fn fixture_vault_title_search_cafe_alias() {
     let input = SearchInput {
         query: Some("Cafe del Sol".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Title,
         fast: true,
         limit: PositiveCount::new(10, "limit").unwrap(),

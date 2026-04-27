@@ -7,7 +7,6 @@ use super::*;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::store::open_database;
-// ── Test 1: full pipeline end-to-end ────────────────────────────────────
 
 #[test]
 fn full_pipeline_calls_embed_expand_and_rerank() {
@@ -77,6 +76,7 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
         candidate_limit: 40,
         fast: false,
         queries: vec![],
+        intent: None,
         hooks: SearchHooks::default(),
     };
 
@@ -94,8 +94,6 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
     drop(conn);
     cleanup(&db_path);
 }
-
-// ── Test 2: strong-signal probe skips expansion and rerank ───────────────
 
 #[test]
 fn strong_signal_probe_skips_expansion_and_rerank() {
@@ -139,6 +137,7 @@ fn strong_signal_probe_skips_expansion_and_rerank() {
         candidate_limit: 40,
         fast: false,
         queries: vec![],
+        intent: None,
         hooks: SearchHooks::default(),
     };
 
@@ -181,8 +180,6 @@ fn strong_signal_probe_skips_expansion_and_rerank() {
     cleanup(&db_path);
 }
 
-// ── Test 3: fast flag skips expansion and rerank ─────────────────────────
-
 #[test]
 fn fast_flag_skips_expansion_and_rerank() {
     let rt = runtime();
@@ -212,6 +209,7 @@ fn fast_flag_skips_expansion_and_rerank() {
         candidate_limit: 40,
         fast: true,
         queries: vec![],
+        intent: None,
         hooks: SearchHooks::default(),
     };
 
@@ -231,8 +229,6 @@ fn fast_flag_skips_expansion_and_rerank() {
     drop(conn);
     cleanup(&db_path);
 }
-
-// ── Test 4: no expansion client still returns results ────────────────────
 
 #[test]
 fn no_expansion_client_returns_results() {
@@ -268,6 +264,7 @@ fn no_expansion_client_returns_results() {
         candidate_limit: 40,
         fast: false,
         queries: vec![],
+        intent: None,
         hooks: SearchHooks::default(),
     };
 
@@ -282,8 +279,6 @@ fn no_expansion_client_returns_results() {
     drop(conn);
     cleanup(&db_path);
 }
-
-// ── Test 5: pre-supplied queries bypass LLM ──────────────────────────────
 
 #[test]
 fn pre_supplied_queries_bypass_llm_expansion() {
@@ -327,6 +322,7 @@ fn pre_supplied_queries_bypass_llm_expansion() {
         candidate_limit: 40,
         fast: false,
         queries: vec!["anki flashcards".to_owned()],
+        intent: None,
         hooks: SearchHooks::default(),
     };
 

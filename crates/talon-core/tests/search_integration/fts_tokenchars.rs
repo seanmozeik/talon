@@ -59,6 +59,7 @@ fn fts_tokenchars_cpp_search() {
     let input = SearchInput {
         query: Some("C++".to_string()),
         queries: Vec::new(),
+        intent: None,
         mode: SearchMode::Fulltext,
         fast: true,
         limit: talon_core::PositiveCount::new(10, "limit").unwrap(),
