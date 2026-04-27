@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "hermes-talon-recall"
 # Version stays lockstep with talon-cli major.minor (Cargo.toml: version = "0.1.0").
-version = "0.1.0"
+version = "0.2.0"
 description = "Hermes Agent Memory Provider: vault-native context recall via talon recall"
 license = { text = "MIT" }
 authors = [{ name = "seanmozeik", email = "xtremium2002@gmail.com" }]

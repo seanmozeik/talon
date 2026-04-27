@@ -1,5 +1,5 @@
 name: talon-recall
-version: 0.1.0
-description: "Vault-native context recall for Hermes Agent via Obsidian vault search (talon recall --format prompt-xml)."
+version: 0.2.0
+description: "Vault-native context recall for Hermes Agent — injects relevant Obsidian notes as <vault_recall> before each turn."
 author: seanmozeik
 homepage: https://github.com/seanmozeik/talon
