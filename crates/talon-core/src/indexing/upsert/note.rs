@@ -2,6 +2,7 @@ use rusqlite::{Connection, params};
 
 use crate::TalonError;
 use crate::indexer::prelude::hash_file_content;
+use crate::indexing::migrations::bump_db_version;
 
 use super::{NoteUpsertResult, UpsertNoteParams};
 
@@ -78,6 +79,7 @@ pub fn upsert_note(
             context: "update note",
             source,
         })?;
+        bump_db_version(conn)?;
         return Ok(NoteUpsertResult {
             note_id,
             is_new: false,
@@ -117,6 +119,7 @@ pub fn upsert_note(
             context: "fetch newly inserted note id",
             source,
         })?;
+    bump_db_version(conn)?;
     Ok(NoteUpsertResult {
         note_id,
         is_new: true,

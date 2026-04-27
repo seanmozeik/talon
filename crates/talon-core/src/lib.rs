@@ -43,8 +43,9 @@ pub use indexing::{
     LintInput, LintResponse, NoteUpsertResult, REBUILD_MIGRATIONS, SCHEMA_MIGRATIONS, ScopeReport,
     StatusInput, StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus,
     TALON_SQLITE_BUSY_TIMEOUT_MS, TOMBSTONE_RETENTION_MS, TRIGGER_MIGRATIONS, UpsertNoteParams,
-    now_ms, parse_since, perform_note_deletion, run_migrations, upsert_aliases, upsert_chunks,
-    upsert_frontmatter_fields, upsert_links, upsert_note, upsert_tags,
+    bump_db_version, now_ms, parse_since, perform_note_deletion, read_db_version, run_migrations,
+    upsert_aliases, upsert_chunks, upsert_frontmatter_fields, upsert_links, upsert_note,
+    upsert_tags,
 };
 pub use links::{
     LinkEdge, LinkGraphStats, NoteReference, ResolvedLink, build_link_edges, compute_backlinks,

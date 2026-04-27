@@ -12,7 +12,7 @@
 //! `vec_chunks` is intentionally absent — it is created lazily by the
 //! embedding pipeline once the embedding dimensionality is known.
 
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 use crate::TalonError;
 
@@ -82,6 +82,10 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
        PRIMARY KEY (note_id, field, value)
      )",
     "CREATE TABLE IF NOT EXISTS settings (
+       key   TEXT PRIMARY KEY,
+       value TEXT NOT NULL
+     )",
+    "CREATE TABLE IF NOT EXISTS db_meta (
        key   TEXT PRIMARY KEY,
        value TEXT NOT NULL
      )",
@@ -160,6 +164,7 @@ pub const TRIGGER_MIGRATIONS: &[&str] = &[
        VALUES ('delete', OLD.id, OLD.title, OLD.aliases);
      END",
     "INSERT OR IGNORE INTO settings(key, value) VALUES ('db_version', '0')",
+    "INSERT OR IGNORE INTO db_meta(key, value) VALUES ('db_version', '0')",
 ];
 
 /// FTS5 rebuild commands. Must run **outside** a transaction.
@@ -213,6 +218,53 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), TalonError> {
             })?;
     }
     Ok(())
+}
+
+/// Reads the current index content version.
+///
+/// Returns `0` when the metadata table or row is absent.
+#[must_use]
+pub fn read_db_version(conn: &Connection) -> u64 {
+    conn.query_row(
+        "SELECT value FROM db_meta WHERE key = ?",
+        [DB_VERSION_KEY],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|value| value.parse::<u64>().ok())
+    .unwrap_or(0)
+}
+
+/// Increments the index content version and returns the new value.
+///
+/// The update is a single `SQLite` upsert, so callers that pass a transaction
+/// connection get the bump committed or rolled back with their mutation.
+///
+/// # Errors
+///
+/// Returns [`TalonError::Sqlite`] if `SQLite` fails to update the metadata row.
+pub fn bump_db_version(conn: &Connection) -> Result<u64, TalonError> {
+    conn.execute(
+        "INSERT INTO db_meta(key, value) VALUES (?, '1')
+         ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + 1 AS TEXT)",
+        [DB_VERSION_KEY],
+    )
+    .map_err(|source| TalonError::Sqlite {
+        context: "bump db version",
+        source,
+    })?;
+
+    let version = read_db_version(conn);
+    conn.execute(
+        "INSERT INTO settings(key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![DB_VERSION_KEY, version.to_string()],
+    )
+    .map_err(|source| TalonError::Sqlite {
+        context: "mirror db version setting",
+        source,
+    })?;
+    Ok(version)
 }
 
 fn run_statements(

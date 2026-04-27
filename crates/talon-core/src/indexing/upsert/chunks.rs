@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use rusqlite::{Connection, params};
 
 use crate::TalonError;
+use crate::indexing::migrations::bump_db_version;
 
 use super::ChunkUpsertRow;
 
@@ -33,7 +34,9 @@ pub fn upsert_chunks(
             None => insert_chunk(conn, note_id, chunk)?,
         }
     }
-    delete_orphan_chunks(conn, &existing_by_index, &seen)
+    delete_orphan_chunks(conn, &existing_by_index, &seen)?;
+    bump_db_version(conn)?;
+    Ok(())
 }
 
 fn load_existing_chunks_by_index(

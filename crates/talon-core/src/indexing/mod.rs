@@ -14,7 +14,7 @@ pub use change_tracking::{
 pub use input::{LintCheck, LintInput, StatusInput, SyncInput};
 pub use migrations::{
     DB_VERSION_KEY, REBUILD_MIGRATIONS, SCHEMA_MIGRATIONS, TALON_SQLITE_BUSY_TIMEOUT_MS,
-    TRIGGER_MIGRATIONS, run_migrations,
+    TRIGGER_MIGRATIONS, bump_db_version, read_db_version, run_migrations,
 };
 pub use output::{
     IndexStats, LintFinding, LintResponse, ScopeReport, StatusResponse, StatusState, SyncResponse,

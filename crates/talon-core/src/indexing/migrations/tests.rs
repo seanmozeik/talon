@@ -52,6 +52,7 @@ fn migrations_create_all_schema_tables() {
         "note_tags",
         "note_frontmatter_fields",
         "settings",
+        "db_meta",
         "event_log",
         "llm_cache",
         "vector_metadata",
@@ -102,6 +103,35 @@ fn migrations_seed_db_version_setting() {
 }
 
 #[test]
+fn migrations_seed_db_version_metadata() {
+    let conn = fresh_db();
+    let value: String = conn
+        .query_row(
+            "SELECT value FROM db_meta WHERE key = ?",
+            [DB_VERSION_KEY],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(value, "0");
+}
+
+#[test]
+fn read_db_version_defaults_to_zero_without_metadata() {
+    let conn = Connection::open_in_memory().unwrap();
+    assert_eq!(read_db_version(&conn), 0);
+}
+
+#[test]
+fn bump_db_version_increments_monotonically() {
+    let conn = fresh_db();
+    let first = bump_db_version(&conn).unwrap();
+    let second = bump_db_version(&conn).unwrap();
+    assert_eq!(first, 1);
+    assert_eq!(second, 2);
+    assert_eq!(read_db_version(&conn), 2);
+}
+
+#[test]
 fn migrations_are_idempotent() {
     let mut conn = Connection::open_in_memory().unwrap();
     run_migrations(&mut conn).unwrap();
@@ -116,6 +146,14 @@ fn migrations_are_idempotent() {
         )
         .unwrap();
     assert_eq!(count, 1);
+    let meta_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM db_meta WHERE key = ?",
+            [DB_VERSION_KEY],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(meta_count, 1);
 }
 
 #[test]

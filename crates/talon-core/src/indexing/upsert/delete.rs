@@ -1,6 +1,7 @@
 use rusqlite::{Connection, params};
 
 use crate::TalonError;
+use crate::indexing::migrations::bump_db_version;
 
 /// Soft-deletes `note_id`: clears searchable fields and child rows.
 ///
@@ -97,5 +98,6 @@ pub fn perform_note_deletion(
         context: "log delete event",
         source,
     })?;
+    bump_db_version(conn)?;
     Ok(())
 }
