@@ -8,6 +8,9 @@
 //! within the score-tolerance bounds of the parity tests.
 
 use std::collections::HashSet;
+use std::sync::OnceLock;
+
+use regex::Regex;
 
 use crate::numeric::count_u32;
 
@@ -89,22 +92,84 @@ pub fn sanitize_fts_query(query: &str) -> String {
     out.trim().to_string()
 }
 
-/// Wraps each whitespace-separated word in `query` as a quoted FTS5 prefix
-/// term and joins them with `operator`. Returns [`LITERAL_EMPTY_FTS`] for
-/// empty queries.
+/// Returns a static compiled regex matching hyphenated tokens:
+/// `\b[a-zA-Z][a-zA-Z0-9]*(-[a-zA-Z0-9]+)+\b`.
+///
+/// Algorithm ported verbatim from qmd — store.ts:2959-2971.
+#[allow(clippy::expect_used)]
+fn hyphenated_token_regex() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"\b[a-zA-Z][a-zA-Z0-9]*(-[a-zA-Z0-9]+)+\b")
+            .expect("hyphenated token regex is valid")
+    })
+}
+
+/// Wraps each word in `query` as a quoted FTS5 prefix term, joined by
+/// `operator`. Returns [`LITERAL_EMPTY_FTS`] for empty queries.
+///
+/// Hyphenated tokens (e.g. `gpt-4`) are rewritten as FTS5 phrases.
 #[must_use]
 pub fn to_fts_query(query: &str, operator: FtsOperator) -> String {
-    let cleaned = sanitize_fts_query(query);
-    let words: Vec<&str> = cleaned.split_whitespace().collect();
-    if words.is_empty() {
+    let mut terms = Vec::new();
+    let chars: Vec<char> = query.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        while i < chars.len() && chars[i].is_whitespace() {
+            i += 1;
+        }
+        if i >= chars.len() {
+            break;
+        }
+        if chars[i] == '"' {
+            let mut c = String::new();
+            i += 1;
+            while i < chars.len() && chars[i] != '"' {
+                c.push(chars[i]);
+                i += 1;
+            }
+            if i < chars.len() {
+                i += 1;
+            }
+            terms.push(("quoted", c));
+        } else {
+            let mut t = String::new();
+            while i < chars.len() && !chars[i].is_whitespace() && chars[i] != '"' {
+                t.push(chars[i]);
+                i += 1;
+            }
+            if !t.is_empty() {
+                terms.push(("bare", t));
+            }
+        }
+    }
+    if terms.is_empty() {
+        return LITERAL_EMPTY_FTS.to_string();
+    }
+
+    let mut formatted = Vec::new();
+    let re = hyphenated_token_regex();
+    for (kind, content) in terms {
+        if kind == "quoted" {
+            let s = sanitize_fts_query(&content);
+            if !s.is_empty() {
+                formatted.push(format!("\"{s}\""));
+            }
+        } else if re.is_match(&content) {
+            let s = content.replace('-', " ");
+            formatted.push(format!("\"{s}\""));
+        } else {
+            let s = sanitize_fts_query(&content);
+            for w in s.split_whitespace() {
+                formatted.push(format!("\"{w}\"*"));
+            }
+        }
+    }
+    if formatted.is_empty() {
         return LITERAL_EMPTY_FTS.to_string();
     }
     let joiner = format!(" {} ", operator.keyword());
-    words
-        .iter()
-        .map(|w| format!("\"{w}\"*"))
-        .collect::<Vec<_>>()
-        .join(&joiner)
+    formatted.join(&joiner)
 }
 
 /// Builds an FTS5 OR query of all trigrams in `text`, used against the
@@ -258,5 +323,28 @@ mod tests {
         // As |raw| → ∞, score → 1 but never reaches it.
         assert!(build_bm25_score(1000.0) < 1.0);
         assert!(build_bm25_score(1000.0) > 0.99);
+    }
+
+    #[test]
+    fn to_fts_query_hyphenated_tokens() {
+        assert_eq!(to_fts_query("gpt-4", FtsOperator::And), "\"gpt 4\"");
+        assert_eq!(to_fts_query("a-b-c-d", FtsOperator::And), "\"a b c d\"");
+        assert_eq!(to_fts_query("DEC-0054", FtsOperator::And), "\"DEC 0054\"");
+        assert_eq!(
+            to_fts_query("gpt-4 foo", FtsOperator::And),
+            "\"gpt 4\" AND \"foo\"*"
+        );
+    }
+
+    #[test]
+    fn to_fts_query_preserves_quotes_and_hyphenated() {
+        assert_eq!(
+            to_fts_query("foo \"bar baz\"", FtsOperator::And),
+            "\"foo\"* AND \"bar baz\""
+        );
+        assert_eq!(
+            to_fts_query("gpt-4 \"bar baz\" multi-agent", FtsOperator::Or),
+            "\"gpt 4\" OR \"bar baz\" OR \"multi agent\""
+        );
     }
 }
