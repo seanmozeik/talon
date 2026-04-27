@@ -65,3 +65,23 @@ fn seed_vault(vault: &std::path::Path) {
 fn dummy_embed_response() -> serde_json::Value {
     json!([[0.1_f32, 0.2_f32, 0.3_f32]])
 }
+
+fn mock_embed_sidecar() -> (
+    tokio::runtime::Runtime,
+    MockServer,
+    talon_core::inference::InferenceClient,
+) {
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let server = rt.block_on(MockServer::start());
+    rt.block_on(
+        Mock::given(method("POST"))
+            .and(path("/embed"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
+            .mount(&server),
+    );
+    let client = InferenceClient::new(server.uri()).unwrap();
+    (rt, server, client)
+}

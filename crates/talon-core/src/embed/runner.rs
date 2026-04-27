@@ -99,7 +99,8 @@ impl From<EmbedDiagnostics> for EmbedPassStats {
 ///
 /// Returns [`TalonError::Sqlite`] for any underlying DB failure during
 /// the initial select. Per-note HTTP/JSON failures are recorded in
-/// `EmbedPassStats.diagnostics` rather than aborting the whole pass.
+/// `EmbedPassStats.diagnostics` rather than aborting the whole pass, unless
+/// the error indicates the embedding endpoint is unavailable or misconfigured.
 pub fn run_embed_pass(
     conn: &Connection,
     client: &InferenceClient,
@@ -110,9 +111,9 @@ pub fn run_embed_pass(
 
     for note in &pending {
         if note.chunks.len() == 1 {
-            embed_single_chunk(conn, client, options, note, &mut ctx);
+            embed_single_chunk(conn, client, options, note, &mut ctx)?;
         } else {
-            embed_multi_chunk(conn, client, options, note, &mut ctx);
+            embed_multi_chunk(conn, client, options, note, &mut ctx)?;
         }
     }
 
@@ -141,38 +142,58 @@ fn format_inference_failure(err: &InferenceError) -> String {
     err.to_string()
 }
 
+fn fatal_endpoint_failure(err: &InferenceError) -> Option<TalonError> {
+    let InferenceError::Http { status, .. } = err else {
+        return None;
+    };
+    let status = *status;
+    if !matches!(status, None | Some(404 | 405 | 501)) {
+        return None;
+    }
+    Some(TalonError::InvalidInput {
+        field: "inference.base_url",
+        message: format!(
+            "embedding endpoint unavailable or misconfigured: {}; check inference.base_url and the sidecar embedding routes",
+            format_inference_failure(err)
+        ),
+    })
+}
+
 fn embed_single_chunk(
     conn: &Connection,
     client: &InferenceClient,
     options: &EmbedPassOptions,
     note: &NoteWithChunks,
     ctx: &mut EmbedRunContext,
-) {
+) -> Result<(), TalonError> {
     ctx.processed = ctx.processed.saturating_add(1);
     let Some(chunk) = note.chunks.first() else {
-        return;
+        return Ok(());
     };
     let response = match client.embed(std::slice::from_ref(&chunk.embedding_text)) {
         Ok(rows) => rows,
         Err(err) => {
+            if let Some(fatal) = fatal_endpoint_failure(&err) {
+                return Err(fatal);
+            }
             fail_note(conn, note, ctx, &format_inference_failure(&err));
-            return;
+            return Ok(());
         }
     };
     let Some(row) = response.into_iter().next() else {
         fail_note(conn, note, ctx, "sidecar returned no embedding rows");
-        return;
+        return Ok(());
     };
     let dims = match u32::try_from(row.len()) {
         Ok(d) if d > 0 => d,
         _ => {
             fail_note(conn, note, ctx, "sidecar returned empty embedding vector");
-            return;
+            return Ok(());
         }
     };
     if let Err(err) = align_embedding_dimensions(conn, ctx, dims) {
         fail_note(conn, note, ctx, &err.to_string());
-        return;
+        return Ok(());
     }
     if ctx.dimension_mismatch {
         fail_note(
@@ -184,7 +205,7 @@ fn embed_single_chunk(
                 expected = ctx.current_dimensions.unwrap_or(0)
             ),
         );
-        return;
+        return Ok(());
     }
     if let Err(err) = persist_chunk_vector(
         conn,
@@ -195,9 +216,10 @@ fn embed_single_chunk(
         &row,
     ) {
         fail_note(conn, note, ctx, &err.to_string());
-        return;
+        return Ok(());
     }
     ctx.succeeded = ctx.succeeded.saturating_add(1);
+    Ok(())
 }
 
 fn embed_multi_chunk(
@@ -206,7 +228,7 @@ fn embed_multi_chunk(
     options: &EmbedPassOptions,
     note: &NoteWithChunks,
     ctx: &mut EmbedRunContext,
-) {
+) -> Result<(), TalonError> {
     ctx.processed = ctx.processed.saturating_add(1);
     let texts: Vec<String> = note
         .chunks
@@ -216,8 +238,11 @@ fn embed_multi_chunk(
     let response = match client.embed_chunked(&[texts]) {
         Ok(r) => r,
         Err(err) => {
+            if let Some(fatal) = fatal_endpoint_failure(&err) {
+                return Err(fatal);
+            }
             fail_note(conn, note, ctx, &format_inference_failure(&err));
-            return;
+            return Ok(());
         }
     };
     let Some((dims, batch)) = first_non_empty_batch(&response) else {
@@ -227,11 +252,11 @@ fn embed_multi_chunk(
             ctx,
             "sidecar returned no usable chunked embeddings",
         );
-        return;
+        return Ok(());
     };
     if let Err(err) = align_embedding_dimensions(conn, ctx, dims) {
         fail_note(conn, note, ctx, &err.to_string());
-        return;
+        return Ok(());
     }
     if ctx.dimension_mismatch {
         fail_note(
@@ -243,13 +268,14 @@ fn embed_multi_chunk(
                 expected = ctx.current_dimensions.unwrap_or(0)
             ),
         );
-        return;
+        return Ok(());
     }
     if let Err(err) = persist_multi_chunk(conn, options, note, batch, dims) {
         fail_note(conn, note, ctx, &err.to_string());
-        return;
+        return Ok(());
     }
     ctx.succeeded = ctx.succeeded.saturating_add(1);
+    Ok(())
 }
 
 fn persist_multi_chunk(

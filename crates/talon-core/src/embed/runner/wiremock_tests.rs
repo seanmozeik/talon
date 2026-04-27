@@ -167,6 +167,70 @@ fn http_error_marks_note_failed_and_records_diagnostic() {
 }
 
 #[test]
+fn missing_single_chunk_endpoint_aborts_embed_pass() {
+    register_sqlite_vec().unwrap();
+    let db = unique_path("missing-single");
+    let conn = open_database(&db).unwrap();
+    seed_note(&conn, "bad.md", &["one"]);
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let server = runtime.block_on(MockServer::start());
+
+    let client = InferenceClient::new(server.uri()).unwrap();
+    let err = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap_err();
+    assert!(
+        err.to_string().contains("embedding endpoint unavailable"),
+        "{err}"
+    );
+    let chunk_status: String = conn
+        .query_row(
+            "SELECT embedding_status FROM chunks WHERE chunk_index = 0",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(chunk_status, "pending");
+
+    drop(conn);
+    cleanup(&db);
+}
+
+#[test]
+fn missing_chunked_endpoint_aborts_embed_pass() {
+    register_sqlite_vec().unwrap();
+    let db = unique_path("missing-chunked");
+    let conn = open_database(&db).unwrap();
+    seed_note(&conn, "bad.md", &["one", "two"]);
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap();
+    let server = runtime.block_on(MockServer::start());
+
+    let client = InferenceClient::new(server.uri()).unwrap();
+    let err = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap_err();
+    assert!(
+        err.to_string().contains("embedding endpoint unavailable"),
+        "{err}"
+    );
+    let pending_count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM chunks WHERE embedding_status = 'pending'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(pending_count, 2);
+
+    drop(conn);
+    cleanup(&db);
+}
+
+#[test]
 fn dimension_mismatch_is_reported() {
     register_sqlite_vec().unwrap();
     let db = unique_path("dim");

@@ -34,14 +34,8 @@ fn fts_tokenchars_cpp_search() {
     )
     .unwrap();
 
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .unwrap();
-
-    let server = rt.block_on(MockServer::start());
+    let (_rt, _server, client) = mock_embed_sidecar();
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
     let config = IndexerConfig::index_all();
 
     let (stats, _) = run_sync(
