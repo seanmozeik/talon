@@ -162,7 +162,7 @@ Update `lib.rs`: replace `pub mod change_tracking;` + `pub mod migrations;` + `p
 
 ---
 
-### Task 4 — Move + split query/recall.rs [ ]
+### Task 4 — Move + split query/recall.rs [x]
 
 Move `crates/talon-core/src/query/recall.rs` (658 lines) into `query/recall/` subdirectory.  
 Split to ≤350 lines per file.  
@@ -171,7 +171,7 @@ Update `query/mod.rs` re-exports.
 
 ---
 
-### Task 5 — Split search/hybrid_pipeline.rs (556 lines) [ ]
+### Task 5 — Split search/hybrid_pipeline.rs (556 lines) [x]
 
 Split within `search/`.  
 Update `search/mod.rs`.  
@@ -179,7 +179,7 @@ Update `search/mod.rs`.
 
 ---
 
-### Task 6 — Split embed/runner.rs (551 lines) [ ]
+### Task 6 — Split embed/runner.rs (551 lines) [x]
 
 Split within `embed/`.  
 Update `embed/mod.rs`.  
@@ -187,7 +187,7 @@ Update `embed/mod.rs`.
 
 ---
 
-### Task 7 — Split links.rs (418 lines) [ ]
+### Task 7 — Split links.rs (418 lines) [x]
 
 Split into submodules within talon-core/src/.  
 Update `lib.rs` re-exports.  
@@ -195,7 +195,7 @@ Update `lib.rs` re-exports.
 
 ---
 
-### Task 8 — Split search/fuse.rs (409 lines) [ ]
+### Task 8 — Split search/fuse.rs (409 lines) [x]
 
 Split within `search/`.  
 Update `search/mod.rs`.  
@@ -203,7 +203,7 @@ Update `search/mod.rs`.
 
 ---
 
-### Task 9 — Split query/meta.rs (407 lines) [ ]
+### Task 9 — Split query/meta.rs (407 lines) [x]
 
 Split within `query/`.  
 Update `query/mod.rs`.  
@@ -211,7 +211,7 @@ Update `query/mod.rs`.
 
 ---
 
-### Task 10 — Split search/match_text.rs (374 lines) [ ]
+### Task 10 — Split search/match_text.rs (374 lines) [x]
 
 Split within `search/`.  
 Update `search/mod.rs`.  
