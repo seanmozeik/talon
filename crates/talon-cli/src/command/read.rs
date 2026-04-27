@@ -17,7 +17,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         bail!("read requires a path");
     }
 
-    let path = rest[0].clone();
+    let path = rest.join(" ");
     let from_line = args
         .from_line
         .map(|n| PositiveCount::new(n, "from-line"))
