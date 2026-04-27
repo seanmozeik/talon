@@ -12,32 +12,32 @@
 # Relative paths in this file are resolved against the config file's
 # directory (i.e. `examples/`), not CWD.
 vault_path = "calle-sur-vault"
-db_path    = "calle-sur-vault/.talon/calle-sur.db"
+db_path = "calle-sur-vault/.talon/calle-sur.db"
 
 include_patterns = ["**/*.md"]
-ignore_patterns  = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
+ignore_patterns = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
 
 [indexer]
-chunk_tokens     = 512
-chunk_overlap    = 64
+chunk_tokens = 512
+chunk_overlap = 64
 chunk_min_tokens = 16
 
 # Inference endpoint. Anything TEI-compatible (text-embeddings-inference,
 # Infinity, ultraclaw's local sidecar) works. Adjust base_url to taste.
 [inference]
-base_url = "http://host.docker.internal:8000"
+base_url = "http://127.0.0.1:8000"
 
 [inference.models]
-query_embedding    = "embed"
+query_embedding = "embed"
 document_embedding = "embed"
-chunk_embedding    = "embed_chunked"
-reranker           = "rerank"
+chunk_embedding = "embed_chunked"
+reranker = "rerank"
 
 # Query-expansion endpoint. OpenAI-compatible chat completions.
 [expansion]
 provider = "openai-compatible"
-base_url = "http://host.docker.internal:8000/v1"
-model    = "bonsai"
+base_url = "http://127.0.0.1:8000/v1"
+model = "bonsai"
 # Optional total completion cap. Leave unset for thinking models.
 # max_tokens = 768
 
@@ -60,41 +60,41 @@ model    = "bonsai"
 # in default search.
 
 [scopes.wiki]
-glob     = ["wiki/**"]
+glob = ["wiki/**"]
 priority = "boosted"
-default  = true
+default = true
 
 [scopes.projects]
-glob     = ["projects/**"]
+glob = ["projects/**"]
 priority = "elevated"
-default  = true
+default = true
 
 [scopes.artifacts]
-glob     = ["artifacts/**"]
+glob = ["artifacts/**"]
 priority = "normal"
-default  = true
+default = true
 
 [scopes.daily]
-glob     = ["daily/**"]
+glob = ["daily/**"]
 priority = "muted"
-default  = false
+default = false
 
 [scopes.raw]
-glob     = ["raw/**"]
+glob = ["raw/**"]
 priority = "muted"
-default  = false
+default = false
 
 [scopes.archive]
-glob     = ["archive/**"]
+glob = ["archive/**"]
 priority = "buried"
-default  = false
+default = false
 
 [scopes.private]
-glob     = ["private/**"]
+glob = ["private/**"]
 priority = "buried"
-default  = false
+default = false
 
 [scopes.meta]
-glob     = ["_meta/**"]
+glob = ["_meta/**"]
 priority = "buried"
-default  = false
+default = false
