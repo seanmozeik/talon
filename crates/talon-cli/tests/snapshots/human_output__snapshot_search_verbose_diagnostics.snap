@@ -1,0 +1,12 @@
+---
+source: crates/talon-cli/tests/human_output.rs
+assertion_line: 130
+expression: "String::from_utf8(buf)?"
+---
+Search  "galaxy brain"  ·  hybrid  ·  expanded  ·  reranked  ·  1 result
+  expanded: galaxy brain notes
+  stages: expansion 142ms  ·  rerank 30c 88ms
+
+  1  Atlas/Overview.md
+     fulltext  ·  0.500
+     snippet

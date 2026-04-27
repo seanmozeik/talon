@@ -18,10 +18,10 @@ use crate::search::{
     MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause,
 };
 
+use super::search_hybrid::{HybridArgs, HybridOutcome, empty_hybrid_response, run_hybrid_mode};
 use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::fuzzy_title::search_fuzzy_title;
-use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline_with_metadata};
 use crate::search::pool;
 use crate::search::types::RawSearchResult;
 use crate::search::vector::search_vector;
@@ -82,6 +82,7 @@ fn run_search_inner(
 
     // Step 1: retrieve wide pool.
     let mut expanded_queries = Vec::new();
+    let mut diagnostics: Option<crate::search::SearchDiagnostics> = None;
     let raw_results: Vec<RawSearchResult> = match input.mode {
         SearchMode::Hybrid if fast => search_bm25(
             conn,
@@ -89,36 +90,30 @@ fn run_search_inner(
             pool::bm25_pool(limit, candidate_floor),
             DEFAULT_SNIPPET_LENGTH,
         ),
-        SearchMode::Hybrid => {
-            let Some(inference) = inference else {
-                return SearchResponse {
-                    vault: None,
-                    query: Some(query),
-                    mode: input.mode,
-                    fast,
-                    expanded: false,
-                    expanded_queries: Vec::new(),
-                    reranked: false,
-                    index_version: "1".to_string(),
-                    total: 0,
-                    results: Vec::new(),
-                };
-            };
-            let opts = HybridPipelineOptions {
-                limit,
-                candidate_limit: candidate_floor,
-                fast,
-                queries: input.queries.clone(),
-                intent: input.intent.clone(),
-                hooks: crate::search::SearchHooks::default(),
-            };
-            let output =
-                run_hybrid_pipeline_with_metadata(conn, inference, expansion, &query, &opts);
-            if include_expanded_queries {
-                expanded_queries = output.expanded_queries;
+        SearchMode::Hybrid => match run_hybrid_mode(&HybridArgs {
+            conn,
+            input,
+            inference,
+            expansion,
+            query: &query,
+            limit,
+            candidate_floor,
+            fast,
+            include_expanded_queries,
+        }) {
+            HybridOutcome::NoInference => {
+                return empty_hybrid_response(query, input.mode, fast);
             }
-            output.results
-        }
+            HybridOutcome::Ok {
+                results,
+                expanded_queries: ex,
+                diagnostics: diag,
+            } => {
+                expanded_queries = ex;
+                diagnostics = diag;
+                results
+            }
+        },
         SearchMode::Semantic => {
             let Some(inference) = inference else {
                 return SearchResponse::empty_input();
@@ -173,6 +168,7 @@ fn run_search_inner(
             .into_iter()
             .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested, &query))
             .collect(),
+        diagnostics,
     };
     if use_cache {
         search_cache::store(conn, input, config, &response);

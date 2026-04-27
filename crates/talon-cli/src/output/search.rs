@@ -3,7 +3,7 @@ use super::style::{cs, wrap_words};
 use anstyle::{AnsiColor, Effects, Style};
 use eyre::Result;
 use std::io::Write;
-use talon_core::SearchResult;
+use talon_core::{SearchDiagnostics, SearchResult};
 
 /// Formats search results as compact cards for human reading.
 ///
@@ -49,6 +49,11 @@ pub fn format_search_human(
             resp.expanded_queries.join("  ·  ")
         )?;
     }
+    if let Some(diag) = resp.diagnostics.as_ref()
+        && let Some(line) = format_diagnostics_line(diag)
+    {
+        writeln!(w, "  {dim}{line}{dim:#}")?;
+    }
 
     if resp.results.is_empty() {
         writeln!(w)?;
@@ -61,6 +66,27 @@ pub fn format_search_human(
         format_search_card(w, i + 1, r, opts, &bold, &dim)?;
     }
     Ok(())
+}
+
+fn format_diagnostics_line(diag: &SearchDiagnostics) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    if let Some(score) = diag.strong_signal_score {
+        parts.push(format!("strong-signal {score:.2} (skipped expansion)"));
+    } else if let Some(ms) = diag.expansion_ms {
+        parts.push(format!("expansion {ms}ms"));
+    }
+    if let (Some(count), Some(ms)) = (diag.rerank_candidates, diag.rerank_ms) {
+        parts.push(format!("rerank {count}c {ms}ms"));
+    } else if let Some(ms) = diag.rerank_ms {
+        parts.push(format!("rerank {ms}ms"));
+    } else if let Some(count) = diag.rerank_candidates {
+        parts.push(format!("rerank {count}c"));
+    }
+    if parts.is_empty() {
+        None
+    } else {
+        Some(format!("stages: {}", parts.join("  ·  ")))
+    }
 }
 
 fn format_search_card(

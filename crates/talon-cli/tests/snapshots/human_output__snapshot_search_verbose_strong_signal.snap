@@ -1,0 +1,9 @@
+---
+source: crates/talon-cli/tests/human_output.rs
+assertion_line: 156
+expression: "String::from_utf8(buf)?"
+---
+Search  "zettelkasten"  ·  hybrid  ·  0 results
+  stages: strong-signal 0.93 (skipped expansion)
+
+  No results found.

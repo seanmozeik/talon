@@ -61,8 +61,8 @@ pub use query::{
     run_search_with_expanded_queries,
 };
 pub use search::{
-    AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchHooks, SearchInput,
-    SearchMode, SearchResponse, SearchResult, WhereClause, WhereOperator,
+    AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchDiagnostics,
+    SearchHooks, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause, WhereOperator,
 };
 pub use store::open_database;
 pub use sync::{

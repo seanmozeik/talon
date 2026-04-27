@@ -50,12 +50,20 @@ pub struct HybridPipelineOptions {
 }
 
 /// Results plus query-expansion metadata from the hybrid pipeline.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct HybridPipelineOutput {
     /// Ranked raw search results.
     pub results: Vec<RawSearchResult>,
     /// Expansion variants used for retrieval, excluding the original query.
     pub expanded_queries: Vec<String>,
+    /// Wall-clock time spent on LLM expansion, when expansion ran.
+    pub expansion_ms: Option<u64>,
+    /// Top BM25 probe score that triggered the strong-signal bypass.
+    pub strong_signal_score: Option<f64>,
+    /// Candidates submitted to the reranker, when rerank ran.
+    pub rerank_candidates: Option<u32>,
+    /// Wall-clock time spent reranking, when rerank ran.
+    pub rerank_ms: Option<u64>,
 }
 
 /// Runs the full hybrid search pipeline:
@@ -107,9 +115,14 @@ pub fn run_hybrid_pipeline_with_metadata(
     // Algorithm ported verbatim from qmd — store.ts:4025-4034
     let probe_decisive = options.intent.is_none() && estimate_strong_signal(&bm25_probe);
 
-    if probe_decisive && let Some(top) = bm25_probe.first() {
-        options.hooks.emit_strong_signal(top.score);
-    }
+    let strong_signal_score = if probe_decisive {
+        bm25_probe.first().map(|top| {
+            options.hooks.emit_strong_signal(top.score);
+            top.score
+        })
+    } else {
+        None
+    };
 
     // A decisive probe or fast mode skips both expansion and reranking.
     let skip_expensive = options.fast || probe_decisive;
@@ -117,6 +130,7 @@ pub fn run_hybrid_pipeline_with_metadata(
     let skip_llm = skip_expensive || has_exact_alias;
 
     // Resolve variants: supplied → deduped supplied; bypass → []; else → LLM.
+    let mut expansion_ms: Option<u64> = None;
     let variants: Vec<String> = if has_supplied {
         dedupe_query_variants(&options.queries)
     } else if skip_llm {
@@ -129,6 +143,7 @@ pub fn run_hybrid_pipeline_with_metadata(
             .unwrap_or_default();
         let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         options.hooks.emit_expand_end(elapsed_ms);
+        expansion_ms = Some(elapsed_ms);
         expanded
     } else {
         vec![]
@@ -181,25 +196,44 @@ pub fn run_hybrid_pipeline_with_metadata(
     let fused = fuse_hybrid_result_lists(&list_refs, &variant_weights, rrf_size as usize);
 
     // Rerank unless the probe gave us high confidence or fast mode is active.
-    let results = if skip_expensive {
-        fused
+    let (results, rerank_candidates, rerank_ms) = if skip_expensive {
+        (fused, None, None)
     } else {
-        rerank_candidates_with_intent(IntentRerankOptions {
-            conn,
-            inference,
-            query,
-            intent: options.intent.as_deref(),
-            candidates: fused,
-            top_k: RERANK_TOP_K,
-            hooks: &options.hooks,
-            db_version: read_db_version(conn),
-        })
+        run_rerank_stage(conn, inference, query, options, fused)
     };
 
     HybridPipelineOutput {
         results,
         expanded_queries: variants,
+        expansion_ms,
+        strong_signal_score,
+        rerank_candidates,
+        rerank_ms,
     }
+}
+
+fn run_rerank_stage(
+    conn: &Connection,
+    inference: &InferenceClient,
+    query: &str,
+    options: &HybridPipelineOptions,
+    fused: Vec<RawSearchResult>,
+) -> (Vec<RawSearchResult>, Option<u32>, Option<u64>) {
+    let candidate_count =
+        u32::try_from(fused.len().min(RERANK_TOP_K as usize)).unwrap_or(RERANK_TOP_K);
+    let started = Instant::now();
+    let reranked = rerank_candidates_with_intent(IntentRerankOptions {
+        conn,
+        inference,
+        query,
+        intent: options.intent.as_deref(),
+        candidates: fused,
+        top_k: RERANK_TOP_K,
+        hooks: &options.hooks,
+        db_version: read_db_version(conn),
+    });
+    let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    (reranked, Some(candidate_count), Some(elapsed))
 }
 
 /// Runs per-signal weighted RRF on the three [`HybridSingleResult`] buckets

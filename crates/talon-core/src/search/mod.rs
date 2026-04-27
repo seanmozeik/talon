@@ -56,7 +56,9 @@ pub use input::{
     Direction, FrontmatterFilter, FrontmatterValue, FrontmatterValueType, SearchInput, SearchMode,
     WhereClause, WhereOperator,
 };
-pub use output::{AnchorKind, MatchAnchor, MatchKind, SearchResponse, SearchResult};
+pub use output::{
+    AnchorKind, MatchAnchor, MatchKind, SearchDiagnostics, SearchResponse, SearchResult,
+};
 pub use rerank_pipeline::rerank_candidates;
 pub use rrf::{RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 pub use text_fts::{

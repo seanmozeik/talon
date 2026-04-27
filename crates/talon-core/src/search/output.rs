@@ -78,6 +78,41 @@ pub struct SearchResult {
     pub preview_anchors: Option<Vec<MatchAnchor>>,
 }
 
+/// Pipeline-stage diagnostics, populated only when verbose is requested.
+///
+/// All fields are optional so that short-circuited stages (fast mode, decisive
+/// BM25 probe, missing rerank inference) simply omit their entry rather than
+/// reporting zeroes. Mirrors qmd's stderr stage timings (qmd `cli/qmd.ts:2407`)
+/// in a structured form.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchDiagnostics {
+    /// Wall-clock time spent on LLM query expansion.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expansion_ms: Option<u64>,
+    /// Top BM25 probe score that bypassed expansion (when present, the LLM
+    /// expansion stage was skipped entirely).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub strong_signal_score: Option<f64>,
+    /// Number of candidates sent to the cross-encoder reranker.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rerank_candidates: Option<u32>,
+    /// Wall-clock time spent reranking.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rerank_ms: Option<u64>,
+}
+
+impl SearchDiagnostics {
+    /// Returns `true` when no stage produced a measurement.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.expansion_ms.is_none()
+            && self.strong_signal_score.is_none()
+            && self.rerank_candidates.is_none()
+            && self.rerank_ms.is_none()
+    }
+}
+
 /// Search response.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,6 +139,9 @@ pub struct SearchResponse {
     pub total: u32,
     /// Search results.
     pub results: Vec<SearchResult>,
+    /// Pipeline-stage diagnostics, populated only when verbose is requested.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub diagnostics: Option<SearchDiagnostics>,
 }
 
 impl SearchResponse {
@@ -121,6 +159,7 @@ impl SearchResponse {
             index_version: "1".to_string(),
             total: 0,
             results: Vec::new(),
+            diagnostics: None,
         }
     }
 }

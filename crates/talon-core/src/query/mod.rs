@@ -13,6 +13,7 @@ pub mod recall;
 pub mod recall_scoring;
 pub mod related;
 pub mod search;
+mod search_hybrid;
 pub mod status;
 pub(crate) mod where_filter;
 

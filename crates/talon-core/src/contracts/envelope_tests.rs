@@ -48,6 +48,7 @@ fn search_success_round_trip() {
         index_version: "1".to_string(),
         total: 3,
         results: Vec::new(),
+        diagnostics: None,
     });
     let envelope = TalonEnvelope::ok("search", data, success_meta());
     let json = serde_json::to_string(&envelope).unwrap();

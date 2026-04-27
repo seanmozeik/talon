@@ -8,8 +8,8 @@ use talon_cli::output::{
     RenderOptions, format_lint_human, format_search_human, format_status_human, format_sync_human,
 };
 use talon_core::{
-    ContainerPath, IndexStats, LintCheck, LintFinding, LintResponse, MatchKind, SearchMode,
-    SearchResponse, SearchResult, StatusResponse, StatusState, SyncResponse, VaultPath,
+    ContainerPath, IndexStats, LintCheck, LintFinding, LintResponse, MatchKind, SearchDiagnostics,
+    SearchMode, SearchResponse, SearchResult, StatusResponse, StatusState, SyncResponse, VaultPath,
 };
 
 const fn opts() -> RenderOptions {
@@ -42,6 +42,7 @@ fn snapshot_search_empty() -> Result<()> {
         index_version: "1".to_string(),
         total: 0,
         results: vec![],
+        diagnostics: None,
     };
     let mut buf = Vec::new();
     format_search_human(&mut buf, &resp, opts())?;
@@ -87,6 +88,68 @@ fn snapshot_search_results() -> Result<()> {
                 preview_anchors: None,
             },
         ],
+        diagnostics: None,
+    };
+    let mut buf = Vec::new();
+    format_search_human(&mut buf, &resp, opts())?;
+    insta::assert_snapshot!(String::from_utf8(buf)?);
+    Ok(())
+}
+
+#[test]
+fn snapshot_search_verbose_diagnostics() -> Result<()> {
+    let resp = SearchResponse {
+        vault: None,
+        query: Some("galaxy brain".to_string()),
+        mode: SearchMode::Hybrid,
+        fast: false,
+        expanded: true,
+        expanded_queries: vec!["galaxy brain notes".to_string()],
+        reranked: true,
+        index_version: "1".to_string(),
+        total: 1,
+        results: vec![SearchResult {
+            vault_path: make_vault_path("Atlas/Overview.md")?,
+            title: "Atlas Overview".to_string(),
+            snippet: "snippet".to_string(),
+            score: 0.5,
+            raw_score: None,
+            match_kind: MatchKind::Fulltext,
+            scope: None,
+            preview_anchors: None,
+        }],
+        diagnostics: Some(SearchDiagnostics {
+            expansion_ms: Some(142),
+            strong_signal_score: None,
+            rerank_candidates: Some(30),
+            rerank_ms: Some(88),
+        }),
+    };
+    let mut buf = Vec::new();
+    format_search_human(&mut buf, &resp, opts())?;
+    insta::assert_snapshot!(String::from_utf8(buf)?);
+    Ok(())
+}
+
+#[test]
+fn snapshot_search_verbose_strong_signal() -> Result<()> {
+    let resp = SearchResponse {
+        vault: None,
+        query: Some("zettelkasten".to_string()),
+        mode: SearchMode::Hybrid,
+        fast: false,
+        expanded: false,
+        expanded_queries: Vec::new(),
+        reranked: false,
+        index_version: "1".to_string(),
+        total: 0,
+        results: vec![],
+        diagnostics: Some(SearchDiagnostics {
+            expansion_ms: None,
+            strong_signal_score: Some(0.93),
+            rerank_candidates: None,
+            rerank_ms: None,
+        }),
     };
     let mut buf = Vec::new();
     format_search_human(&mut buf, &resp, opts())?;
