@@ -210,6 +210,19 @@ pub fn blend_rerank_candidates(
     candidates: &[RawSearchResult],
     rerank_scores: &[Option<f64>],
 ) -> Vec<RawSearchResult> {
+    let rerank_probabilities: Vec<Option<f64>> = rerank_scores
+        .iter()
+        .map(|score| score.map(sigmoid))
+        .collect();
+    blend_rerank_probabilities(candidates, &rerank_probabilities)
+}
+
+/// Blends candidates with already sigmoid-normalized rerank scores.
+#[must_use]
+pub fn blend_rerank_probabilities(
+    candidates: &[RawSearchResult],
+    rerank_probabilities: &[Option<f64>],
+) -> Vec<RawSearchResult> {
     let hybrid_values: Vec<f64> = candidates
         .iter()
         .map(|c| c.scores.hybrid.unwrap_or(c.score))
@@ -228,13 +241,11 @@ pub fn blend_rerank_candidates(
         .iter()
         .enumerate()
         .map(|(rank, candidate)| {
-            let Some(logit) = rerank_scores.get(rank).copied().flatten() else {
+            let Some(rerank01) = rerank_probabilities.get(rank).copied().flatten() else {
                 return candidate.clone();
             };
             let base_hybrid = candidate.scores.hybrid.unwrap_or(candidate.score);
             let hybrid01 = clamp01((base_hybrid - min_h) / range_h);
-            // Sigmoid'd value, not raw logit — see US-005 / OHS searcher.ts:1319.
-            let rerank01 = sigmoid(logit);
             let w = rerank_weight_for_rank(rank);
             // `w * hybrid01 + (1-w) * rerank01`, written as an FMA.
             let final_score = clamp01(f64::mul_add(w, hybrid01 - rerank01, rerank01));

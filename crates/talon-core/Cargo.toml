@@ -30,6 +30,7 @@ tracing.workspace = true
 unicode-normalization.workspace = true
 walkdir.workspace = true
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Threading"] }
+xxhash-rust.workspace = true
 
 [dev-dependencies]
 criterion = { version = "0.5", default-features = false, features = ["html_reports"] }

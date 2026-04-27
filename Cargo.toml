@@ -51,6 +51,7 @@ walkdir = "2.5.0"
 insta = "1.43.1"
 wiremock = "0.6.5"
 windows-sys = "0.61.2"
+xxhash-rust = { version = "0.8.15", features = ["xxh3"] }
 
 [workspace.lints.rust]
 missing_debug_implementations = "warn"
