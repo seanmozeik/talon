@@ -28,5 +28,5 @@ pub use output::{
 pub use read::run_read;
 pub use recall::run_recall;
 pub use related::{RelatedInput, RelatedResponse, RelatedResult, RelationKind, find_related};
-pub use search::run_search;
+pub use search::{run_search, run_search_with_expanded_queries};
 pub use status::query_status;

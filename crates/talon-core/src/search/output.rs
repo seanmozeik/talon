@@ -93,6 +93,9 @@ pub struct SearchResponse {
     pub fast: bool,
     /// Whether query expansion ran.
     pub expanded: bool,
+    /// Query variants produced by expansion or supplied explicitly.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub expanded_queries: Vec<String>,
     /// Whether reranking ran.
     pub reranked: bool,
     /// Index version.
@@ -113,6 +116,7 @@ impl SearchResponse {
             mode: SearchMode::Hybrid,
             fast: false,
             expanded: false,
+            expanded_queries: Vec::new(),
             reranked: false,
             index_version: "1".to_string(),
             total: 0,

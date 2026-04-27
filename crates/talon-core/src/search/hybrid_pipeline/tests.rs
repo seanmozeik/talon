@@ -13,7 +13,6 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
     let rt = runtime();
     let server = rt.block_on(MockServer::start());
 
-    // /embed: returns a dummy vector for each query call.
     rt.block_on(
         Mock::given(method("POST"))
             .and(path("/embed"))
@@ -21,7 +20,6 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
             .mount(&server),
     );
 
-    // /chat/completions: returns two expansion variants.
     rt.block_on(
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
@@ -35,7 +33,6 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
             .mount(&server),
     );
 
-    // /rerank: boosts the target note to rank 0 with high score.
     rt.block_on(
         Mock::given(method("POST"))
             .and(path("/rerank"))
@@ -48,7 +45,6 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
     let db_path = unique_db_path();
     let conn = open_database(&db_path).unwrap();
 
-    // Seed: a few background notes + one target.
     insert_note(
         &conn,
         "unrelated-a.md",
@@ -80,11 +76,22 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
         hooks: SearchHooks::default(),
     };
 
-    let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "atomic notes", &opts);
+    let output = run_hybrid_pipeline_with_metadata(
+        &conn,
+        &inference,
+        Some(&expansion),
+        "atomic notes",
+        &opts,
+    );
+    let results = output.results;
 
     assert!(
         !results.is_empty(),
         "pipeline must return at least one result"
+    );
+    assert_eq!(
+        output.expanded_queries,
+        vec!["atomic ideas", "note taking systems"]
     );
     assert!(
         results.iter().any(|r| r.path == "target.md"),
@@ -100,7 +107,6 @@ fn strong_signal_probe_skips_expansion_and_rerank() {
     let rt = runtime();
     let server = rt.block_on(MockServer::start());
 
-    // Only /embed is mocked; /chat/completions and /rerank are NOT registered.
     rt.block_on(
         Mock::given(method("POST"))
             .and(path("/embed"))

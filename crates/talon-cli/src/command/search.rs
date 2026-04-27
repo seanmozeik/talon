@@ -9,7 +9,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     ExpansionClient, ResponseMeta, SearchInput, SearchMode, TalonEnvelope, TalonResponseData,
-    inference::InferenceClient, open_database, run_search, vec_ext::register_sqlite_vec,
+    inference::InferenceClient, open_database, run_search, run_search_with_expanded_queries,
+    vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
@@ -20,6 +21,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     let query = rest.join(" ");
     let mode = args.mode.unwrap_or_default();
     let fast = args.fast.enabled();
+    let include_expanded_queries = args.verbose.enabled() && !args.agent.enabled();
     let config = config::load_config(args.config_file.as_deref()).ok();
 
     let where_clauses: Vec<talon_core::WhereClause> = args
@@ -45,7 +47,14 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
 
     let work = async move {
         tokio::task::spawn_blocking(move || {
-            execute_search(input, config.as_ref(), started, fast, mode)
+            execute_search(
+                input,
+                config.as_ref(),
+                started,
+                fast,
+                mode,
+                include_expanded_queries,
+            )
         })
         .await
         .wrap_err("search task join failed")?
@@ -65,6 +74,7 @@ fn execute_search(
     started: Instant,
     fast: bool,
     mode: SearchMode,
+    include_expanded_queries: bool,
 ) -> Result<TalonEnvelope> {
     let db_path: PathBuf = config
         .as_ref()
@@ -110,13 +120,23 @@ fn execute_search(
             (inference, expansion)
         };
 
-    let mut response = run_search(
-        &conn,
-        &input,
-        inference.as_ref(),
-        expansion.as_ref(),
-        config,
-    );
+    let mut response = if include_expanded_queries {
+        run_search_with_expanded_queries(
+            &conn,
+            &input,
+            inference.as_ref(),
+            expansion.as_ref(),
+            config,
+        )
+    } else {
+        run_search(
+            &conn,
+            &input,
+            inference.as_ref(),
+            expansion.as_ref(),
+            config,
+        )
+    };
     response.vault = vault_container_path(config);
 
     let meta = ResponseMeta {

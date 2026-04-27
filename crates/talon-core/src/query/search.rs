@@ -21,7 +21,7 @@ use crate::search::{
 use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::fuzzy_title::search_fuzzy_title;
-use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
+use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline_with_metadata};
 use crate::search::pool;
 use crate::search::types::RawSearchResult;
 use crate::search::vector::search_vector;
@@ -36,10 +36,6 @@ use crate::search::vector::search_vector;
 ///
 /// Post-filters (`--where`, `--since`) and scope priority multiplication are
 /// applied after retrieval.
-///
-/// # Errors
-///
-/// Returns an error if the query is empty or the mode is invalid.
 #[allow(clippy::missing_errors_doc)]
 pub fn run_search(
     conn: &Connection,
@@ -48,12 +44,34 @@ pub fn run_search(
     expansion: Option<&ExpansionClient>,
     config: Option<&TalonConfig>,
 ) -> SearchResponse {
+    run_search_inner(conn, input, inference, expansion, config, false)
+}
+
+#[allow(clippy::missing_errors_doc)]
+pub fn run_search_with_expanded_queries(
+    conn: &Connection,
+    input: &SearchInput,
+    inference: Option<&InferenceClient>,
+    expansion: Option<&ExpansionClient>,
+    config: Option<&TalonConfig>,
+) -> SearchResponse {
+    run_search_inner(conn, input, inference, expansion, config, true)
+}
+
+fn run_search_inner(
+    conn: &Connection,
+    input: &SearchInput,
+    inference: Option<&InferenceClient>,
+    expansion: Option<&ExpansionClient>,
+    config: Option<&TalonConfig>,
+    include_expanded_queries: bool,
+) -> SearchResponse {
     let query = match &input.query {
         Some(q) if !q.trim().is_empty() => q.clone(),
         _ => return SearchResponse::empty_input(),
     };
 
-    let use_cache = inference.is_some();
+    let use_cache = inference.is_some() && !include_expanded_queries;
     if use_cache && let Some(response) = search_cache::lookup(conn, input, config) {
         return response;
     }
@@ -63,6 +81,7 @@ pub fn run_search(
     let fast = input.fast;
 
     // Step 1: retrieve wide pool.
+    let mut expanded_queries = Vec::new();
     let raw_results: Vec<RawSearchResult> = match input.mode {
         SearchMode::Hybrid if fast => search_bm25(
             conn,
@@ -78,6 +97,7 @@ pub fn run_search(
                     mode: input.mode,
                     fast,
                     expanded: false,
+                    expanded_queries: Vec::new(),
                     reranked: false,
                     index_version: "1".to_string(),
                     total: 0,
@@ -92,7 +112,12 @@ pub fn run_search(
                 intent: input.intent.clone(),
                 hooks: crate::search::SearchHooks::default(),
             };
-            run_hybrid_pipeline(conn, inference, expansion, &query, &opts)
+            let output =
+                run_hybrid_pipeline_with_metadata(conn, inference, expansion, &query, &opts);
+            if include_expanded_queries {
+                expanded_queries = output.expanded_queries;
+            }
+            output.results
         }
         SearchMode::Semantic => {
             let Some(inference) = inference else {
@@ -140,6 +165,7 @@ pub fn run_search(
         mode: input.mode,
         fast,
         expanded,
+        expanded_queries,
         reranked,
         index_version: "1".to_string(),
         total,

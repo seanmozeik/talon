@@ -42,6 +42,13 @@ pub fn format_search_human(
         "{heading}Search{heading:#}  {bold}\"{q}\"{bold:#}  ·  {dim}{meta}{dim:#}  ·  {} {result_word}",
         resp.total
     )?;
+    if !resp.expanded_queries.is_empty() {
+        writeln!(
+            w,
+            "  {dim}expanded: {}{dim:#}",
+            resp.expanded_queries.join("  ·  ")
+        )?;
+    }
 
     if resp.results.is_empty() {
         writeln!(w)?;

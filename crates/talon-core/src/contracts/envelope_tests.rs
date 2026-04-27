@@ -43,6 +43,7 @@ fn search_success_round_trip() {
         mode: SearchMode::Hybrid,
         fast: false,
         expanded: true,
+        expanded_queries: vec!["hello docs".to_string()],
         reranked: true,
         index_version: "1".to_string(),
         total: 3,

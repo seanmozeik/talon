@@ -37,6 +37,7 @@ fn snapshot_search_empty() -> Result<()> {
         mode: SearchMode::Hybrid,
         fast: false,
         expanded: false,
+        expanded_queries: Vec::new(),
         reranked: false,
         index_version: "1".to_string(),
         total: 0,
@@ -56,6 +57,10 @@ fn snapshot_search_results() -> Result<()> {
         mode: SearchMode::Hybrid,
         fast: false,
         expanded: true,
+        expanded_queries: vec![
+            "galaxy brain notes".to_string(),
+            "neural pathway atlas".to_string(),
+        ],
         reranked: true,
         index_version: "1".to_string(),
         total: 2,

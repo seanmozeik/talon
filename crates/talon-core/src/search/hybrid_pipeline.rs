@@ -50,6 +50,15 @@ pub struct HybridPipelineOptions {
     pub hooks: SearchHooks,
 }
 
+/// Results plus query-expansion metadata from the hybrid pipeline.
+#[derive(Debug, Clone)]
+pub struct HybridPipelineOutput {
+    /// Ranked raw search results.
+    pub results: Vec<RawSearchResult>,
+    /// Expansion variants used for retrieval, excluding the original query.
+    pub expanded_queries: Vec<String>,
+}
+
 /// Runs the full hybrid search pipeline:
 ///   probe → optional LLM expansion → per-variant retrieval → fusion → rerank.
 ///
@@ -72,6 +81,18 @@ pub fn run_hybrid_pipeline(
     query: &str,
     options: &HybridPipelineOptions,
 ) -> Vec<RawSearchResult> {
+    run_hybrid_pipeline_with_metadata(conn, inference, expansion, query, options).results
+}
+
+/// Runs the full hybrid search pipeline and returns expansion metadata.
+#[must_use]
+pub fn run_hybrid_pipeline_with_metadata(
+    conn: &Connection,
+    inference: &InferenceClient,
+    expansion: Option<&ExpansionClient>,
+    query: &str,
+    options: &HybridPipelineOptions,
+) -> HybridPipelineOutput {
     // Lexical-only probe to detect high-confidence matches before paying for
     // the embedding + expansion + rerank round-trips.
     let bm25_probe = search_bm25(
@@ -116,13 +137,13 @@ pub fn run_hybrid_pipeline(
         if variants.is_empty() {
             vec![query.to_owned()]
         } else {
-            variants
+            variants.clone()
         }
     } else if variants.is_empty() {
         vec![query.to_owned()]
     } else {
         let mut v = vec![query.to_owned()];
-        v.extend(variants);
+        v.extend(variants.iter().cloned());
         v
     };
 
@@ -158,7 +179,7 @@ pub fn run_hybrid_pipeline(
     let fused = fuse_hybrid_result_lists(&list_refs, &variant_weights, rrf_size as usize);
 
     // Rerank unless the probe gave us high confidence or fast mode is active.
-    if skip_expensive {
+    let results = if skip_expensive {
         fused
     } else {
         rerank_candidates_with_intent(IntentRerankOptions {
@@ -171,6 +192,11 @@ pub fn run_hybrid_pipeline(
             hooks: &options.hooks,
             db_version: read_db_version(conn),
         })
+    };
+
+    HybridPipelineOutput {
+        results,
+        expanded_queries: variants,
     }
 }
 

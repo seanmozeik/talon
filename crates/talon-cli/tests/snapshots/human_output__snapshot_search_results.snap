@@ -3,6 +3,7 @@ source: crates/talon-cli/tests/human_output.rs
 expression: "String::from_utf8(buf).unwrap()"
 ---
 Search  "galaxy brain"  ·  hybrid  ·  expanded  ·  reranked  ·  2 results
+  expanded: galaxy brain notes  ·  neural pathway atlas
 
   1  Atlas/Overview.md
      fulltext  ·  0.847

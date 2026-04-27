@@ -47,7 +47,10 @@ pub use fuse::{
 };
 pub use fuzzy_title::TitleSearchParts;
 pub use hooks::SearchHooks;
-pub use hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
+pub use hybrid_pipeline::{
+    HybridPipelineOptions, HybridPipelineOutput, run_hybrid_pipeline,
+    run_hybrid_pipeline_with_metadata,
+};
 pub use hybrid_single::{HybridSingleResult, run_hybrid_single};
 pub use input::{
     Direction, FrontmatterFilter, FrontmatterValue, FrontmatterValueType, SearchInput, SearchMode,

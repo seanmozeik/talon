@@ -58,6 +58,7 @@ pub use query::{
     ReadResult, RecallFormat, RecallInput, RecallResponse, RelatedInput, RelatedResponse,
     RelatedResult, RelationKind, TombstoneEntry, VaultRecall, find_related, query_changes,
     query_lint, query_meta, query_status, run_read, run_recall, run_search,
+    run_search_with_expanded_queries,
 };
 pub use search::{
     AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchHooks, SearchInput,

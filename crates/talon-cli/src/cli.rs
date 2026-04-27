@@ -26,6 +26,8 @@ pub struct CliArgs {
     pub fast: FastFlag,
     /// Force vector rebuild during sync.
     pub force: ForceFlag,
+    /// Include extra diagnostics in non-agent output.
+    pub verbose: VerboseFlag,
     /// Optional config file path.
     pub config_file: Option<PathBuf>,
     /// Search mode.
@@ -120,6 +122,7 @@ flag_type!(JsonFlag);
 flag_type!(RawFlag);
 flag_type!(FastFlag);
 flag_type!(ForceFlag);
+flag_type!(VerboseFlag);
 flag_type!(AnchorsFlag);
 
 /// Parses CLI args or exits through `bpaf`.
@@ -154,6 +157,8 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
     let raw = switch_flag("raw", "Read raw note content.").map(RawFlag::from);
     let fast = switch_flag("fast", "Use fast mode for search or sync.").map(FastFlag::from);
     let force = switch_flag("force", "Force vector rebuild during sync.").map(ForceFlag::from);
+    let verbose =
+        switch_flag("verbose", "Include diagnostic details in output.").map(VerboseFlag::from);
     let config_file = short('c')
         .long("config")
         .help("Read config from PATH.")
@@ -218,6 +223,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         raw,
         fast,
         force,
+        verbose,
         config_file,
         mode,
         limit,
