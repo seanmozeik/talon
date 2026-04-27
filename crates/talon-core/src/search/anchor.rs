@@ -14,7 +14,7 @@
 
 use rusqlite::Connection;
 
-use crate::tool::{AnchorKind, MatchAnchor};
+use crate::search::{AnchorKind, MatchAnchor};
 
 use super::match_text::build_match_text;
 use super::types::RawSearchResult;

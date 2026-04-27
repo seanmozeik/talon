@@ -1,6 +1,7 @@
 //! Lint checks for vault graph health.
 
-use crate::tool::{LintCheck, LintFinding, LintInput, LintResponse, VaultPath};
+use crate::contracts::VaultPath;
+use crate::indexing::{LintCheck, LintFinding, LintInput, LintResponse};
 use rusqlite::Connection;
 
 pub fn query_lint(conn: &Connection, input: &LintInput) -> LintResponse {

@@ -1,16 +1,71 @@
 //! Related-notes handler for the Talon CLI.
-//!
-//! Traverses the link graph from a source note up to a configured depth,
-//! returning directly connected notes (outgoing links, backlinks, or both).
 
 use std::collections::{HashSet, VecDeque};
 
 use rusqlite::{Connection, params};
+use serde::{Deserialize, Serialize};
 
 use crate::constants::RELATED_MAX_DEPTH;
-use crate::tool::{
-    Direction, RelatedInput, RelatedResponse, RelatedResult, RelationKind, VaultPath,
-};
+use crate::contracts::VaultPath;
+use crate::search::Direction;
+
+/// Related-note request.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedInput {
+    /// Path to find related notes for.
+    pub path: String,
+    /// Graph traversal depth.
+    #[serde(default = "default_depth")]
+    pub depth: u8,
+    /// Traversal direction.
+    #[serde(default)]
+    pub direction: Direction,
+    /// Scope names to include.
+    #[serde(default)]
+    pub scope: Vec<String>,
+    /// Scope names to search exclusively.
+    #[serde(default)]
+    pub scope_only: Vec<String>,
+}
+
+/// Related-note response.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedResponse {
+    /// Source path.
+    pub path: VaultPath,
+    /// Direction traversed.
+    pub direction: Direction,
+    /// Related notes.
+    pub results: Vec<RelatedResult>,
+}
+
+/// A single related-note result.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RelatedResult {
+    /// Vault-relative path.
+    pub vault_path: VaultPath,
+    /// Display title.
+    pub title: String,
+    /// Link text from source.
+    pub link_text: String,
+    /// Direction: outgoing or backlink.
+    pub relation: RelationKind,
+}
+
+/// Relation kind (outgoing vs backlink).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RelationKind {
+    Outgoing,
+    Backlink,
+}
+
+const fn default_depth() -> u8 {
+    crate::constants::RELATED_DEFAULT_DEPTH
+}
 
 /// Traverses the link graph from `input.path` and returns related notes.
 ///
@@ -159,7 +214,7 @@ mod tests {
 
     use super::*;
     use crate::migrations::run_migrations;
-    use crate::tool::Direction;
+    use crate::search::Direction;
 
     fn fresh_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();

@@ -7,11 +7,13 @@ pub mod change_tracking;
 pub mod chunker;
 pub mod config;
 pub mod constants;
+pub mod contracts;
 pub mod embed;
 pub mod error;
 pub mod expansion;
 pub mod frontmatter;
 pub mod indexer;
+pub mod indexing;
 pub mod inference;
 pub mod links;
 pub mod migrations;
@@ -20,12 +22,12 @@ pub mod search;
 pub mod store;
 pub mod sync;
 pub mod text;
-pub mod tool;
 pub mod vec_ext;
 
 pub use change_tracking::{
-    ChangeEntry, ChangeFeed, ChangeIndex, FileChangeState, FileState, IndexMetadata,
-    TOMBSTONE_RETENTION_MS, TombstoneEntry, now_ms, parse_since,
+    ChangeEntry as ChangeTrackingEntry, ChangeFeed, ChangeIndex, FileChangeState, FileState,
+    IndexMetadata, TOMBSTONE_RETENTION_MS, TombstoneEntry as ChangeTrackingTombstoneEntry, now_ms,
+    parse_since,
 };
 pub use chunker::{
     NoteChunk, build_embedding_text, build_heading_path, chunk_markdown, make_chunk_hash,
@@ -33,6 +35,10 @@ pub use chunker::{
 pub use config::{
     ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, Scope, ScopeGlob,
     ScopePriority, ScopeResolution, ScopesConfig, TalonConfig,
+};
+pub use contracts::{
+    ContainerPath, ErrorEnvelope, PositiveCount, ResponseMeta, TalonEnvelope, TalonInput,
+    TalonResponseData, TalonResponseTrait, VaultPath,
 };
 pub use error::{ErrorCode, TalonError, TalonResult};
 pub use expansion::{ExpansionClient, ExpansionError, LlmCache};
@@ -49,6 +55,10 @@ pub use indexer::{
     scan_vault_markdown, upsert_aliases, upsert_chunks, upsert_frontmatter_fields, upsert_links,
     upsert_note, upsert_tags,
 };
+pub use indexing::{
+    IndexStats, LintCheck, LintFinding, LintInput, LintResponse, ScopeReport, StatusInput,
+    StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus,
+};
 pub use links::{
     LinkEdge, LinkGraphStats, NoteReference, ResolvedLink, build_link_edges, compute_backlinks,
     compute_link_stats, find_unresolved_links, resolve_wiki_link_target, resolve_wiki_links,
@@ -58,8 +68,15 @@ pub use migrations::{
     TRIGGER_MIGRATIONS, run_migrations,
 };
 pub use query::{
-    find_related, query_changes, query_lint, query_meta, query_status, run_read, run_recall,
-    run_search,
+    ChangeEntry, ChangesInput, ChangesResponse, EditedNote, FrontmatterFact, FuzzyAnchor,
+    LinkedNote, MetaEntry, MetaInput, MetaResponse, NoteExcerpt, ReadInput, ReadResponse,
+    ReadResult, RecallFormat, RecallInput, RecallResponse, RelatedInput, RelatedResponse,
+    RelatedResult, RelationKind, TombstoneEntry, VaultRecall, find_related, query_changes,
+    query_lint, query_meta, query_status, run_read, run_recall, run_search,
+};
+pub use search::{
+    AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchInput, SearchMode,
+    SearchResponse, SearchResult, WhereClause, WhereOperator,
 };
 pub use store::open_database;
 pub use sync::{
@@ -69,14 +86,4 @@ pub use sync::{
 pub use text::{
     LineSpan, ParsedWikiLink, TOKEN_CHAR_RATIO, estimate_tokens, is_fence_line, is_heading_line,
     parse_wikilink, split_lines, strip_heading_text, strip_outer_quotes,
-};
-pub use tool::{
-    AnchorKind, ChangesInput, ChangesResponse, ContainerPath, Direction, EditedNote, ErrorEnvelope,
-    FrontmatterFact, FrontmatterFilter, FuzzyAnchor, IndexStats, LinkedNote, LintCheck,
-    LintFinding, LintInput, LintResponse, MatchAnchor, MatchKind, MetaEntry, MetaInput,
-    MetaResponse, NoteExcerpt, PositiveCount, ReadInput, ReadResponse, ReadResult, RecallFormat,
-    RecallInput, RecallResponse, RelatedInput, RelatedResponse, RelatedResult, RelationKind,
-    ResponseMeta, ScopeReport, SearchInput, SearchMode, SearchResponse, SearchResult, StatusInput,
-    StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus, TalonEnvelope, TalonInput,
-    TalonResponseData, TalonResponseTrait, VaultPath, VaultRecall, WhereClause, WhereOperator,
 };

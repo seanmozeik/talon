@@ -8,8 +8,9 @@ use std::path::Path;
 
 use rusqlite::{Connection, params};
 
+use crate::contracts::{ContainerPath, PositiveCount, VaultPath};
 use crate::frontmatter::parse_frontmatter;
-use crate::tool::{ContainerPath, PositiveCount, ReadInput, ReadResponse, ReadResult, VaultPath};
+use crate::query::{ReadInput, ReadResponse, ReadResult};
 
 struct NoteRow {
     id: i64,

@@ -3,7 +3,8 @@
 use rusqlite::Connection;
 
 use crate::config::TalonConfig;
-use crate::tool::{ContainerPath, IndexStats, ScopeReport, StatusResponse, StatusState};
+use crate::contracts::ContainerPath;
+use crate::indexing::{IndexStats, ScopeReport, StatusResponse, StatusState};
 use crate::vec_ext::get_vec_chunks_dimensions;
 
 /// Returns real index statistics for the connected vault.

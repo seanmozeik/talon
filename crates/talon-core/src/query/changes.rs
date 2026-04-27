@@ -5,7 +5,8 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::Connection;
 
 use crate::change_tracking;
-use crate::tool::{ChangeEntry, ChangesInput, ChangesResponse, TombstoneEntry, VaultPath};
+use crate::contracts::VaultPath;
+use crate::query::{ChangeEntry, ChangesInput, ChangesResponse, TombstoneEntry};
 
 /// Returns notes that were added, modified, or deleted since `input.since`.
 ///
@@ -157,8 +158,9 @@ mod tests {
     use rusqlite::Connection;
 
     use super::query_changes;
+    use crate::contracts::PositiveCount;
     use crate::migrations::run_migrations;
-    use crate::tool::{ChangesInput, PositiveCount};
+    use crate::query::ChangesInput;
 
     fn fresh_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();

@@ -14,17 +14,19 @@ use tokenx_rs::estimate_token_count;
 
 use crate::change_tracking;
 use crate::config::TalonConfig;
+use crate::contracts::VaultPath;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
+use crate::query::{
+    EditedNote, FrontmatterFact, FuzzyAnchor, LinkedNote, NoteExcerpt, RecallInput, RecallResponse,
+    RelatedInput, VaultRecall,
+};
+use crate::search::Direction;
 use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::fuse::fuse_hybrid_result_lists;
 use crate::search::fuzzy_title::search_title_parts;
 use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
-use crate::tool::{
-    Direction, EditedNote, FrontmatterFact, FuzzyAnchor, LinkedNote, NoteExcerpt, RecallInput,
-    RecallResponse, RelatedInput, VaultPath, VaultRecall,
-};
 
 use super::recall_scoring::{EvidenceInputs, compute_evidence_score};
 use super::related::find_related;

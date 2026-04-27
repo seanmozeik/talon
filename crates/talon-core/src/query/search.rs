@@ -8,10 +8,13 @@
 use rusqlite::Connection;
 
 use crate::config::TalonConfig;
+use crate::contracts::{ContainerPath, VaultPath};
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::search::anchor::{build_anchors, resolve_snippet_heading};
-use crate::tool::{MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause};
+use crate::search::{
+    MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause,
+};
 
 use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
@@ -163,8 +166,8 @@ fn raw_to_search_result(
     };
 
     Some(SearchResult {
-        vault_path: crate::tool::VaultPath::parse(&raw.path).ok()?,
-        path: crate::tool::ContainerPath::parse(&raw.path).ok()?,
+        vault_path: VaultPath::parse(&raw.path).ok()?,
+        path: ContainerPath::parse(&raw.path).ok()?,
         title: raw.title.clone(),
         snippet,
         score: raw.score,

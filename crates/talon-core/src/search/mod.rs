@@ -22,7 +22,9 @@ pub mod fuse;
 pub mod fuzzy_title;
 pub mod hybrid_pipeline;
 pub mod hybrid_single;
+pub mod input;
 pub mod match_text;
+pub mod output;
 pub mod rerank_pipeline;
 pub mod rrf;
 pub mod text_fts;
@@ -44,6 +46,11 @@ pub use fuse::{
 pub use fuzzy_title::TitleSearchParts;
 pub use hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
 pub use hybrid_single::{HybridSingleResult, run_hybrid_single};
+pub use input::{
+    Direction, FrontmatterFilter, FrontmatterValue, FrontmatterValueType, SearchInput, SearchMode,
+    WhereClause, WhereOperator,
+};
+pub use output::{AnchorKind, MatchAnchor, MatchKind, SearchResponse, SearchResult};
 pub use rerank_pipeline::rerank_candidates;
 pub use rrf::{RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 pub use text_fts::{

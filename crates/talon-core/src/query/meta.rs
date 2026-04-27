@@ -8,8 +8,9 @@ use std::collections::BTreeMap;
 
 use rusqlite::{Connection, params};
 
+use crate::contracts::VaultPath;
 use crate::frontmatter::FrontmatterValue;
-use crate::tool::{MetaEntry, MetaInput, MetaResponse, VaultPath};
+use crate::query::{MetaEntry, MetaInput, MetaResponse};
 
 struct NoteRow {
     note_id: i64,
@@ -167,7 +168,8 @@ mod tests {
 
     use super::*;
     use crate::migrations::run_migrations;
-    use crate::tool::{MetaInput, WhereClause, WhereOperator};
+    use crate::query::MetaInput;
+    use crate::search::{WhereClause, WhereOperator};
 
     fn fresh_db() -> Connection {
         let mut conn = Connection::open_in_memory().unwrap();

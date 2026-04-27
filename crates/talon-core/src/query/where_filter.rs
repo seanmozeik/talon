@@ -5,7 +5,7 @@
 
 use rusqlite::{Connection, params};
 
-use crate::tool::{WhereClause, WhereOperator};
+use crate::search::{WhereClause, WhereOperator};
 
 /// Returns `true` when all `clauses` match for `note_id` (AND-composed).
 pub fn passes_where_clauses(conn: &Connection, note_id: i64, clauses: &[WhereClause]) -> bool {

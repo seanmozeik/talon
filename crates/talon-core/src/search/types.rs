@@ -20,7 +20,7 @@ pub struct SearchScores {
 }
 
 /// Internal raw search result. Mirrors `RawSearchResult` from the TS
-/// reference. The public response type lives in [`crate::tool::SearchResult`]
+/// reference. The public response type lives in [`crate::search::SearchResult`]
 /// and is built from this by the query layer.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RawSearchResult {
