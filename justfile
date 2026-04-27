@@ -19,7 +19,7 @@ skill:
     cargo run -p talon-cli -- --skill
 
 fmt:
-    cargo fmt --all
+    rtk cargo fmt --all
 
 fmt-check:
     cargo fmt --all --check
@@ -31,24 +31,24 @@ rust-line-counts:
         | awk 'BEGIN { limit = 350; red = "\033[31m"; yellow = "\033[33m"; bold = "\033[1m"; reset = "\033[0m" } $2 != "total" && $1 > limit { if (!bad) { printf "%s%sRust file line-count violations%s\n", bold, red, reset > "/dev/stderr"; printf "%sLimit:%s %d lines\n\n", yellow, reset, limit > "/dev/stderr" } printf "  %s%5d%s  %s\n", red, $1, reset, $2 > "/dev/stderr"; bad = 1 } END { if (bad) { printf "\n%sFound oversized Rust files. Split modules or add a narrow exception.%s\n", yellow, reset > "/dev/stderr" } exit bad + 0 }'
 
 check: fmt
-    cargo check --workspace --all-targets --all-features --locked
-    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    rtk cargo check --workspace --all-targets --all-features --locked
+    rtk cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
     just rust-line-counts
 
 clippy:
     cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
 test:
-    cargo nextest run --workspace --all-targets --locked
+    rtk cargo nextest run --workspace --all-targets --locked
 
 test-doc:
     cargo test --doc --workspace --locked
 
 verify: fmt
-    cargo check --workspace --all-targets --all-features --locked
-    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-    cargo nextest run --workspace --all-targets --locked
-    cargo test --doc --workspace --locked
+    rtk cargo check --workspace --all-targets --all-features --locked
+    rtk cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    rtk cargo nextest run --workspace --all-targets --locked
+    rtk cargo test --doc --workspace --locked
     just rust-line-counts
 
 build-release:
