@@ -9,6 +9,8 @@ use rusqlite::{Connection, params};
 use crate::TalonError;
 use crate::inference::EmbedChunkedDataItem;
 
+use super::normalize_unit;
+
 /// Persists one chunk's embedding vector + metadata.
 ///
 /// Writes to three tables:
@@ -53,15 +55,11 @@ pub fn persist_chunk_vector(
         source,
     })?;
 
-    // Normalize to unit length so the cosine-from-L2 identity holds:
-    //   similarity = max(0, 1 - distance² / 2)
-    // sqlite-vec uses distance_metric=cosine which assumes ||v|| = 1.
-    let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
-    let normalized: Vec<f32> = if norm > 0.0 {
-        embedding.iter().map(|x| x / norm).collect()
-    } else {
-        embedding.to_vec()
-    };
+    // Normalizing to unit length lets us use the L2-distance-from-cosine
+    // identity (`distance² = 2·(1−cos_sim)`) and keeps
+    // `COSINE_DISTANCE_MAX = 2.0` exact. sqlite-vec's cosine itself is
+    // scale-invariant, so this is for score-stability, not correctness.
+    let normalized = normalize_unit(embedding);
     let json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".to_string());
     let _ = conn.execute(
         "INSERT OR REPLACE INTO vec_chunks(chunk_id, embedding) VALUES (?, json(?))",

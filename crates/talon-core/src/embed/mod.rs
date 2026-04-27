@@ -19,6 +19,15 @@ pub mod pending;
 pub mod persist;
 pub mod runner;
 
+pub(crate) fn normalize_unit(v: &[f32]) -> Vec<f32> {
+    let norm: f32 = v.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm > 0.0 {
+        v.iter().map(|x| x / norm).collect()
+    } else {
+        v.to_vec()
+    }
+}
+
 pub use diagnostics::{EmbedDiagnostics, EmbedRunContext, MAX_DIAGNOSTICS};
 pub use pending::{ChunkInfo, MAX_PENDING_CHUNKS_PER_PASS, NoteWithChunks, get_pending_chunks};
 pub use persist::{first_non_empty_batch, persist_chunk_vector};

@@ -45,7 +45,12 @@ pub fn search_vector(
     if embedding.is_empty() {
         return Vec::new();
     }
-    let embedding_json = serde_json::to_string(embedding).unwrap_or_else(|_| "[]".into());
+    let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if norm == 0.0 {
+        return Vec::new();
+    }
+    let normalized = crate::embed::normalize_unit(embedding);
+    let embedding_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".into());
 
     // Fetch 5× more candidates than needed so per-note dedup has enough pool
     // to fill the requested `candidate_limit` after collapsing multi-chunk notes.
@@ -177,147 +182,4 @@ fn fetch_chunk_metadata(
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn distance_to_score_zero_distance_is_one() {
-        assert_eq!(distance_to_score(0.0), 1.0);
-    }
-
-    #[test]
-    fn distance_to_score_max_distance_is_zero() {
-        assert_eq!(distance_to_score(COSINE_DISTANCE_MAX), 0.0);
-    }
-
-    #[test]
-    fn distance_to_score_above_max_is_clamped_to_zero() {
-        assert_eq!(distance_to_score(COSINE_DISTANCE_MAX + 1.0), 0.0);
-    }
-
-    #[test]
-    fn distance_to_score_midpoint_is_half() {
-        assert_eq!(distance_to_score(COSINE_DISTANCE_MAX / 2.0), 0.5);
-    }
-
-    #[test]
-    fn search_vector_empty_embedding_returns_empty() {
-        // No DB needed — the empty-input guard short-circuits.
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        assert!(search_vector(&conn, &[], 10).is_empty());
-    }
-
-    #[test]
-    fn search_vector_without_extension_returns_empty() {
-        // Without sqlite-vec loaded, the prepare will fail. The function
-        // should swallow that and return an empty result rather than panicking.
-        let conn = rusqlite::Connection::open_in_memory().unwrap();
-        assert!(search_vector(&conn, &[0.1, 0.2, 0.3], 10).is_empty());
-    }
-
-    #[test]
-    fn search_vector_per_note_dedup_returns_one_result_per_note() {
-        use crate::embed::persist::persist_chunk_vector;
-        use crate::store::open_database;
-        use crate::vec_ext::{ensure_vec_chunks, register_sqlite_vec};
-        use std::env::temp_dir;
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        static CTR: AtomicU64 = AtomicU64::new(0);
-        let n = CTR.fetch_add(1, Ordering::Relaxed);
-        let path = temp_dir().join(format!("talon-vec-dedup-{}-{n}.sqlite", std::process::id()));
-
-        register_sqlite_vec().unwrap();
-        let conn = open_database(&path).unwrap();
-        ensure_vec_chunks(&conn, 2).unwrap();
-
-        conn.execute(
-            "INSERT INTO notes (vault_path, title, tags, aliases, content, mtime_ms, size_bytes, hash, docid, active)
-             VALUES ('note.md', 'Note', '[]', '[]', '', 0, 0, 'h', 'd', 1)",
-            [],
-        ).unwrap();
-        let note_id = conn.last_insert_rowid();
-
-        // Insert 5 chunks all for the same note.
-        let mut chunk_ids = Vec::new();
-        for i in 0_i64..5 {
-            conn.execute(
-                "INSERT INTO chunks (note_id, chunk_index, text, embedding_text, heading_path, char_start, char_end, chunk_hash, token_estimate, embedding_status)
-                 VALUES (?, ?, 'body', 'body', '', 0, 4, ?, 1, 'pending')",
-                rusqlite::params![note_id, i, format!("h{i}")],
-            ).unwrap();
-            chunk_ids.push(conn.last_insert_rowid());
-        }
-        // Give each chunk a unit embedding close to [1, 0].
-        for &cid in &chunk_ids {
-            persist_chunk_vector(&conn, cid, "m", 2, 1, &[1.0, 0.0]).unwrap();
-        }
-
-        let results = search_vector(&conn, &[1.0, 0.0], 10);
-        assert_eq!(
-            results.len(),
-            1,
-            "5 chunks from the same note should collapse to 1 result, got {}",
-            results.len()
-        );
-        assert_eq!(results[0].path, "note.md");
-
-        drop(conn);
-        let _ = fs_err::remove_file(&path);
-        let _ = fs_err::remove_file(path.with_extension("sqlite-wal"));
-        let _ = fs_err::remove_file(path.with_extension("sqlite-shm"));
-    }
-
-    #[test]
-    fn search_vector_candidate_pool_does_not_exceed_limit() {
-        // When limit=2 and there are 10 chunks across 10 notes, the result
-        // set should be capped at 2 after pool expansion + dedup.
-        use crate::embed::persist::persist_chunk_vector;
-        use crate::store::open_database;
-        use crate::vec_ext::{ensure_vec_chunks, register_sqlite_vec};
-        use std::env::temp_dir;
-        use std::sync::atomic::{AtomicU64, Ordering};
-
-        static CTR2: AtomicU64 = AtomicU64::new(0);
-        let n = CTR2.fetch_add(1, Ordering::Relaxed);
-        let path = temp_dir().join(format!("talon-vec-cap-{}-{n}.sqlite", std::process::id()));
-
-        register_sqlite_vec().unwrap();
-        let conn = open_database(&path).unwrap();
-        ensure_vec_chunks(&conn, 2).unwrap();
-
-        for i in 0_i64..10 {
-            conn.execute(
-                "INSERT INTO notes (vault_path, title, tags, aliases, content, mtime_ms, size_bytes, hash, docid, active)
-                 VALUES (?, ?, '[]', '[]', '', 0, 0, ?, ?, 1)",
-                rusqlite::params![format!("n{i}.md"), format!("N{i}"), format!("h{i}"), format!("d{i}")],
-            ).unwrap();
-            let nid = conn.last_insert_rowid();
-            conn.execute(
-                "INSERT INTO chunks (note_id, chunk_index, text, embedding_text, heading_path, char_start, char_end, chunk_hash, token_estimate, embedding_status)
-                 VALUES (?, 0, 'body', 'body', '', 0, 4, ?, 1, 'pending')",
-                rusqlite::params![nid, format!("hh{i}")],
-            ).unwrap();
-            let cid = conn.last_insert_rowid();
-            // Slightly different embeddings so distances differ.
-            let v = if i % 2 == 0 {
-                [1.0_f32, 0.0]
-            } else {
-                [0.0_f32, 1.0]
-            };
-            persist_chunk_vector(&conn, cid, "m", 2, 1, &v).unwrap();
-        }
-
-        let results = search_vector(&conn, &[1.0, 0.0], 2);
-        assert!(
-            results.len() <= 2,
-            "result count should not exceed limit=2, got {}",
-            results.len()
-        );
-
-        drop(conn);
-        let _ = fs_err::remove_file(&path);
-        let _ = fs_err::remove_file(path.with_extension("sqlite-wal"));
-        let _ = fs_err::remove_file(path.with_extension("sqlite-shm"));
-    }
-}
+mod tests;
