@@ -142,26 +142,18 @@ pub fn format_recall_prompt_xml(
     vault: &str,
 ) -> Result<()> {
     if resp.skipped {
-        writeln!(
-            w,
-            r#"<vault_recall skipped="true" evidence_score="{:.4}"/>"#,
-            resp.evidence_score
-        )?;
+        writeln!(w, r#"<vault_recall skipped="true"/>"#)?;
         return Ok(());
     }
 
-    writeln!(
-        w,
-        r#"<vault_recall source="talon" vault="{vault}" evidence_score="{:.4}">"#,
-        resp.evidence_score
-    )?;
+    writeln!(w, r#"<vault_recall source="talon" vault="{vault}">"#)?;
 
     if let Some(vr) = &resp.vault_recall {
         writeln!(w, "  <active_notes>")?;
         for note in &vr.active_notes {
             writeln!(
                 w,
-                r#"    <note path="{}" title="{}" mtime="{}" score="{:.4}">{}</note>"#,
+                r#"    <note path="{}" title="{}" mtime="{}" score="{:.2}">{}</note>"#,
                 xml_escape(note.vault_path.as_str()),
                 xml_escape(&note.title),
                 xml_escape(&note.mtime),
@@ -171,18 +163,20 @@ pub fn format_recall_prompt_xml(
         }
         writeln!(w, "  </active_notes>")?;
 
-        writeln!(w, "  <linked_context>")?;
-        for l in &vr.linked_context {
-            writeln!(
-                w,
-                r#"    <note path="{}" title="{}" relation="{:?}" hops="{}"/>"#,
-                xml_escape(l.vault_path.as_str()),
-                xml_escape(&l.title),
-                l.relation,
-                l.hops
-            )?;
+        if !vr.linked_context.is_empty() {
+            writeln!(w, "  <linked_context>")?;
+            for l in &vr.linked_context {
+                writeln!(
+                    w,
+                    r#"    <note path="{}" title="{}" relation="{:?}" hops="{}"/>"#,
+                    xml_escape(l.vault_path.as_str()),
+                    xml_escape(&l.title),
+                    l.relation,
+                    l.hops
+                )?;
+            }
+            writeln!(w, "  </linked_context>")?;
         }
-        writeln!(w, "  </linked_context>")?;
     }
 
     writeln!(w, "</vault_recall>")?;

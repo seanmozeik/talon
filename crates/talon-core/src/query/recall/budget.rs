@@ -24,7 +24,7 @@ pub(super) fn estimate_payload_tokens(
 /// Drops lowest-ranked items from the lowest-priority non-empty section until
 /// the token estimate fits within `budget` (with 2% slack per AC).
 ///
-/// Section priority (highest to lowest): `active_notes` > `linked_context`.
+/// Section priority (highest to lowest): `linked_context` > `active_notes`.
 pub(super) fn trim_to_budget(
     budget: usize,
     active_notes: &mut Vec<NoteExcerpt>,
@@ -38,12 +38,31 @@ pub(super) fn trim_to_budget(
         if used <= budget_with_slack {
             break;
         }
-        if let Some(item) = linked_context.pop() {
-            excluded_by_budget.push(item.vault_path.as_str().to_string());
-        } else if let Some(item) = active_notes.pop() {
-            excluded_by_budget.push(item.vault_path.as_str().to_string());
+        // Trim proportionally: drop from whichever section has more items so both
+        // shrink together rather than one being fully exhausted before the other.
+        let trim_active = active_notes.len() >= linked_context.len();
+        let popped = if trim_active {
+            active_notes
+                .pop()
+                .map(|item| item.vault_path.as_str().to_string())
+                .or_else(|| {
+                    linked_context
+                        .pop()
+                        .map(|item| item.vault_path.as_str().to_string())
+                })
         } else {
-            break;
+            linked_context
+                .pop()
+                .map(|item| item.vault_path.as_str().to_string())
+                .or_else(|| {
+                    active_notes
+                        .pop()
+                        .map(|item| item.vault_path.as_str().to_string())
+                })
+        };
+        match popped {
+            Some(path) => excluded_by_budget.push(path),
+            None => break,
         }
     }
 }

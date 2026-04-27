@@ -41,7 +41,7 @@ class TalonRecallProvider(MemoryProvider):
     def __init__(self) -> None:
         self._binary: str | None = None
         self._vault_path: str | None = None
-        self._budget_tokens: int = 500
+        self._budget_tokens: int = 250
         self._min_confidence: float = 0.4
         self._fast: bool = False
         self._prior_message_count: int = 2
@@ -132,8 +132,8 @@ class TalonRecallProvider(MemoryProvider):
             },
             {
                 "key": "budget_tokens",
-                "description": "Token budget for the recall context block (default 500)",
-                "default": 500,
+                "description": "Token budget for the recall context block (default 250)",
+                "default": 250,
             },
             {
                 "key": "min_confidence",
@@ -188,7 +188,7 @@ class TalonRecallProvider(MemoryProvider):
     def _build_command(self, query: str) -> list[str]:
         assert self._binary is not None
         cmd = [
-            self._binary, "recall", query,
+            self._binary, "--agent", "recall", query,
             "--format", "prompt-xml",
             "--budget-tokens", str(self._budget_tokens),
             "--min-confidence", str(self._min_confidence),
