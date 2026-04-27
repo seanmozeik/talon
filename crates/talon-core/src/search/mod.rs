@@ -20,6 +20,7 @@ pub mod cache;
 pub mod constants;
 pub mod fuse;
 pub mod fuzzy_title;
+pub mod hooks;
 pub mod hybrid_pipeline;
 pub mod hybrid_single;
 pub mod input;
@@ -44,6 +45,7 @@ pub use fuse::{
     blend_rerank_candidates, clamp01, estimate_strong_signal, fuse_hybrid_result_lists, sigmoid,
 };
 pub use fuzzy_title::TitleSearchParts;
+pub use hooks::SearchHooks;
 pub use hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
 pub use hybrid_single::{HybridSingleResult, run_hybrid_single};
 pub use input::{

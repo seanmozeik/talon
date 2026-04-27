@@ -89,6 +89,7 @@ pub fn run_search(
                 candidate_limit: candidate_floor,
                 fast,
                 queries: input.queries.clone(),
+                hooks: crate::search::SearchHooks::default(),
             };
             run_hybrid_pipeline(conn, inference, expansion, &query, &opts)
         }

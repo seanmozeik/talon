@@ -4,11 +4,15 @@
 //! per-variant hybrid retrieval (US-003), cross-variant RRF fusion, and
 //! cross-encoder reranking (US-004).
 //!
+//! Search progress hooks (US-018) are optional and default to no-op.
+//!
 //! Ports `services/talon/search/hybrid-pipeline.ts`.
 
 use rusqlite::Connection;
+use std::time::Instant;
 
 use crate::expansion::client::ExpansionClient;
+use crate::indexing::migrations::read_db_version;
 use crate::inference::InferenceClient;
 
 use super::bm25::search_bm25;
@@ -18,9 +22,10 @@ use super::constants::{
 };
 use super::fuse::{estimate_strong_signal, fuse_hybrid_result_lists};
 use super::fuzzy_title::search_title_parts;
+use super::hooks::SearchHooks;
 use super::hybrid_single::{HybridSingleResult, run_hybrid_single};
 use super::pool;
-use super::rerank_pipeline::rerank_candidates;
+use super::rerank_pipeline::rerank_candidates_with_db_version;
 use super::rrf::{RrfInputs, RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 use super::types::{HybridScoreData, RawSearchResult, SearchScores};
 
@@ -28,7 +33,7 @@ use super::types::{HybridScoreData, RawSearchResult, SearchScores};
 const EXPANSION_N_VARIANTS: u8 = 3;
 
 /// Options for [`run_hybrid_pipeline`].
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct HybridPipelineOptions {
     /// Maximum results to return.
     pub limit: u32,
@@ -38,6 +43,8 @@ pub struct HybridPipelineOptions {
     pub fast: bool,
     /// Pre-supplied query variants (bypass LLM call when non-empty).
     pub queries: Vec<String>,
+    /// Optional stage instrumentation callbacks.
+    pub hooks: SearchHooks,
 }
 
 /// Runs the full hybrid search pipeline:
@@ -87,7 +94,12 @@ pub fn run_hybrid_pipeline(
     } else if skip_llm {
         vec![]
     } else if let Some(exp) = expansion {
-        exp.expand(query, EXPANSION_N_VARIANTS).unwrap_or_default()
+        options.hooks.emit_expand_start();
+        let started = Instant::now();
+        let expanded = exp.expand(query, EXPANSION_N_VARIANTS).unwrap_or_default();
+        let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+        options.hooks.emit_expand_end(elapsed_ms);
+        expanded
     } else {
         vec![]
     };
@@ -113,6 +125,7 @@ pub fn run_hybrid_pipeline(
     let per_variant: Vec<Vec<RawSearchResult>> = queries_to_search
         .iter()
         .map(|q| {
+            options.hooks.emit_embed_batch(1);
             let embedding = inference
                 .embed(std::slice::from_ref(q))
                 .ok()
@@ -141,7 +154,14 @@ pub fn run_hybrid_pipeline(
     if skip_expensive {
         fused
     } else {
-        rerank_candidates(inference, query, fused, RERANK_TOP_K)
+        rerank_candidates_with_db_version(
+            inference,
+            query,
+            fused,
+            RERANK_TOP_K,
+            &options.hooks,
+            read_db_version(conn),
+        )
     }
 }
 

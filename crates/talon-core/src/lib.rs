@@ -60,8 +60,8 @@ pub use query::{
     query_lint, query_meta, query_status, run_read, run_recall, run_search,
 };
 pub use search::{
-    AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchInput, SearchMode,
-    SearchResponse, SearchResult, WhereClause, WhereOperator,
+    AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchHooks, SearchInput,
+    SearchMode, SearchResponse, SearchResult, WhereClause, WhereOperator,
 };
 pub use store::open_database;
 pub use sync::{

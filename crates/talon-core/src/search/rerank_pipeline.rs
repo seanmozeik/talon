@@ -2,16 +2,20 @@
 //!
 //! Thin orchestration layer that calls the inference sidecar's `/rerank`
 //! endpoint and blends the cross-encoder scores into the hybrid scores using
-//! [`super::fuse::blend_rerank_candidates`].
+//! [`super::fuse::blend_rerank_probabilities`].
 //!
 //! Ports `services/talon/search/rerank-pipeline.ts`. The TS reference uses
 //! Effect and an LLM cache layer; this Rust port calls the sidecar directly
 //! and delegates blending to the existing `fuse` module. Caching can be added
 //! on top by the pipeline orchestrator (US-005).
 
+use std::time::Instant;
+
+use crate::cache::rerank as rerank_cache;
 use crate::inference::InferenceClient;
 
-use super::fuse::blend_rerank_candidates;
+use super::fuse::{blend_rerank_probabilities, sigmoid};
+use super::hooks::SearchHooks;
 use super::types::RawSearchResult;
 
 /// Returns `(w_hybrid, w_rerank)` blend weights for a candidate at the given
@@ -56,6 +60,20 @@ pub fn rerank_candidates(
     query: &str,
     candidates: Vec<RawSearchResult>,
     top_k: u32,
+    hooks: &SearchHooks,
+) -> Vec<RawSearchResult> {
+    rerank_candidates_with_db_version(inference, query, candidates, top_k, hooks, 0)
+}
+
+/// Calls the inference sidecar with a `db_version`-scoped per-snippet cache.
+#[must_use]
+pub(crate) fn rerank_candidates_with_db_version(
+    inference: &InferenceClient,
+    query: &str,
+    candidates: Vec<RawSearchResult>,
+    top_k: u32,
+    hooks: &SearchHooks,
+    db_version: u64,
 ) -> Vec<RawSearchResult> {
     if candidates.is_empty() {
         return candidates;
@@ -64,20 +82,47 @@ pub fn rerank_candidates(
     let limit = (top_k as usize).min(candidates.len());
     let active: Vec<RawSearchResult> = candidates.into_iter().take(limit).collect();
 
+    hooks.emit_rerank_start(active.len());
+    let started = Instant::now();
     let texts: Vec<String> = active.iter().map(rerank_text).collect();
-
-    let Ok(rerank_results) = inference.rerank(query, &texts, false) else {
-        return active;
-    };
-
     let mut scores: Vec<Option<f64>> = vec![None; limit];
-    for result in rerank_results {
-        if let Some(slot) = scores.get_mut(result.index as usize) {
-            *slot = Some(f64::from(result.score));
+    let mut missing_indices = Vec::new();
+    let mut missing_texts = Vec::new();
+
+    for (index, text) in texts.iter().enumerate() {
+        if let Some(score) = rerank_cache::lookup(text, query, db_version) {
+            scores[index] = Some(score);
+        } else {
+            missing_indices.push(index);
+            missing_texts.push(text.clone());
         }
     }
 
-    blend_rerank_candidates(&active, &scores)
+    if !missing_texts.is_empty() {
+        let Ok(rerank_results) = inference.rerank(query, &missing_texts, false) else {
+            let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+            hooks.emit_rerank_end(elapsed_ms);
+            return active;
+        };
+
+        for result in rerank_results {
+            let Some(original_index) = missing_indices.get(result.index as usize).copied() else {
+                continue;
+            };
+            let score = sigmoid(f64::from(result.score));
+            if let Some(slot) = scores.get_mut(original_index) {
+                *slot = Some(score);
+            }
+            if let Some(text) = texts.get(original_index) {
+                rerank_cache::store(text, query, score, db_version);
+            }
+        }
+    }
+
+    let blended = blend_rerank_probabilities(&active, &scores);
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    hooks.emit_rerank_end(elapsed_ms);
+    blended
 }
 
 #[cfg(test)]
@@ -85,7 +130,6 @@ pub fn rerank_candidates(
 mod tests {
     use super::*;
     use crate::inference::InferenceClient;
-    use crate::search::fuse::sigmoid;
     use crate::search::types::SearchScores;
     use serde_json::json;
     use wiremock::matchers::{method, path};
@@ -159,7 +203,13 @@ mod tests {
         );
         let inference = start_inference(server.uri());
         let candidates = vec![make_candidate("a.md", 0.5), make_candidate("b.md", 0.4)];
-        let result = rerank_candidates(&inference, "rust async", candidates, 10);
+        let result = rerank_candidates(
+            &inference,
+            "rust async",
+            candidates,
+            10,
+            &SearchHooks::default(),
+        );
         assert_eq!(result.len(), 2);
         // a.md had the higher rerank score — must remain first after blending.
         assert_eq!(result[0].path, "a.md");
@@ -192,7 +242,13 @@ mod tests {
         );
         let inference = start_inference(server.uri());
         let candidates = vec![make_candidate("a.md", 0.5), make_candidate("b.md", 0.4)];
-        let result = rerank_candidates(&inference, "query", candidates, 10);
+        let result = rerank_candidates(
+            &inference,
+            "blend query",
+            candidates,
+            10,
+            &SearchHooks::default(),
+        );
         let a = result.iter().find(|r| r.path == "a.md").unwrap();
         let b = result.iter().find(|r| r.path == "b.md").unwrap();
         let expected_a = 0.25_f64.mul_add(sigmoid(0.9_f64), 0.75_f64);
@@ -223,7 +279,13 @@ mod tests {
         );
         let inference = start_inference(server.uri());
         let candidates = vec![make_candidate("a.md", 0.8), make_candidate("b.md", 0.3)];
-        let result = rerank_candidates(&inference, "query", candidates, 10);
+        let result = rerank_candidates(
+            &inference,
+            "error query",
+            candidates,
+            10,
+            &SearchHooks::default(),
+        );
         assert_eq!(result.len(), 2);
         // No rerank scores — graceful degradation.
         assert!(result.iter().all(|r| r.scores.rerank.is_none()));
@@ -236,7 +298,7 @@ mod tests {
     fn empty_candidates_returns_empty_without_calling_sidecar() {
         // No mock registered — any HTTP call would panic/fail.
         let inference = InferenceClient::new("http://localhost:19999").unwrap();
-        let result = rerank_candidates(&inference, "query", vec![], 10);
+        let result = rerank_candidates(&inference, "query", vec![], 10, &SearchHooks::default());
         assert!(result.is_empty());
     }
 
@@ -260,9 +322,86 @@ mod tests {
             make_candidate("c.md", 0.3),
         ];
         // top_k=1: only the first candidate goes to the reranker.
-        let result = rerank_candidates(&inference, "query", candidates, 1);
+        let result = rerank_candidates(
+            &inference,
+            "top k query",
+            candidates,
+            1,
+            &SearchHooks::default(),
+        );
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].path, "a.md");
         assert!(result[0].scores.rerank.is_some());
+    }
+
+    #[test]
+    fn repeated_rerank_uses_cache_for_same_query_and_chunk() {
+        let rt = runtime();
+        let server = rt.block_on(MockServer::start());
+        rt.block_on(
+            Mock::given(method("POST"))
+                .and(path("/rerank"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                    {"index": 0, "score": 0.9},
+                ])))
+                .mount(&server),
+        );
+        let inference = start_inference(server.uri());
+        let candidates = vec![make_candidate("cached.md", 0.5)];
+
+        let first = rerank_candidates(
+            &inference,
+            "cache query unique",
+            candidates.clone(),
+            10,
+            &SearchHooks::default(),
+        );
+        let second = rerank_candidates(
+            &inference,
+            "cache query unique",
+            candidates,
+            10,
+            &SearchHooks::default(),
+        );
+
+        let requests = rt.block_on(server.received_requests()).unwrap();
+        assert_eq!(requests.len(), 1);
+        assert_eq!(first[0].scores.rerank, second[0].scores.rerank);
+    }
+
+    #[test]
+    fn rerank_cache_misses_after_db_version_changes() {
+        let rt = runtime();
+        let server = rt.block_on(MockServer::start());
+        rt.block_on(
+            Mock::given(method("POST"))
+                .and(path("/rerank"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                    {"index": 0, "score": 0.9},
+                ])))
+                .mount(&server),
+        );
+        let inference = start_inference(server.uri());
+        let candidates = vec![make_candidate("versioned.md", 0.5)];
+
+        let _ = rerank_candidates_with_db_version(
+            &inference,
+            "versioned cache query",
+            candidates.clone(),
+            10,
+            &SearchHooks::default(),
+            10,
+        );
+        let _ = rerank_candidates_with_db_version(
+            &inference,
+            "versioned cache query",
+            candidates,
+            10,
+            &SearchHooks::default(),
+            11,
+        );
+
+        let requests = rt.block_on(server.received_requests()).unwrap();
+        assert_eq!(requests.len(), 2);
     }
 }

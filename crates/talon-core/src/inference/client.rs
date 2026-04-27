@@ -8,6 +8,7 @@
 use std::convert::TryFrom;
 use std::time::Duration;
 
+use reqwest::StatusCode;
 use reqwest::blocking::Client as HttpClient;
 
 use super::error::{InferenceError, redact};
@@ -28,6 +29,7 @@ pub const DEFAULT_INFERENCE_TIMEOUT: Duration = Duration::from_secs(60);
 pub struct InferenceClient {
     base_url: String,
     http: HttpClient,
+    sleep: fn(Duration),
 }
 
 impl InferenceClient {
@@ -59,6 +61,7 @@ impl InferenceClient {
         Ok(Self {
             base_url: base_url.into(),
             http,
+            sleep: std::thread::sleep,
         })
     }
 
@@ -81,6 +84,9 @@ impl InferenceClient {
 
     /// Posts to `/embed-chunked` for batched per-note embedding.
     ///
+    /// On a transient batch failure, falls back to singleton requests so one
+    /// bad note does not abort the whole embed pass.
+    ///
     /// # Errors
     ///
     /// See [`InferenceClient::embed`].
@@ -92,7 +98,12 @@ impl InferenceClient {
         let body = EmbedChunkedRequest {
             input: input.to_vec(),
         };
-        self.post_json(&url, &body)
+        if input.len() <= 1 {
+            return self.post_json(&url, &body);
+        }
+
+        self.post_json_once(&url, &body)
+            .map_or_else(|_| self.embed_chunked_fallback(&url, input), Ok)
     }
 
     /// Posts to `/rerank` and returns scored candidates.
@@ -143,140 +154,121 @@ impl InferenceClient {
         B: serde::Serialize,
         R: serde::de::DeserializeOwned,
     {
-        let response =
-            self.http
-                .post(url)
-                .json(body)
-                .send()
-                .map_err(|err| InferenceError::Http {
+        self.post_json_with_retry(url, body)
+    }
+
+    fn post_json_with_retry<B, R>(&self, url: &str, body: &B) -> Result<R, InferenceError>
+    where
+        B: serde::Serialize,
+        R: serde::de::DeserializeOwned,
+    {
+        // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — embedder.ts:384-395
+        for attempt in 0u32..=2 {
+            match self.post_json_attempt(url, body) {
+                Ok(value) => return Ok(value),
+                Err(err) if err.retryable && attempt < 2 => {
+                    (self.sleep)(Duration::from_secs(2_u64.pow(attempt + 1)));
+                }
+                Err(err) => return Err(err.error),
+            }
+        }
+        unreachable!("retry loop always returns or errors")
+    }
+
+    fn post_json_once<B, R>(&self, url: &str, body: &B) -> Result<R, InferenceError>
+    where
+        B: serde::Serialize,
+        R: serde::de::DeserializeOwned,
+    {
+        self.post_json_attempt(url, body).map_err(|err| err.error)
+    }
+
+    fn embed_chunked_fallback(
+        &self,
+        url: &str,
+        input: &[Vec<String>],
+    ) -> Result<EmbedChunkedResponse, InferenceError> {
+        let mut data = Vec::with_capacity(input.len());
+        let mut model: Option<String> = None;
+
+        for (index, group) in input.iter().enumerate() {
+            let body = EmbedChunkedRequest {
+                input: vec![group.clone()],
+            };
+            let mut response: EmbedChunkedResponse = self.post_json(url, &body)?;
+            let group_index = u32::try_from(index).map_err(|_| InferenceError::Decode {
+                message: "embed-chunked index overflow".to_owned(),
+            })?;
+            let Some(mut item) = response.data.pop() else {
+                return Err(InferenceError::Decode {
+                    message: "embed-chunked fallback returned no data".to_owned(),
+                });
+            };
+            if !response.data.is_empty() {
+                return Err(InferenceError::Decode {
+                    message: "embed-chunked fallback returned unexpected response shape".to_owned(),
+                });
+            }
+            item.index = group_index;
+            data.push(item);
+            if model.is_none() {
+                model = Some(response.model);
+            }
+        }
+
+        Ok(EmbedChunkedResponse {
+            data,
+            model: model.unwrap_or_default(),
+        })
+    }
+
+    fn post_json_attempt<B, R>(&self, url: &str, body: &B) -> Result<R, PostJsonError>
+    where
+        B: serde::Serialize,
+        R: serde::de::DeserializeOwned,
+    {
+        let response = self.http.post(url).json(body).send().map_err(|err| {
+            let retryable = err.is_connect() || err.is_timeout() || err.is_request();
+            PostJsonError {
+                error: InferenceError::Http {
                     status: None,
                     message: redact(&err.to_string()),
-                })?;
+                },
+                retryable,
+            }
+        })?;
         let status = response.status();
         if !status.is_success() {
             let snippet = response.text().unwrap_or_default();
-            return Err(InferenceError::Http {
+            let error = InferenceError::Http {
                 status: Some(status.as_u16()),
                 message: redact(&snippet),
+            };
+            return Err(PostJsonError {
+                retryable: should_retry_status(status),
+                error,
             });
         }
-        response.json::<R>().map_err(|err| InferenceError::Decode {
-            message: redact(&err.to_string()),
+        response.json::<R>().map_err(|err| PostJsonError {
+            error: InferenceError::Decode {
+                message: redact(&err.to_string()),
+            },
+            retryable: false,
         })
     }
 }
 
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use wiremock::matchers::{body_partial_json, method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    fn runtime() -> tokio::runtime::Runtime {
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-    }
-
-    #[test]
-    fn build_succeeds_with_default_timeout() {
-        let client = InferenceClient::new("http://localhost:8080");
-        assert!(client.is_ok());
-    }
-
-    #[test]
-    fn build_succeeds_with_custom_timeout() {
-        let client = InferenceClient::with_timeout("http://example", Duration::from_secs(5));
-        assert!(client.is_ok());
-    }
-
-    #[test]
-    fn url_concat_strips_trailing_slash() {
-        // Indirect: trim happens inside embed/embed_chunked/rerank. We can at
-        // least verify the constructor accepts both forms.
-        let a = InferenceClient::new("http://localhost:8080").unwrap();
-        let b = InferenceClient::new("http://localhost:8080/").unwrap();
-        assert_eq!(a.base_url.trim_end_matches('/'), "http://localhost:8080");
-        assert_eq!(b.base_url.trim_end_matches('/'), "http://localhost:8080");
-    }
-
-    #[test]
-    fn rerank_batches_inputs_and_offsets_indices() {
-        let runtime = runtime();
-        let server = runtime.block_on(MockServer::start());
-        runtime.block_on(
-            Mock::given(method("POST"))
-                .and(path("/rerank"))
-                .and(body_partial_json(json!({
-                    "query": "query",
-                    "texts": ["t0", "t1", "t2", "t3"],
-                    "return_text": false
-                })))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-                    {"index": 1, "score": 0.4},
-                    {"index": 0, "score": 0.9}
-                ])))
-                .mount(&server),
-        );
-        runtime.block_on(
-            Mock::given(method("POST"))
-                .and(path("/rerank"))
-                .and(body_partial_json(json!({
-                    "query": "query",
-                    "texts": ["t4", "t5"],
-                    "return_text": false
-                })))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-                    {"index": 0, "score": 0.2}
-                ])))
-                .mount(&server),
-        );
-
-        let client = InferenceClient::new(server.uri()).unwrap();
-        let texts: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
-        let result = client.rerank("query", &texts, false).unwrap();
-        let got: Vec<(u32, f32)> = result.iter().map(|r| (r.index, r.score)).collect();
-        assert_eq!(got, vec![(1, 0.4), (0, 0.9), (4, 0.2)]);
-
-        let requests = runtime.block_on(server.received_requests()).unwrap();
-        assert_eq!(requests.len(), 2);
-
-        let first: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
-        let second: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
-        assert!(first.get("max_length").is_none());
-        assert!(second.get("max_length").is_none());
-        assert_eq!(first["texts"].as_array().unwrap().len(), 4);
-        assert_eq!(second["texts"].as_array().unwrap().len(), 2);
-    }
-
-    #[test]
-    fn rerank_reads_flat_score_payloads() {
-        let runtime = runtime();
-        let server = runtime.block_on(MockServer::start());
-        runtime.block_on(
-            Mock::given(method("POST"))
-                .and(path("/rerank"))
-                .and(body_partial_json(json!({
-                    "query": "query",
-                    "texts": ["t0"],
-                    "return_text": false
-                })))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
-                    {"index": 0, "score": 0.73}
-                ])))
-                .mount(&server),
-        );
-
-        let client = InferenceClient::new(server.uri()).unwrap();
-        let result = client
-            .rerank("query", &[String::from("t0")], false)
-            .unwrap();
-
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].index, 0);
-        assert!((result[0].score - 0.73).abs() < f32::EPSILON);
-    }
+#[derive(Debug)]
+struct PostJsonError {
+    error: InferenceError,
+    retryable: bool,
 }
+
+fn should_retry_status(status: StatusCode) -> bool {
+    status == StatusCode::TOO_MANY_REQUESTS
+        || status == StatusCode::BAD_GATEWAY
+        || status == StatusCode::SERVICE_UNAVAILABLE
+        || status.is_server_error()
+}
+#[cfg(test)]
+mod tests;
