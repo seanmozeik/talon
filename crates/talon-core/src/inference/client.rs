@@ -251,4 +251,32 @@ mod tests {
         assert_eq!(first["texts"].as_array().unwrap().len(), 4);
         assert_eq!(second["texts"].as_array().unwrap().len(), 2);
     }
+
+    #[test]
+    fn rerank_reads_flat_score_payloads() {
+        let runtime = runtime();
+        let server = runtime.block_on(MockServer::start());
+        runtime.block_on(
+            Mock::given(method("POST"))
+                .and(path("/rerank"))
+                .and(body_partial_json(json!({
+                    "query": "query",
+                    "texts": ["t0"],
+                    "return_text": false
+                })))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                    {"index": 0, "score": 0.73}
+                ])))
+                .mount(&server),
+        );
+
+        let client = InferenceClient::new(server.uri()).unwrap();
+        let result = client
+            .rerank("query", &[String::from("t0")], false)
+            .unwrap();
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].index, 0);
+        assert!((result[0].score - 0.73).abs() < f32::EPSILON);
+    }
 }

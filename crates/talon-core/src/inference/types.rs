@@ -3,8 +3,9 @@
 //! Mirrors `clients/sidecar-llm/sidecar.ts` and `sidecar/routers/{embed,rerank}.py`.
 //! The Python sidecar is the source of truth: `/embed` returns a bare
 //! `[[f32]]` array, `/embed-chunked` returns `{data: [{embeddings, index}], model}`,
-//! and `/rerank` returns `[{index, score}]` (TEI client sends `return_text` even
-//! though the field is inert server-side).
+//! and `/rerank` returns `[{index, score}]` where the sidecar has already
+//! resolved any model-specific label layout into a single relevance score
+//! (TEI client sends `return_text` even though the field is inert server-side).
 
 use serde::{Deserialize, Serialize};
 
@@ -66,6 +67,6 @@ pub struct RerankRequest {
 pub struct RerankResult {
     /// Index into the request's `texts` array.
     pub index: u32,
-    /// Cross-encoder relevance score (higher is better).
+    /// Cross-encoder relevance score emitted by the sidecar after label extraction.
     pub score: f32,
 }
