@@ -80,7 +80,7 @@ pub type ScopesConfig = std::collections::BTreeMap<String, Scope>;
 
 /// A single scope definition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct Scope {
     /// Glob pattern(s) matching files in this scope.
     pub glob: ScopeGlob,
@@ -92,19 +92,17 @@ pub struct Scope {
 
 /// Full Talon runtime configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct TalonConfig {
     /// Host or standalone vault path.
-    #[serde(alias = "vault_path")]
     pub vault_path: PathBuf,
     /// `SQLite` index path.
-    #[serde(alias = "db_path")]
     pub db_path: PathBuf,
     /// Glob-style include patterns.
-    #[serde(default, alias = "include_patterns")]
+    #[serde(default)]
     pub include_patterns: Vec<String>,
     /// Glob-style ignore patterns.
-    #[serde(default, alias = "ignore_patterns")]
+    #[serde(default)]
     pub ignore_patterns: Vec<String>,
     /// Embedding and rerank endpoint configuration.
     pub inference: InferenceConfig,
@@ -114,7 +112,7 @@ pub struct TalonConfig {
     #[serde(default)]
     pub scopes: ScopesConfig,
     /// Chunker settings from the `[indexer]` table.
-    #[serde(default, alias = "indexer")]
+    #[serde(default, rename = "indexer")]
     pub chunker: ChunkerConfig,
 }
 
@@ -186,10 +184,9 @@ fn matches_path_glob(path: &Path, glob: &ScopeGlob) -> bool {
 
 /// TEI-compatible inference endpoint configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct InferenceConfig {
     /// Base URL for TEI-compatible routes.
-    #[serde(alias = "base_url")]
     pub base_url: String,
     /// Model names used by the endpoint.
     pub models: InferenceModels,
@@ -197,16 +194,13 @@ pub struct InferenceConfig {
 
 /// Inference model names.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct InferenceModels {
     /// Query embedding model.
-    #[serde(alias = "query_embedding")]
     pub query_embedding: String,
     /// Document embedding model.
-    #[serde(alias = "document_embedding")]
     pub document_embedding: String,
     /// Chunk embedding model.
-    #[serde(alias = "chunk_embedding")]
     pub chunk_embedding: String,
     /// Reranker model.
     pub reranker: String,
@@ -214,25 +208,16 @@ pub struct InferenceModels {
 
 /// Chunker knobs for the `[indexer]` section of `talon.toml`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ChunkerConfig {
     /// Target chunk size in tokens (default 512).
-    #[serde(
-        default = "ChunkerConfig::default_chunk_tokens",
-        alias = "chunk_tokens"
-    )]
+    #[serde(default = "ChunkerConfig::default_chunk_tokens")]
     pub chunk_tokens: usize,
     /// Overlap in tokens between adjacent chunks (default 64, must be < `chunk_tokens`).
-    #[serde(
-        default = "ChunkerConfig::default_chunk_overlap",
-        alias = "chunk_overlap"
-    )]
+    #[serde(default = "ChunkerConfig::default_chunk_overlap")]
     pub chunk_overlap: usize,
     /// Minimum token count; chunks below this are discarded after splitting (default 16).
-    #[serde(
-        default = "ChunkerConfig::default_chunk_min_tokens",
-        alias = "chunk_min_tokens"
-    )]
+    #[serde(default = "ChunkerConfig::default_chunk_min_tokens")]
     pub chunk_min_tokens: usize,
 }
 
@@ -279,13 +264,18 @@ impl Default for ChunkerConfig {
 
 /// OpenAI-compatible query expansion configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields)]
 pub struct ExpansionConfig {
     /// Provider label, such as `openai-compatible`.
     pub provider: String,
     /// Chat-completions-compatible base URL.
-    #[serde(alias = "base_url")]
     pub base_url: String,
     /// Expansion model name.
     pub model: String,
+    /// Optional total completion token cap.
+    ///
+    /// Leave unset for thinking models because many OpenAI-compatible local
+    /// servers count hidden reasoning tokens against this budget.
+    #[serde(default)]
+    pub max_tokens: Option<u32>,
 }

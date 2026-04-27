@@ -40,8 +40,12 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
         } else {
             (
                 InferenceClient::new(&config.inference.base_url).ok(),
-                ExpansionClient::new(config.expansion.base_url.clone(), &config.expansion.model)
-                    .ok(),
+                ExpansionClient::with_max_tokens(
+                    config.expansion.base_url.clone(),
+                    &config.expansion.model,
+                    config.expansion.max_tokens,
+                )
+                .ok(),
             )
         };
     let response = run_search(
@@ -190,7 +194,12 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
     } else {
         (
             InferenceClient::new(&config.inference.base_url).ok(),
-            ExpansionClient::new(config.expansion.base_url.clone(), &config.expansion.model).ok(),
+            ExpansionClient::with_max_tokens(
+                config.expansion.base_url.clone(),
+                &config.expansion.model,
+                config.expansion.max_tokens,
+            )
+            .ok(),
         )
     };
     let response = run_recall(

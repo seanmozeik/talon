@@ -41,10 +41,10 @@ pub async fn run() -> u8 {
                         detail: None,
                     },
                 );
-                let mode = if args.json.enabled() {
-                    output::OutputMode::JsonPretty
-                } else {
+                let mode = if args.agent.enabled() {
                     output::OutputMode::Agent
+                } else {
+                    output::OutputMode::JsonPretty
                 };
                 let _ = output::emit_response(&envelope, mode);
             } else {

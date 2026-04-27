@@ -52,6 +52,15 @@ fn init_creates_config_toml_in_xdg_config_home() {
         content.contains("base_url"),
         "config.toml missing base_url (inference endpoint)"
     );
+    let expected_db = tmp.join(".talon").join("obsidian.db").display().to_string();
+    assert!(
+        content.contains(&format!("db_path = \"{expected_db}\"")),
+        "config.toml should contain absolute db_path under ~/.talon; got:\n{content}"
+    );
+    assert!(
+        tmp.join(".talon").exists(),
+        "talon init should create the database directory"
+    );
 
     let _ = std::fs::remove_dir_all(&tmp);
 }

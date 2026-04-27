@@ -22,8 +22,9 @@ pub struct ChatCompletionRequest {
     pub model: String,
     /// Ordered conversation messages.
     pub messages: Vec<ChatMessage>,
-    /// Token budget for the generated response.
-    pub max_tokens: u32,
+    /// Optional total completion cap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_tokens: Option<u32>,
     /// Sampling temperature; lower values are more deterministic.
     pub temperature: f32,
 }

@@ -126,6 +126,7 @@ fn minimal_config(vault: &std::path::Path) -> TalonConfig {
             provider: "openai-compatible".to_string(),
             base_url: "http://localhost:1".to_string(),
             model: "test".to_string(),
+            max_tokens: None,
         },
         scopes: ScopesConfig::default(),
         chunker: talon_core::ChunkerConfig::default(),

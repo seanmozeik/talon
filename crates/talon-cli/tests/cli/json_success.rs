@@ -29,6 +29,27 @@ fn json_envelope_search_success() {
 }
 
 #[test]
+fn search_accepts_options_after_query() {
+    let vault = TempVault::new("search-trailing-options");
+    let out = vault.run(&[
+        "search",
+        "hello",
+        "--fast",
+        "--mode",
+        "fulltext",
+        "--limit",
+        "1",
+        "--anchors",
+    ]);
+    assert!(out.status.success(), "talon search should exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v = assert_success_envelope(&stdout, "search");
+    assert_eq!(v["data"]["fast"], true);
+    assert_eq!(v["data"]["mode"], "fulltext");
+    assert_eq!(v["data"]["results"].as_array().map(Vec::len), Some(1));
+}
+
+#[test]
 fn json_envelope_read_success() {
     let vault = TempVault::new("read");
     let out = vault.run(&["read", "notes/hello.md"]);

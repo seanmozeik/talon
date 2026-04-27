@@ -2,7 +2,7 @@
 
 use eyre::{Result, WrapErr as _, bail};
 use fs_err as fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use talon_core::{InferenceConfig, InferenceModels, Scope, ScopePriority, TalonConfig};
 
 /// Default config filename.
@@ -14,10 +14,29 @@ pub const CONFIG_DIR_NAME: &str = "talon";
 /// Default config path: `~/.config/talon/config.toml`.
 #[must_use]
 pub fn default_config_path() -> PathBuf {
-    let mut path = dirs::config_dir().unwrap_or_else(|| PathBuf::from("~/.config"));
+    let mut path = dirs::config_dir().unwrap_or_else(|| {
+        dirs::home_dir()
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join(".config")
+    });
     path.push(CONFIG_DIR_NAME);
     path.push(CONFIG_FILE_NAME);
     path
+}
+
+/// Default `SQLite` index path.
+#[must_use]
+pub fn default_db_path() -> PathBuf {
+    default_db_path_for_workspace("default")
+}
+
+/// Default `SQLite` index path for a workspace.
+#[must_use]
+pub fn default_db_path_for_workspace(workspace: &str) -> PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(".talon")
+        .join(format!("{}.db", sanitize_workspace_name(workspace)))
 }
 
 /// Config template written by `talon init`.
@@ -25,7 +44,7 @@ pub const CONFIG_TEMPLATE: &str = r#"# Talon configuration.
 # Location: ~/.config/talon/config.toml
 
 vault_path = "/Users/you/path/to/obsidian"
-db_path = "~/.local/share/talon/index.sqlite"
+db_path = "~/.talon/obsidian.db"
 include_patterns = ["**/*.md"]
 ignore_patterns = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
 
@@ -47,6 +66,8 @@ reranker = "rerank"
 provider = "openai-compatible"
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
+# Optional total completion cap. Leave unset for thinking models.
+# max_tokens = 768
 
 # ── Scopes ─────────────────────────────────────────────────────────────────
 # Named vault partitions with priority-based ranking.
@@ -70,8 +91,9 @@ pub fn load_config_file(path: &Path) -> Result<TalonConfig> {
     let content = fs::read_to_string(path)
         .wrap_err_with(|| format!("failed to read config file: {}", path.display()))?;
 
-    let config: TalonConfig = toml::from_str(&content)
+    let mut config: TalonConfig = toml::from_str(&content)
         .wrap_err_with(|| format!("failed to parse config file: {}", path.display()))?;
+    resolve_config_paths(&mut config, path)?;
     if let Err(message) = config.chunker.validate() {
         bail!("{message}");
     }
@@ -102,7 +124,8 @@ pub fn load_config(explicit_path: Option<&Path>) -> Result<TalonConfig> {
     // TALON_VAULT overrides vault_path so callers (e.g. Hermes plugin) can
     // target a specific vault without modifying the config file.
     if let Ok(vault_override) = std::env::var("TALON_VAULT") {
-        config.vault_path = PathBuf::from(vault_override);
+        config.vault_path =
+            absolutize_path(PathBuf::from(vault_override), &std::env::current_dir()?);
     }
 
     Ok(config)
@@ -127,19 +150,39 @@ pub fn init_config() -> Result<bool> {
             .wrap_err_with(|| format!("failed to create config directory: {}", parent.display()))?;
     }
 
-    fs::write(&path, CONFIG_TEMPLATE)
+    let db_path = default_db_path();
+    if let Some(parent) = db_path.parent() {
+        fs::create_dir_all(parent).wrap_err_with(|| {
+            format!("failed to create database directory: {}", parent.display())
+        })?;
+    }
+
+    fs::write(&path, rendered_config_template())
         .wrap_err_with(|| format!("failed to write config file: {}", path.display()))?;
 
     Ok(true)
 }
 
+fn rendered_config_template() -> String {
+    CONFIG_TEMPLATE.replace(
+        "db_path = \"~/.talon/obsidian.db\"",
+        &format!(
+            "db_path = \"{}\"",
+            toml_basic_string(&default_db_path_for_workspace("obsidian").to_string_lossy())
+        ),
+    )
+}
+
+fn toml_basic_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
 /// Builds a default config from a vault path.
 #[must_use]
 pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
-    let db_path = vault_path.parent().map_or_else(
-        || PathBuf::from("~/.local/share/talon/index.sqlite"),
-        |p| p.join(".talon").join("index.sqlite"),
-    );
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let vault_path = absolutize_path(vault_path, &cwd);
+    let db_path = default_db_path_for_workspace(&workspace_name_for_vault(&vault_path));
 
     TalonConfig {
         vault_path,
@@ -164,9 +207,66 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
             provider: "openai-compatible".to_string(),
             base_url: "http://localhost:1234/v1".to_string(),
             model: "gemma-smol".to_string(),
+            max_tokens: None,
         },
         scopes: default_karpathy_scopes(),
         chunker: talon_core::ChunkerConfig::default(),
+    }
+}
+
+fn workspace_name_for_vault(vault_path: &Path) -> String {
+    vault_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.trim().is_empty())
+        .unwrap_or("default")
+        .to_string()
+}
+
+fn sanitize_workspace_name(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+            out.push(ch.to_ascii_lowercase());
+        } else {
+            out.push('-');
+        }
+    }
+    let trimmed = out.trim_matches('-');
+    if trimmed.is_empty() {
+        "default".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn resolve_config_paths(config: &mut TalonConfig, config_path: &Path) -> Result<()> {
+    let cwd = std::env::current_dir()?;
+    let config_path = absolutize_path(config_path.to_path_buf(), &cwd);
+    let config_dir = config_path.parent().unwrap_or(&cwd);
+
+    config.vault_path = absolutize_path(config.vault_path.clone(), config_dir);
+    config.db_path = absolutize_path(config.db_path.clone(), config_dir);
+    Ok(())
+}
+
+fn absolutize_path(path: PathBuf, base: &Path) -> PathBuf {
+    let path = expand_tilde(path);
+    if path.is_absolute() {
+        path
+    } else {
+        base.join(path)
+    }
+}
+
+fn expand_tilde(path: PathBuf) -> PathBuf {
+    let Some(home) = dirs::home_dir() else {
+        return path;
+    };
+    let mut components = path.components();
+    match components.next() {
+        Some(Component::Normal(component)) if component == "~" => home.join(components.as_path()),
+        _ => path,
     }
 }
 
@@ -236,72 +336,4 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::{CONFIG_TEMPLATE, load_config_file};
-    use std::path::PathBuf;
-
-    fn temp_config_path(label: &str) -> PathBuf {
-        std::env::temp_dir().join(format!("talon-{label}-{}.toml", std::process::id()))
-    }
-
-    #[test]
-    fn config_template_parses_indexer_chunk_settings() {
-        let path = temp_config_path("template-config");
-        if let Err(err) = fs_err::write(&path, CONFIG_TEMPLATE) {
-            panic!("write test config failed: {err}");
-        }
-
-        let config = match load_config_file(&path) {
-            Ok(config) => config,
-            Err(err) => panic!("template config should parse: {err}"),
-        };
-
-        assert_eq!(config.chunker.chunk_tokens, 512);
-        assert_eq!(config.chunker.chunk_overlap, 64);
-        assert_eq!(config.chunker.chunk_min_tokens, 16);
-
-        let _ = fs_err::remove_file(path);
-    }
-
-    #[test]
-    fn load_config_file_rejects_invalid_chunk_overlap() {
-        let path = temp_config_path("invalid-chunk-overlap");
-        let config = r#"
-vault_path = "/tmp/vault"
-db_path = "/tmp/index.sqlite"
-
-[indexer]
-chunk_tokens = 64
-chunk_overlap = 64
-chunk_min_tokens = 16
-
-[inference]
-base_url = "http://localhost:8080"
-
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
-
-[expansion]
-provider = "openai-compatible"
-base_url = "http://localhost:1234/v1"
-model = "gemma-smol"
-"#;
-        if let Err(err) = fs_err::write(&path, config) {
-            panic!("write test config failed: {err}");
-        }
-
-        let Err(err) = load_config_file(&path) else {
-            panic!("invalid chunk overlap should fail");
-        };
-        assert!(
-            err.to_string()
-                .contains("indexer.chunk_overlap must be less than indexer.chunk_tokens"),
-            "unexpected error: {err}"
-        );
-
-        let _ = fs_err::remove_file(path);
-    }
-}
+mod tests;

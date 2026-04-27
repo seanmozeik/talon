@@ -25,9 +25,6 @@ use super::types::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, E
 /// hangs when the sidecar is stalled.
 pub const DEFAULT_EXPANSION_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Token budget for each expansion response.
-const EXPANSION_MAX_TOKENS: u32 = 256;
-
 /// Sampling temperature — low for consistent, near-deterministic reformulations.
 const EXPANSION_TEMPERATURE: f32 = 0.2;
 
@@ -48,6 +45,7 @@ const SYSTEM_PROMPT: &str = "Return only valid JSON of the form \
 pub struct ExpansionClient {
     base_url: String,
     model: String,
+    max_tokens: Option<u32>,
     http: HttpClient,
 }
 
@@ -75,6 +73,33 @@ impl ExpansionClient {
         model: impl Into<String>,
         timeout: Duration,
     ) -> Result<Self, ExpansionError> {
+        Self::with_timeout_and_max_tokens(base_url, model, timeout, None)
+    }
+
+    /// Builds a client with the default timeout and optional completion token cap.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExpansionError::Build`] on `reqwest::Client` build failure.
+    pub fn with_max_tokens(
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, ExpansionError> {
+        Self::with_timeout_and_max_tokens(base_url, model, DEFAULT_EXPANSION_TIMEOUT, max_tokens)
+    }
+
+    /// Builds a client with a custom timeout and optional completion token cap.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExpansionError::Build`] on `reqwest::Client` build failure.
+    pub fn with_timeout_and_max_tokens(
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+        timeout: Duration,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, ExpansionError> {
         let http = HttpClient::builder()
             .timeout(timeout)
             .build()
@@ -84,6 +109,7 @@ impl ExpansionClient {
         Ok(Self {
             base_url: base_url.into(),
             model: model.into(),
+            max_tokens,
             http,
         })
     }
@@ -113,7 +139,7 @@ impl ExpansionClient {
                     content: format!("Query: {query}"),
                 },
             ],
-            max_tokens: EXPANSION_MAX_TOKENS,
+            max_tokens: self.max_tokens,
             temperature: EXPANSION_TEMPERATURE,
         };
 
@@ -202,117 +228,4 @@ fn normalize_queries(original: &str, queries: Vec<String>, limit: u8) -> Vec<Str
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-    use wiremock::matchers::{method, path};
-    use wiremock::{Mock, MockServer, ResponseTemplate};
-
-    fn start_client(uri: String) -> ExpansionClient {
-        ExpansionClient::new(uri, "test-model").unwrap()
-    }
-
-    #[test]
-    fn happy_path_returns_variants() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let server = runtime.block_on(MockServer::start());
-        runtime.block_on(
-            Mock::given(method("POST"))
-                .and(path("/chat/completions"))
-                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                    "choices": [{
-                        "message": {
-                            "content": "{\"queries\":[\"rust async patterns\",\"tokio futures guide\",\"async await rust\"]}"
-                        }
-                    }]
-                })))
-                .mount(&server),
-        );
-        let client = start_client(server.uri());
-        let result = client.expand("async rust", 4).unwrap();
-        assert_eq!(result.len(), 3);
-        assert!(result.contains(&"rust async patterns".to_owned()));
-        assert!(result.contains(&"tokio futures guide".to_owned()));
-    }
-
-    #[test]
-    fn malformed_json_body_returns_empty_vec() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let server = runtime.block_on(MockServer::start());
-        runtime.block_on(
-            Mock::given(method("POST"))
-                .and(path("/chat/completions"))
-                .respond_with(ResponseTemplate::new(200).set_body_string("not json at all!!!"))
-                .mount(&server),
-        );
-        let client = start_client(server.uri());
-        let result = client.expand("anything", 4).unwrap();
-        assert!(result.is_empty(), "malformed body must return empty Vec");
-    }
-
-    #[test]
-    fn http_5xx_maps_to_expansion_error() {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let server = runtime.block_on(MockServer::start());
-        runtime.block_on(
-            Mock::given(method("POST"))
-                .and(path("/chat/completions"))
-                .respond_with(ResponseTemplate::new(500).set_body_string("internal error"))
-                .mount(&server),
-        );
-        let client = start_client(server.uri());
-        let err = client.expand("query", 2).unwrap_err();
-        assert!(
-            matches!(
-                err,
-                ExpansionError::Http {
-                    status: Some(500),
-                    ..
-                }
-            ),
-            "expected Http(500), got {err}"
-        );
-    }
-
-    #[test]
-    fn original_query_excluded_from_variants() {
-        let queries = vec![
-            "Async Rust".to_owned(),
-            "rust async patterns".to_owned(),
-            "tokio".to_owned(),
-        ];
-        let result = normalize_queries("async rust", queries, 4);
-        assert!(!result.iter().any(|q| q.to_lowercase() == "async rust"));
-        assert_eq!(result.len(), 2);
-    }
-
-    #[test]
-    fn n_variants_cap_respected() {
-        let queries = vec![
-            "a".to_owned(),
-            "b".to_owned(),
-            "c".to_owned(),
-            "d".to_owned(),
-            "e".to_owned(),
-        ];
-        let result = normalize_queries("original", queries, 3);
-        assert_eq!(result.len(), 3);
-    }
-
-    #[test]
-    fn strip_code_fences_removes_markdown_wrapper() {
-        let wrapped = "```json\n{\"queries\":[\"a\",\"b\"]}\n```";
-        let cleaned = strip_code_fences(wrapped);
-        assert_eq!(cleaned, "{\"queries\":[\"a\",\"b\"]}");
-    }
-}
+mod tests;

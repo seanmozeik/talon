@@ -56,6 +56,7 @@ pub fn run_search(
     // ── Retrieve results per mode ──────────────────────────────────────────
 
     let raw_results: Vec<RawSearchResult> = match input.mode {
+        SearchMode::Hybrid if fast => search_bm25(conn, &query, limit, DEFAULT_SNIPPET_LENGTH),
         SearchMode::Hybrid => {
             let Some(inference) = inference else {
                 return SearchResponse {
