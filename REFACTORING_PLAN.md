@@ -270,7 +270,7 @@ Split `crates/talon-cli/tests/cli.rs`.
 
 ---
 
-### Task 18 — Split tests/eval/mod.rs (411 lines) [ ]
+### Task 18 — Split tests/eval/mod.rs (411 lines) [x]
 
 Split `crates/talon-core/tests/eval/mod.rs` within `tests/eval/`.  
 `cargo check --all-targets` must pass.

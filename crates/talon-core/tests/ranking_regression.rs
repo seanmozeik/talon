@@ -33,9 +33,9 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use eval::{
-    SemanticEmbedChunkedResponder, SemanticQueryEmbedResponder, SemanticRerankResponder,
-    aggregate_metrics, cleanup, hit_at_k, load_golden_set, mrr, ndcg, seed_fixture_vault,
-    unique_path,
+    EvalMetrics, SemanticEmbedChunkedResponder, SemanticQueryEmbedResponder,
+    SemanticRerankResponder, aggregate_metrics, cleanup, hit_at_k, load_golden_set, mrr, ndcg,
+    seed_fixture_vault, unique_path,
 };
 
 const FAST_NDCG5_FLOOR: f64 = 0.83;

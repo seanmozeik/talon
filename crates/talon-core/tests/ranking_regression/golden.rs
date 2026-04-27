@@ -58,7 +58,7 @@ fn ranking_regression_golden_set_meets_floors() {
         })
         .collect();
 
-    let metrics = aggregate_metrics(&golden, &all_results);
+    let metrics: EvalMetrics = aggregate_metrics(&golden, &all_results);
 
     eprintln!(
         "\nGolden set ({} queries, hybrid fast):",
