@@ -46,15 +46,32 @@ fn rerank_weight_partitions_into_three_tiers() {
 
 #[test]
 fn strong_signal_requires_high_score_and_gap() {
+    // Both conditions met: score 0.9 >= 0.85, gap 0.2 >= 0.15.
     assert!(estimate_strong_signal(&[r("a", 0.9), r("b", 0.7)]));
-    // Score too low.
+
+    // Score too low: 0.8 < 0.85.
     assert!(!estimate_strong_signal(&[r("a", 0.8), r("b", 0.6)]));
-    // Gap too small.
+
+    // Gap too small: 0.9 - 0.85 = 0.05 < 0.15.
     assert!(!estimate_strong_signal(&[r("a", 0.9), r("b", 0.85)]));
-    // Single result with high score: gap = 0.9 - 0 = 0.9, satisfies both.
+
+    // Single result with high score: gap = 0.9 - 0 = 0.9 >= 0.15, satisfies both.
     assert!(estimate_strong_signal(&[r("a", 0.9)]));
-    // Empty.
+
+    // Empty probe returns false.
     assert!(!estimate_strong_signal(&[]));
+
+    // Borderline score exactly at threshold: 0.85 >= 0.85 ✓, gap 0.7 >= 0.15 ✓.
+    assert!(estimate_strong_signal(&[r("a", 0.85), r("b", 0.7)]));
+
+    // Score below threshold by epsilon: 0.84999 < 0.85.
+    assert!(!estimate_strong_signal(&[r("a", 0.84999), r("b", 0.69999)]));
+
+    // Borderline gap exactly at threshold: 0.85 - 0.7 = 0.15 >= 0.15 ✓.
+    assert!(estimate_strong_signal(&[r("a", 0.85), r("b", 0.7)]));
+
+    // Gap below threshold by epsilon: 0.9 - 0.75001 = 0.14999 < 0.15.
+    assert!(!estimate_strong_signal(&[r("a", 0.9), r("b", 0.75001)]));
 }
 
 #[test]

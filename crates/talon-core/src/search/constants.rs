@@ -21,9 +21,11 @@ pub const TRIGRAM_LEN: usize = 3;
 pub const FUZZY_ALIAS_MIN_LEN: usize = 3;
 
 /// Strong-signal: top result score ≥ this implies high confidence.
+/// Cited from qmd store.ts:309-315
 pub const STRONG_SIGNAL_MIN_SCORE: f64 = 0.85;
 
 /// Strong-signal: gap between top and second result must be ≥ this.
+/// Cited from qmd store.ts:309-315
 pub const STRONG_SIGNAL_MIN_GAP: f64 = 0.15;
 
 /// LRU eviction threshold for the on-disk LLM cache table.

@@ -45,6 +45,8 @@ pub const fn rerank_weight_for_rank(rank: usize) -> f64 {
 ///
 /// Definition: top score ≥ [`STRONG_SIGNAL_MIN_SCORE`] AND
 /// `top - second ≥ ` [`STRONG_SIGNAL_MIN_GAP`].
+///
+/// Algorithm ported verbatim from qmd — store.ts:309-315.
 #[must_use]
 pub fn estimate_strong_signal(results: &[RawSearchResult]) -> bool {
     let Some(top) = results.first() else {
