@@ -120,7 +120,7 @@ fn lookup_bm25_heading_or_scan_from_chunk(
     snippet: &str,
 ) -> Option<String> {
     let clean = snippet.trim_start_matches("...").trim();
-    if clean.len() < 8 {
+    if clean.is_empty() {
         return None;
     }
     let probe: String = clean.chars().take(40).collect();
@@ -161,7 +161,7 @@ fn lookup_bm25_heading_or_scan_from_chunk(
 /// precedes it.
 fn scan_content_for_heading(conn: &Connection, vault_path: &str, snippet: &str) -> Option<String> {
     let clean = snippet.trim_start_matches("...").trim();
-    if clean.len() < 8 {
+    if clean.is_empty() {
         return None;
     }
     let probe: String = clean.chars().take(40).collect();

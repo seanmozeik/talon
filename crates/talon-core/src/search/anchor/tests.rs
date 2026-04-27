@@ -207,6 +207,29 @@ fn resolve_snippet_heading_scans_from_chunk_start_when_heading_path_is_null() {
 }
 
 #[test]
+fn resolve_snippet_heading_scans_from_chunk_start_for_short_snippet() {
+    let path = unique_path();
+    let conn = open_database(&path).unwrap();
+    let content = "# A\n## B\n### C\nbody";
+    let note_id = insert_note_with_content(&conn, "notes/short-null-heading.md", content);
+    let char_start = content.find("body").unwrap();
+    insert_chunk_with_position(
+        &conn,
+        note_id,
+        "body",
+        None,
+        Some(i64::try_from(char_start).unwrap()),
+    );
+
+    let r = raw("notes/short-null-heading.md", "body", true, None);
+    let heading = resolve_snippet_heading(&conn, &r);
+
+    assert_eq!(heading.as_deref(), Some("A > B > C"));
+    drop(conn);
+    cleanup(&path);
+}
+
+#[test]
 fn resolve_snippet_heading_returns_none_when_heading_path_and_char_start_are_null() {
     let path = unique_path();
     let conn = open_database(&path).unwrap();

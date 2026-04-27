@@ -200,6 +200,9 @@ pub fn to_fts_query(query: &str, operator: FtsOperator) -> String {
     }
     let joiner = format!(" {} ", operator.keyword());
     let mut query = formatted.join(&joiner);
+    if operator == FtsOperator::Or && formatted.len() > 1 && !negative_terms.is_empty() {
+        query = format!("({query})");
+    }
     for negative in negative_terms {
         query.push_str(" NOT ");
         query.push_str(&negative);

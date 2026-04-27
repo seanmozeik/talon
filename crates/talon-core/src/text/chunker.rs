@@ -130,7 +130,7 @@ pub fn chunk_markdown(
             let byte_end = byte_offset + raw_chunk.len();
 
             let line_start = byte_offset_to_line(&cleaned, byte_offset);
-            let line_end = byte_offset_to_line(&cleaned, byte_end.saturating_sub(1));
+            let line_end = byte_offset_to_line(&cleaned, byte_end);
 
             Some(NoteChunk {
                 char_start: byte_offset,
@@ -157,7 +157,7 @@ fn strip_obsidian_comments(body: &str) -> String {
 
 /// Walk the text up to `byte_offset` and return the active heading stack.
 fn headings_at_byte_offset(text: &str, byte_offset: usize) -> Vec<String> {
-    let before = &text[..byte_offset.min(text.len())];
+    let before = &text[..floor_char_boundary(text, byte_offset)];
     let mut headings: Vec<String> = Vec::new();
     for line in before.lines() {
         let level = line.bytes().take_while(|&b| b == b'#').count();
@@ -174,11 +174,19 @@ fn headings_at_byte_offset(text: &str, byte_offset: usize) -> Vec<String> {
 
 /// Return the 1-based line number for a byte offset within `text`.
 fn byte_offset_to_line(text: &str, byte_offset: usize) -> u32 {
-    let clamped = byte_offset.min(text.len());
+    let clamped = floor_char_boundary(text, byte_offset);
     let newlines = text[..clamped].bytes().filter(|&b| b == b'\n').count();
     u32::try_from(newlines)
         .unwrap_or(u32::MAX)
         .saturating_add(1)
+}
+
+fn floor_char_boundary(text: &str, byte_offset: usize) -> usize {
+    let mut offset = byte_offset.min(text.len());
+    while !text.is_char_boundary(offset) {
+        offset = offset.saturating_sub(1);
+    }
+    offset
 }
 
 /// Return `true` for chunks that carry no meaningful content:
@@ -243,3 +251,6 @@ fn is_trivial_line(line: &str) -> bool {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;
+
+#[cfg(test)]
+mod token_tests;

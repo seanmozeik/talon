@@ -89,6 +89,14 @@ fn to_fts_query_negates_multiple_bare_terms() {
 }
 
 #[test]
+fn to_fts_query_groups_or_positives_before_negation() {
+    assert_eq!(
+        to_fts_query("rust tokio -async", FtsOperator::Or),
+        "(\"rust\"* OR \"tokio\"*) NOT \"async\"*"
+    );
+}
+
+#[test]
 fn to_fts_query_all_negative_returns_empty_string() {
     assert_eq!(to_fts_query("-async", FtsOperator::And), "");
     assert_eq!(to_fts_query("-async -tokio", FtsOperator::And), "");
