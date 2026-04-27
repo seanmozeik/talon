@@ -18,6 +18,8 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 #[path = "search_integration/filters.rs"]
 mod filters;
+#[path = "search_integration/limit_with_filter.rs"]
+mod limit_with_filter;
 #[path = "search_integration/modes.rs"]
 mod modes;
 

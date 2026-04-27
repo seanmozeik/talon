@@ -5,7 +5,7 @@ use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::query::RecallInput;
 use crate::search::bm25::search_bm25;
-use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
+use crate::search::constants::{CANDIDATE_FLOOR, DEFAULT_SNIPPET_LENGTH};
 use crate::search::fuse::fuse_hybrid_result_lists;
 use crate::search::fuzzy_title::search_title_parts;
 use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
@@ -31,6 +31,7 @@ pub(super) fn retrieve_pipeline_results(
 ) -> Vec<RawSearchResult> {
     let opts = HybridPipelineOptions {
         limit,
+        candidate_limit: CANDIDATE_FLOOR,
         fast,
         queries: Vec::new(),
     };

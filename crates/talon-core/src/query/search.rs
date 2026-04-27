@@ -21,6 +21,7 @@ use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::fuzzy_title::search_fuzzy_title;
 use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
+use crate::search::pool;
 use crate::search::types::RawSearchResult;
 use crate::search::vector::search_vector;
 
@@ -52,10 +53,17 @@ pub fn run_search(
     };
 
     let limit = u32::from(input.limit.get());
+    let candidate_floor = u32::from(input.candidate_limit.get());
     let fast = input.fast;
 
+    // Step 1: retrieve wide pool.
     let raw_results: Vec<RawSearchResult> = match input.mode {
-        SearchMode::Hybrid if fast => search_bm25(conn, &query, limit, DEFAULT_SNIPPET_LENGTH),
+        SearchMode::Hybrid if fast => search_bm25(
+            conn,
+            &query,
+            pool::bm25_pool(limit, candidate_floor),
+            DEFAULT_SNIPPET_LENGTH,
+        ),
         SearchMode::Hybrid => {
             let Some(inference) = inference else {
                 return SearchResponse {
@@ -72,6 +80,7 @@ pub fn run_search(
             };
             let opts = HybridPipelineOptions {
                 limit,
+                candidate_limit: candidate_floor,
                 fast,
                 queries: input.queries.clone(),
             };
@@ -85,18 +94,29 @@ pub fn run_search(
                 return SearchResponse::empty_input();
             };
             let embedding = embeddings.first().map_or(&[] as &[f32], Vec::as_slice);
-            search_vector(conn, embedding, limit)
+            search_vector(conn, embedding, pool::vector_pool(limit, candidate_floor))
         }
-        SearchMode::Fulltext => search_bm25(conn, &query, limit, DEFAULT_SNIPPET_LENGTH),
-        SearchMode::Title => search_fuzzy_title(conn, &query, limit),
+        SearchMode::Fulltext => search_bm25(
+            conn,
+            &query,
+            pool::bm25_pool(limit, candidate_floor),
+            DEFAULT_SNIPPET_LENGTH,
+        ),
+        SearchMode::Title => {
+            search_fuzzy_title(conn, &query, pool::fuzzy_pool(limit, candidate_floor))
+        }
     };
 
+    // Step 2: apply --where filter (no truncation).
     let filtered = apply_where_filter(raw_results, &input.where_, conn);
+    // Step 3: apply --since filter (no truncation).
     let filtered = apply_since_filter(filtered, input.since.as_deref(), conn);
-
+    // Step 4: scope priority multiplication.
     let scored = apply_scope_priority(filtered, config);
 
+    // Step 5: total is post-filter, pre-truncate.
     let total = count_u32(scored.len());
+    // Step 6: final output trim.
     let mut scored = scored;
     scored.truncate(limit as usize);
 

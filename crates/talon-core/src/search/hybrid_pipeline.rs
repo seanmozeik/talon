@@ -19,6 +19,7 @@ use super::constants::{
 use super::fuse::{estimate_strong_signal, fuse_hybrid_result_lists};
 use super::fuzzy_title::search_title_parts;
 use super::hybrid_single::{HybridSingleResult, run_hybrid_single};
+use super::pool;
 use super::rerank_pipeline::rerank_candidates;
 use super::rrf::{RrfInputs, RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 use super::types::{HybridScoreData, RawSearchResult, SearchScores};
@@ -31,6 +32,8 @@ const EXPANSION_N_VARIANTS: u8 = 3;
 pub struct HybridPipelineOptions {
     /// Maximum results to return.
     pub limit: u32,
+    /// Candidate pool size for RRF/rerank over-fetch.
+    pub candidate_limit: u32,
     /// Skip LLM expansion and cross-encoder reranking when true.
     pub fast: bool,
     /// Pre-supplied query variants (bypass LLM call when non-empty).
@@ -104,6 +107,8 @@ pub fn run_hybrid_pipeline(
         v
     };
 
+    let rrf_size = pool::rrf_pool(options.limit, options.candidate_limit);
+
     // Per-variant: embed → retrieve (BM25 + fuzzy + vector) → intra-variant RRF.
     let per_variant: Vec<Vec<RawSearchResult>> = queries_to_search
         .iter()
@@ -112,14 +117,20 @@ pub fn run_hybrid_pipeline(
                 .embed(std::slice::from_ref(q))
                 .ok()
                 .and_then(|mut vecs| vecs.pop());
-            let single = run_hybrid_single(conn, q, embedding.as_deref(), options.limit);
-            single_to_raw_list(&single, options.limit as usize)
+            let single = run_hybrid_single(
+                conn,
+                q,
+                embedding.as_deref(),
+                options.limit,
+                options.candidate_limit,
+            );
+            single_to_raw_list(&single, rrf_size as usize)
         })
         .collect();
 
     // Cross-variant RRF fusion.
     let list_refs: Vec<&[RawSearchResult]> = per_variant.iter().map(Vec::as_slice).collect();
-    let fused = fuse_hybrid_result_lists(&list_refs, options.limit as usize);
+    let fused = fuse_hybrid_result_lists(&list_refs, rrf_size as usize);
 
     // Rerank unless the probe gave us high confidence or fast mode is active.
     if skip_expensive {

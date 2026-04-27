@@ -75,6 +75,7 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
 
     let opts = HybridPipelineOptions {
         limit: 10,
+        candidate_limit: 40,
         fast: false,
         queries: vec![],
     };
@@ -135,6 +136,7 @@ fn strong_signal_probe_skips_expansion_and_rerank() {
 
     let opts = HybridPipelineOptions {
         limit: 10,
+        candidate_limit: 40,
         fast: false,
         queries: vec![],
     };
@@ -206,6 +208,7 @@ fn fast_flag_skips_expansion_and_rerank() {
 
     let opts = HybridPipelineOptions {
         limit: 10,
+        candidate_limit: 40,
         fast: true,
         queries: vec![],
     };
@@ -260,6 +263,7 @@ fn no_expansion_client_returns_results() {
 
     let opts = HybridPipelineOptions {
         limit: 10,
+        candidate_limit: 40,
         fast: false,
         queries: vec![],
     };
@@ -317,6 +321,7 @@ fn pre_supplied_queries_bypass_llm_expansion() {
 
     let opts = HybridPipelineOptions {
         limit: 10,
+        candidate_limit: 40,
         fast: false,
         queries: vec!["anki flashcards".to_owned()],
     };
