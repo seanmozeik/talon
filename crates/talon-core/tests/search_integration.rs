@@ -26,6 +26,8 @@ mod limit_with_filter;
 mod modes;
 #[path = "search_integration/search_cache.rs"]
 mod search_cache;
+#[path = "search_integration/short_aliases.rs"]
+mod short_aliases;
 
 fn unique_path(label: &str) -> std::path::PathBuf {
     static COUNTER: AtomicU64 = AtomicU64::new(0);

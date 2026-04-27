@@ -16,6 +16,12 @@ use crate::embed::quantize::f32_to_i8_normalized;
 
 /// Maps a cosine distance into a `[0, 1]` score using the standard
 /// `1 - distance / max` transform clamped at zero.
+///
+/// Intentional divergence from OHS `searcher.ts:691`: OHS gets L2 distance
+/// back from its vector store and converts it with `1 - l2² / 2`, while
+/// sqlite-vec's `distance_metric=cosine` returns cosine distance directly, so
+/// `1 - distance / 2` is the equivalent talon-side formula. Both normalize to
+/// similarity in `[0, 1]`.
 #[must_use]
 pub fn distance_to_score(distance: f64) -> f64 {
     (1.0 - distance / COSINE_DISTANCE_MAX).max(0.0)
