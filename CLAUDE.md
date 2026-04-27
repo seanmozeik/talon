@@ -7,6 +7,8 @@ Always prefer refactors to suppressions, even when tedious. If suppressions are 
 
 Always commit with conventional commit formatted messages.
 
+Math/algorithm ports from third-party repos must cite the source file:line in an inline comment. Aggregate attribution in `LICENSE-3RD-PARTY.md`. Do not reinvent ported scoring math; copy verbatim.
+
 ## Code exploration — prefer `ast-outline` over full reads
 
 For `.rs`, `.cs`, `.py`, `.pyi`, `.ts`, `.tsx`, `.js`, `.jsx`, `.java`, `.kt`, `.kts`,
