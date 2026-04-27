@@ -62,5 +62,9 @@ fn run_fast_bm25_title(conn: &Connection, query: &str, limit: u32) -> Vec<RawSea
     let title_parts = search_title_parts(conn, query, limit);
     let mut all_title = title_parts.exact_alias;
     all_title.extend(title_parts.fuzzy);
-    fuse_hybrid_result_lists(&[bm25.as_slice(), all_title.as_slice()], limit as usize)
+    fuse_hybrid_result_lists(
+        &[bm25.as_slice(), all_title.as_slice()],
+        &[1.0, 1.0],
+        limit as usize,
+    )
 }

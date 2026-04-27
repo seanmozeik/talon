@@ -250,7 +250,8 @@ mod tests {
     #[test]
     fn weights_favor_bm25_and_alias_over_fuzzy() {
         // Same-rank single-list contributions: weight / (RRF_K + 1).
-        // Bm25 (weight 2) vs Fuzzy (weight 0.5) → bm25 should win 4×.
+        // Bm25 (weight 1.5) vs Fuzzy (weight 0.25) → bm25 should win 6×.
+        // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — searcher.ts:1390-1392
         let bm25 = vec![r("bm.md", 0.0)];
         let fuzzy = vec![r("fz.md", 0.0)];
         let mut acc = RrfScoreAccumulator::new();
@@ -265,11 +266,21 @@ mod tests {
         let results = normalize_and_merge_rrf_results(&acc, &inputs, 10);
         let bm = results.iter().find(|r| r.path == "bm.md").unwrap();
         let fz = results.iter().find(|r| r.path == "fz.md").unwrap();
-        // The cap is the sum of both per-list maxes (2/61 + 0.5/61 = 2.5/61).
-        // bm.md raw = 2/61 → normalized 2/2.5 = 0.8.
-        // fz.md raw = 0.5/61 → normalized 0.5/2.5 = 0.2.
-        assert!((bm.hybrid_before_norm.unwrap() - 0.8).abs() < 1e-9);
-        assert!((fz.hybrid_before_norm.unwrap() - 0.2).abs() < 1e-9);
+        // The cap is the sum of both per-list maxes (1.5/61 + 0.25/61 = 1.75/61).
+        // bm.md raw = 1.5/61 → normalized 1.5/1.75 = 6/7.
+        // fz.md raw = 0.25/61 → normalized 0.25/1.75 = 1/7.
+        assert!(
+            (bm.hybrid_before_norm.unwrap() - 6.0 / 7.0).abs() < 1e-9,
+            "bm.md expected {}, got {}",
+            6.0 / 7.0,
+            bm.hybrid_before_norm.unwrap()
+        );
+        assert!(
+            (fz.hybrid_before_norm.unwrap() - 1.0 / 7.0).abs() < 1e-9,
+            "fz.md expected {}, got {}",
+            1.0 / 7.0,
+            fz.hybrid_before_norm.unwrap()
+        );
     }
 
     #[test]
@@ -306,5 +317,14 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(normalize_and_merge_rrf_results(&acc, &inputs, 3).len(), 3);
+    }
+
+    #[test]
+    fn rrf_weights_match_ohs_benchmark_values() {
+        // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — searcher.ts:1390-1392
+        assert!((RRF_WEIGHTS.bm25 - 1.5).abs() < f64::EPSILON);
+        assert!((RRF_WEIGHTS.exact_alias - 2.0).abs() < f64::EPSILON);
+        assert!((RRF_WEIGHTS.fuzzy - 0.25).abs() < f64::EPSILON);
+        assert!((RRF_WEIGHTS.semantic - 1.5).abs() < f64::EPSILON);
     }
 }

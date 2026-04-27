@@ -78,7 +78,8 @@ fn strong_signal_requires_high_score_and_gap() {
 fn fuse_single_list_passes_through_unchanged() {
     let list = vec![r("a.md", 0.4), r("b.md", 0.3)];
     let lists: Vec<&[RawSearchResult]> = vec![&list];
-    let out = fuse_hybrid_result_lists(&lists, 10);
+    let weights = vec![1.0_f64];
+    let out = fuse_hybrid_result_lists(&lists, &weights, 10);
     assert_eq!(out.len(), 2);
     assert_eq!(out[0].path, "a.md");
 }
@@ -88,7 +89,8 @@ fn fuse_two_lists_top_intersection_wins() {
     let l1 = vec![r("a.md", 0.0), r("b.md", 0.0)];
     let l2 = vec![r("a.md", 0.0), r("c.md", 0.0)];
     let lists: Vec<&[RawSearchResult]> = vec![&l1, &l2];
-    let out = fuse_hybrid_result_lists(&lists, 10);
+    let weights = vec![1.0_f64, 1.0_f64];
+    let out = fuse_hybrid_result_lists(&lists, &weights, 10);
     assert_eq!(out[0].path, "a.md");
     assert!(out[0].score >= out[1].score);
     // Hybrid score is recorded.
@@ -98,12 +100,14 @@ fn fuse_two_lists_top_intersection_wins() {
 #[test]
 fn fuse_normalizes_top_intersection_to_one() {
     // Two lists, same path at rank 0 in both → hits the per-list cap on
-    // both sides → normalized to 1.0.
+    // both sides → normalized to 1.0 (before top-rank bonus).
+    // After top-rank bonus the score is 1.0 + 0.05 = 1.05.
     let l1 = vec![r("a.md", 0.0)];
     let l2 = vec![r("a.md", 0.0)];
     let lists: Vec<&[RawSearchResult]> = vec![&l1, &l2];
-    let out = fuse_hybrid_result_lists(&lists, 10);
-    assert!((out[0].score - 1.0).abs() < 1e-9);
+    let weights = vec![1.0_f64, 1.0_f64];
+    let out = fuse_hybrid_result_lists(&lists, &weights, 10);
+    assert!((out[0].score - 1.05).abs() < 1e-9);
 }
 
 #[test]
@@ -164,19 +168,21 @@ fn blend_rerank_always_applies_sigmoid() {
 }
 
 #[test]
-fn rrf_hybrid_score_never_exceeds_one() {
-    // RRF normalization divides by Σweights/(k+1) so the theoretical
-    // maximum is 1.0.  Verify this holds with many lists and many results.
-    // Reference: obsidian-hybrid-search searcher.ts:748-759.
+fn rrf_hybrid_score_bounded_by_one_plus_max_bonus() {
+    // After normalization the base RRF score is ≤ 1.0.  The top-rank bonus
+    // adds at most 0.05 (rank 0), so the ceiling is 1.05.
+    // Reference: obsidian-hybrid-search searcher.ts:748-759 + qmd store.ts:3377-3384.
     let l1: Vec<RawSearchResult> = (0..20).map(|i| r(&format!("{i}.md"), 0.0)).collect();
     let l2: Vec<RawSearchResult> = (0..20).map(|i| r(&format!("{i}.md"), 0.0)).collect();
     let l3: Vec<RawSearchResult> = (0..20).map(|i| r(&format!("{i}.md"), 0.0)).collect();
     let lists: Vec<&[RawSearchResult]> = vec![&l1, &l2, &l3];
-    let out = fuse_hybrid_result_lists(&lists, 20);
+    let weights = vec![1.0_f64, 1.0_f64, 1.0_f64];
+    let out = fuse_hybrid_result_lists(&lists, &weights, 20);
+    let max_allowed = 1.0 + 0.05 + f64::EPSILON;
     for result in &out {
         assert!(
-            result.score <= 1.0 + f64::EPSILON,
-            "RRF hybrid score must be ≤ 1.0, got {} for {}",
+            result.score <= max_allowed,
+            "RRF hybrid score must be ≤ 1.05, got {} for {}",
             result.score,
             result.path
         );
@@ -219,5 +225,68 @@ fn blend_rerank_min_max_normalizes_hybrid_scores() {
         (low.score - expected_low).abs() < 1e-9,
         "low.md score: expected {expected_low:.4}, got {}",
         low.score
+    );
+}
+
+#[test]
+fn original_query_2x_weight_ranks_first() {
+    // "winner.md" appears only in the original-query list (weight 2.0) at rank 0.
+    // "loser.md" appears only in the expansion list (weight 1.0) at rank 0.
+    // No path overlap between the two lists, so no cross-list boosting.
+    // With 2× weight, winner.md's RRF contribution is 2.0/(60+1) while
+    // loser.md's is 1.0/(60+1), so winner.md ranks first.
+    // Algorithm ported verbatim from qmd — store.ts:4122
+    let l_orig = vec![r("winner.md", 0.0), r("orig2.md", 0.0)];
+    let l_exp = vec![r("loser.md", 0.0), r("exp2.md", 0.0)];
+    let lists: Vec<&[RawSearchResult]> = vec![&l_orig, &l_exp];
+    // Original query gets 2×, expansion gets 1×.
+    let weights = vec![2.0_f64, 1.0_f64];
+    let out = fuse_hybrid_result_lists(&lists, &weights, 10);
+    let winner = out.iter().find(|x| x.path == "winner.md").unwrap();
+    let loser = out.iter().find(|x| x.path == "loser.md").unwrap();
+    assert!(
+        winner.score > loser.score,
+        "winner.score={} should exceed loser.score={} due to 2× original-query weight",
+        winner.score,
+        loser.score
+    );
+    // winner.md is at index 0 after top-rank bonus applied.
+    assert_eq!(
+        out[0].path, "winner.md",
+        "original-query winner should rank first"
+    );
+}
+
+#[test]
+fn top_rank_bonus_tiebreaker_rank0_beats_rank5() {
+    // Four paths each appear as rank-0 in their own single-element list.
+    // All four have the same normalized base score (0.25 each).
+    // BTreeMap tie-breaks by path (lexicographic), so "aaa.md" lands at
+    // final rank 0 (+0.05) and "zzz.md" at final rank 3 (no bonus).
+    // This verifies that the top-rank bonus breaks ties in favour of
+    // the lexicographically-first path after RRF normalization.
+    // Algorithm ported verbatim from qmd — store.ts:3377-3384
+    let la = vec![r("aaa.md", 0.0)];
+    let lb = vec![r("bbb.md", 0.0)];
+    let lc = vec![r("ccc.md", 0.0)];
+    let lz = vec![r("zzz.md", 0.0)];
+    let lists: Vec<&[RawSearchResult]> = vec![&la, &lb, &lc, &lz];
+    let weights = vec![1.0_f64, 1.0_f64, 1.0_f64, 1.0_f64];
+    let out = fuse_hybrid_result_lists(&lists, &weights, 4);
+    // All four have equal base normalized score = 0.25.
+    // After top-rank bonus: aaa=0.30, bbb=0.27, ccc=0.27, zzz=0.25.
+    let r0 = out.iter().find(|x| x.path == "aaa.md").unwrap();
+    let r5 = out.iter().find(|x| x.path == "zzz.md").unwrap();
+    assert!(
+        r0.score > r5.score,
+        "rank-0 bonus should lift aaa.md above zzz.md: r0={} r5={}",
+        r0.score,
+        r5.score
+    );
+    // aaa.md gets +0.05 (rank 0), zzz.md gets no bonus (rank 3) → delta = 0.05.
+    assert!(
+        (r0.score - r5.score - 0.05).abs() < 1e-9,
+        "bonus delta should be 0.05: got {}",
+        r0.score - r5.score
     );
 }

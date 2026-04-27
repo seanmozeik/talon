@@ -47,13 +47,23 @@ pub struct RrfWeights {
     pub semantic: f64,
 }
 
-/// Default RRF weights as specified in the design doc and TS reference.
+// Algorithm ported verbatim from obsidian-hybrid-search (MIT) — searcher.ts:1390-1392
 pub const RRF_WEIGHTS: RrfWeights = RrfWeights {
-    bm25: 2.0,
+    bm25: 1.5,
     exact_alias: 2.0,
-    fuzzy: 0.5,
-    semantic: 1.0,
+    fuzzy: 0.25,
+    semantic: 1.5,
 };
+
+/// Additive score bonus for top-ranked results after RRF normalization.
+///
+/// Index 0 → rank-0 bonus (+0.05), index 1 → rank-1 bonus (+0.02),
+/// index 2 → rank-2 bonus (+0.02).  Applied after `min(1.0, score /
+/// max_possible)` so rank-0 can score up to 1.05 — callers that sort by
+/// this score must not assume a strict [0, 1] range.
+///
+/// Algorithm ported verbatim from qmd — store.ts:3377-3384
+pub const RRF_TOP_RANK_BONUS: [f64; 3] = [0.05, 0.02, 0.02];
 
 /// Rerank blend weight for top-ranked candidates (rank < 10).
 pub const RERANK_WEIGHT_TOP: f64 = 0.75;

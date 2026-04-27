@@ -129,8 +129,13 @@ pub fn run_hybrid_pipeline(
         .collect();
 
     // Cross-variant RRF fusion.
+    // Original query (index 0) gets 2× weight; expansion variants get 1.0.
+    // Algorithm ported verbatim from qmd — store.ts:4122
     let list_refs: Vec<&[RawSearchResult]> = per_variant.iter().map(Vec::as_slice).collect();
-    let fused = fuse_hybrid_result_lists(&list_refs, rrf_size as usize);
+    let variant_weights: Vec<f64> = (0..list_refs.len())
+        .map(|i| if i == 0 { 2.0 } else { 1.0 })
+        .collect();
+    let fused = fuse_hybrid_result_lists(&list_refs, &variant_weights, rrf_size as usize);
 
     // Rerank unless the probe gave us high confidence or fast mode is active.
     if skip_expensive {

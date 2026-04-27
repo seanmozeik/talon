@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use super::constants::{
     RERANK_MID_RANK_THRESHOLD, RERANK_TOP_RANK_THRESHOLD, RERANK_WEIGHT_LOW, RERANK_WEIGHT_MID,
-    RERANK_WEIGHT_TOP, RRF_K, STRONG_SIGNAL_MIN_GAP, STRONG_SIGNAL_MIN_SCORE,
+    RERANK_WEIGHT_TOP, RRF_K, RRF_TOP_RANK_BONUS, STRONG_SIGNAL_MIN_GAP, STRONG_SIGNAL_MIN_SCORE,
 };
 use super::types::RawSearchResult;
 
@@ -68,28 +68,54 @@ struct FuseAcc {
     semantic_char_end: Option<u32>,
 }
 
-/// Fuses multiple ranked result lists with unweighted RRF, normalizes by the
-/// theoretical maximum, and returns the top `limit` results.
+/// Fuses multiple ranked result lists with optionally weighted RRF, normalizes
+/// by the theoretical maximum, applies a top-rank bonus, and returns the top
+/// `limit` results.
+///
+/// `weights` must be the same length as `lists`.  Each list's RRF contribution
+/// is multiplied by its corresponding weight.  Pass all-1.0s for uniform
+/// weighting.  The original-query list should receive weight 2.0 and expansion
+/// variants weight 1.0.
+///
+/// // Algorithm ported verbatim from qmd — store.ts:4122
 ///
 /// When called with one or zero non-empty lists, returns the first non-empty
 /// list as-is (no fusion needed).
+///
+/// # Panics
+/// Panics if `weights.len() != lists.len()`.
 #[must_use]
 pub fn fuse_hybrid_result_lists(
     lists: &[&[RawSearchResult]],
+    weights: &[f64],
     limit: usize,
 ) -> Vec<RawSearchResult> {
-    let active: Vec<&[RawSearchResult]> = lists.iter().copied().filter(|l| !l.is_empty()).collect();
+    assert_eq!(
+        lists.len(),
+        weights.len(),
+        "lists and weights must have the same length"
+    );
+
+    // Pair each list with its weight, filtering empty ones.
+    let active: Vec<(&[RawSearchResult], f64)> = lists
+        .iter()
+        .copied()
+        .zip(weights.iter().copied())
+        .filter(|(l, _)| !l.is_empty())
+        .collect();
+
     if active.len() <= 1 {
-        return active.first().map_or(Vec::new(), |l| l.to_vec());
+        return active.first().map_or(Vec::new(), |(l, _)| l.to_vec());
     }
 
     let mut acc: BTreeMap<String, FuseAcc> = BTreeMap::new();
-    let mut active_count = 0.0_f64;
-    for list in &active {
-        active_count += 1.0;
+    let mut max_possible = 0.0_f64;
+    for (list, w) in &active {
+        // The maximum contribution for this list is w / (RRF_K + 1).
+        max_possible += w / (RRF_K + 1.0);
         let mut rank_f = 0.0_f64;
         for result in *list {
-            let contribution = 1.0 / (RRF_K + rank_f + 1.0);
+            let contribution = w / (RRF_K + rank_f + 1.0);
             acc.entry(result.path.clone())
                 .and_modify(|entry| {
                     if result.score > entry.base.score {
@@ -115,7 +141,6 @@ pub fn fuse_hybrid_result_lists(
         }
     }
 
-    let max_possible = active_count * (1.0 / (RRF_K + 1.0));
     let mut out: Vec<RawSearchResult> = acc
         .into_values()
         .map(
@@ -153,6 +178,19 @@ pub fn fuse_hybrid_result_lists(
             .partial_cmp(&a.score)
             .unwrap_or(std::cmp::Ordering::Equal)
     });
+    // Top-rank bonus applied after normalization; rank-0 can reach up to
+    // 1.05 (no clamp — callers sort by score only).
+    // Algorithm ported verbatim from qmd — store.ts:3377-3384
+    for (rank, result) in out.iter_mut().enumerate() {
+        if let Some(bonus) = RRF_TOP_RANK_BONUS.get(rank) {
+            result.score += bonus;
+            if let Some(h) = result.scores.hybrid.as_mut() {
+                *h += bonus;
+            }
+        } else {
+            break;
+        }
+    }
     out.truncate(limit);
     out
 }
