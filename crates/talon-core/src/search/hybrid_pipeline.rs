@@ -24,7 +24,6 @@ use super::fuse::{estimate_strong_signal, fuse_hybrid_result_lists};
 use super::fuzzy_title::search_title_parts;
 use super::hooks::SearchHooks;
 use super::hybrid_single::{HybridSingleResult, run_hybrid_single};
-use super::intent;
 use super::pool;
 use super::rerank_pipeline::{IntentRerankOptions, rerank_candidates_with_intent};
 use super::rrf::{RrfInputs, RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
@@ -108,6 +107,10 @@ pub fn run_hybrid_pipeline_with_metadata(
     // Algorithm ported verbatim from qmd — store.ts:4025-4034
     let probe_decisive = options.intent.is_none() && estimate_strong_signal(&bm25_probe);
 
+    if probe_decisive && let Some(top) = bm25_probe.first() {
+        options.hooks.emit_strong_signal(top.score);
+    }
+
     // A decisive probe or fast mode skips both expansion and reranking.
     let skip_expensive = options.fast || probe_decisive;
     // An exact alias hit additionally skips LLM expansion (not reranking).
@@ -121,9 +124,8 @@ pub fn run_hybrid_pipeline_with_metadata(
     } else if let Some(exp) = expansion {
         options.hooks.emit_expand_start();
         let started = Instant::now();
-        let expansion_query = intent::prefix_query(options.intent.as_deref(), query);
         let expanded = exp
-            .expand(&expansion_query, EXPANSION_N_VARIANTS)
+            .expand_with_intent(query, options.intent.as_deref(), EXPANSION_N_VARIANTS)
             .unwrap_or_default();
         let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
         options.hooks.emit_expand_end(elapsed_ms);

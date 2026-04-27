@@ -30,11 +30,18 @@ pub const DEFAULT_EXPANSION_TIMEOUT: Duration = Duration::from_secs(30);
 /// same search does not produce a different candidate pool on each process run.
 const EXPANSION_TEMPERATURE: f32 = 0.0;
 
-/// System prompt ported from `clients/sidecar-llm/local-llm.ts`.
+/// System prompt ported from `clients/sidecar-llm/local-llm.ts`, extended
+/// with intent-aware guidance modeled on qmd's `expandQuery` (`src/llm.ts`).
+///
+/// The prompt instructs the model to honor an optional `Query intent:` line
+/// in the user message — when present, reformulations should stay consistent
+/// with that intent rather than treating the bare query as ambiguous.
 const SYSTEM_PROMPT: &str = "Return only valid JSON of the form \
     {\"queries\":[\"...\"]}. Generate 2 to 4 short search reformulations. \
     Do not repeat the original query. Prefer terse, concrete terms that \
-    would help Obsidian search.";
+    would help Obsidian search. If the user message includes a \
+    \"Query intent:\" line, every reformulation must stay consistent with \
+    that intent and avoid unrelated senses of the original query.";
 
 /// Blocking HTTP client for the OpenAI-compatible LLM expansion endpoint.
 ///
@@ -128,7 +135,28 @@ impl ExpansionClient {
     /// Returns [`ExpansionError::Http`] for transport failures or non-2xx
     /// HTTP responses from the sidecar.
     pub fn expand(&self, query: &str, n_variants: u8) -> Result<Vec<String>, ExpansionError> {
+        self.expand_with_intent(query, None, n_variants)
+    }
+
+    /// Requests reformulations with an optional disambiguating intent.
+    ///
+    /// When `intent` is present, the user message includes a `Query intent:`
+    /// line so the LLM can keep variants consistent with the caller's domain
+    /// hint. Mirrors qmd's `expandQuery({ intent })` shape (`src/llm.ts:1131`)
+    /// minus the typed lex/vec/hyde grammar.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExpansionError::Http`] for transport failures or non-2xx
+    /// HTTP responses from the sidecar.
+    pub fn expand_with_intent(
+        &self,
+        query: &str,
+        intent: Option<&str>,
+        n_variants: u8,
+    ) -> Result<Vec<String>, ExpansionError> {
         let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+        let user_content = build_user_message(query, intent);
         let body = ChatCompletionRequest {
             model: self.model.clone(),
             messages: vec![
@@ -138,7 +166,7 @@ impl ExpansionClient {
                 },
                 ChatMessage {
                     role: "user".to_owned(),
-                    content: format!("Query: {query}"),
+                    content: user_content,
                 },
             ],
             max_tokens: self.max_tokens,
@@ -187,6 +215,19 @@ impl ExpansionClient {
 
         Ok(normalize_queries(query, expansion.queries, n_variants))
     }
+}
+
+/// Builds the user message for an expansion request.
+///
+/// Without intent: `Query: {query}` (preserves prior wire format).
+/// With intent: appends a `Query intent: {intent}` line so the LLM can scope
+/// variants to the caller's hint. Mirrors qmd's `expandQuery` prompt body in
+/// `src/llm.ts:1152-1154`.
+fn build_user_message(query: &str, intent: Option<&str>) -> String {
+    intent.map(str::trim).filter(|s| !s.is_empty()).map_or_else(
+        || format!("Query: {query}"),
+        |intent| format!("Query: {query}\nQuery intent: {intent}"),
+    )
 }
 
 /// Strips Markdown code fences and extracts the JSON object substring.

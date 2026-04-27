@@ -154,6 +154,86 @@ fn n_variants_cap_respected() {
 }
 
 #[test]
+fn expand_with_intent_appends_intent_line_to_user_message() {
+    let runtime = runtime();
+    let server = runtime.block_on(MockServer::start());
+    runtime.block_on(
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"queries\":[\"page load metrics\"]}"
+                    }
+                }]
+            })))
+            .mount(&server),
+    );
+    let client = start_client(server.uri());
+    let _ = client
+        .expand_with_intent("performance", Some("web page load times"), 3)
+        .unwrap();
+
+    let requests = runtime.block_on(server.received_requests()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let user_content = body["messages"][1]["content"].as_str().unwrap();
+    assert_eq!(
+        user_content,
+        "Query: performance\nQuery intent: web page load times"
+    );
+}
+
+#[test]
+fn expand_without_intent_omits_intent_line() {
+    let runtime = runtime();
+    let server = runtime.block_on(MockServer::start());
+    runtime.block_on(
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"queries\":[\"async\"]}"
+                    }
+                }]
+            })))
+            .mount(&server),
+    );
+    let client = start_client(server.uri());
+    let _ = client.expand("rust", 2).unwrap();
+
+    let requests = runtime.block_on(server.received_requests()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let user_content = body["messages"][1]["content"].as_str().unwrap();
+    assert_eq!(user_content, "Query: rust");
+}
+
+#[test]
+fn expand_with_blank_intent_omits_intent_line() {
+    let runtime = runtime();
+    let server = runtime.block_on(MockServer::start());
+    runtime.block_on(
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                "choices": [{
+                    "message": {
+                        "content": "{\"queries\":[\"x\"]}"
+                    }
+                }]
+            })))
+            .mount(&server),
+    );
+    let client = start_client(server.uri());
+    let _ = client.expand_with_intent("rust", Some("   "), 2).unwrap();
+
+    let requests = runtime.block_on(server.received_requests()).unwrap();
+    let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+    let user_content = body["messages"][1]["content"].as_str().unwrap();
+    assert_eq!(user_content, "Query: rust");
+}
+
+#[test]
 fn strip_code_fences_removes_markdown_wrapper() {
     let wrapped = "```json\n{\"queries\":[\"a\",\"b\"]}\n```";
     let cleaned = strip_code_fences(wrapped);

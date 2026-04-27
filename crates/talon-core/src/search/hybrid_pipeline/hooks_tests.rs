@@ -15,6 +15,14 @@ fn build_recording_hooks(
     started: Instant,
 ) -> SearchHooks {
     SearchHooks {
+        on_strong_signal: Some({
+            let events = Arc::clone(events);
+            Box::new(move |top_score| {
+                #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+                let bucket = (top_score * 1000.0) as u128;
+                events.lock().unwrap().push(("strong_signal", bucket));
+            })
+        }),
         on_expand_start: Some({
             let events = Arc::clone(events);
             Box::new(move || {

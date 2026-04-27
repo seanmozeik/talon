@@ -3,6 +3,9 @@ use core::fmt;
 /// Optional search-pipeline progress callbacks.
 #[derive(Default)]
 pub struct SearchHooks {
+    /// BM25 probe found a decisive match — expansion is being skipped.
+    /// Argument is the top probe score that triggered the bypass.
+    pub on_strong_signal: Option<Box<dyn Fn(f64) + Send + Sync + 'static>>,
     pub on_expand_start: Option<Box<dyn Fn() + Send + Sync + 'static>>,
     pub on_expand_end: Option<Box<dyn Fn(u64) + Send + Sync + 'static>>,
     pub on_embed_batch: Option<Box<dyn Fn(usize) + Send + Sync + 'static>>,
@@ -13,6 +16,7 @@ pub struct SearchHooks {
 impl fmt::Debug for SearchHooks {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SearchHooks")
+            .field("on_strong_signal", &self.on_strong_signal.is_some())
             .field("on_expand_start", &self.on_expand_start.is_some())
             .field("on_expand_end", &self.on_expand_end.is_some())
             .field("on_embed_batch", &self.on_embed_batch.is_some())
@@ -23,6 +27,12 @@ impl fmt::Debug for SearchHooks {
 }
 
 impl SearchHooks {
+    pub fn emit_strong_signal(&self, top_score: f64) {
+        if let Some(cb) = &self.on_strong_signal {
+            cb(top_score);
+        }
+    }
+
     pub fn emit_expand_start(&self) {
         if let Some(cb) = &self.on_expand_start {
             cb();
