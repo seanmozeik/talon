@@ -92,16 +92,36 @@ fn fuse_normalizes_top_intersection_to_one() {
 #[test]
 fn blend_rerank_uses_rerank_when_provided() {
     let candidates = vec![r_with_hybrid("a.md", 0.5), r_with_hybrid("b.md", 0.4)];
-    let scores = vec![Some(0.9), Some(0.1)];
+    let scores = vec![Some(0.9_f64), Some(0.1_f64)];
     let out = blend_rerank_candidates(&candidates, &scores);
-    // Top weight is 0.75 hybrid / 0.25 rerank.
-    // a: 0.75 * (0.5/0.5) + 0.25 * 0.9 = 0.75 + 0.225 = 0.975.
-    // b: 0.75 * (0.4/0.5) + 0.25 * 0.1 = 0.6 + 0.025 = 0.625.
+    // min-max normalization: min=0.4, max=0.5, range=0.1.
+    // sigmoid is always applied to rerank logits (US-005 / OHS searcher.ts:1319).
+    // a (rank 0, w_h=0.75, w_r=0.25):
+    //   hybrid01 = (0.5 - 0.4) / 0.1 = 1.0
+    //   rerank01 = sigmoid(0.9) ≈ 0.71095
+    //   score = 0.75 * 1.0 + 0.25 * sigmoid(0.9)
+    // b (rank 1, w_h=0.75, w_r=0.25):
+    //   hybrid01 = (0.4 - 0.4) / 0.1 = 0.0
+    //   rerank01 = sigmoid(0.1) ≈ 0.52498
+    //   score = 0.75 * 0.0 + 0.25 * sigmoid(0.1)
     let a = out.iter().find(|r| r.path == "a.md").unwrap();
     let b = out.iter().find(|r| r.path == "b.md").unwrap();
-    assert!((a.score - 0.975).abs() < 1e-9);
-    assert!((b.score - 0.625).abs() < 1e-9);
-    assert_eq!(a.scores.rerank, Some(0.9));
+    let expected_a = 0.25_f64.mul_add(sigmoid(0.9_f64), 0.75_f64);
+    let expected_b = 0.25_f64 * sigmoid(0.1_f64);
+    assert!(
+        (a.score - expected_a).abs() < 1e-9,
+        "a.score={} expected={}",
+        a.score,
+        expected_a
+    );
+    assert!(
+        (b.score - expected_b).abs() < 1e-9,
+        "b.score={} expected={}",
+        b.score,
+        expected_b
+    );
+    // scores.rerank stores the sigmoid'd value, not the raw logit.
+    assert!((a.scores.rerank.unwrap() - sigmoid(0.9_f64)).abs() < 1e-9);
 }
 
 #[test]
@@ -114,13 +134,16 @@ fn blend_rerank_passes_through_when_no_rerank_score() {
 }
 
 #[test]
-fn blend_rerank_sigmoidizes_unbounded_scores() {
+fn blend_rerank_always_applies_sigmoid() {
     let candidates = vec![r_with_hybrid("a.md", 0.5)];
-    // Score of 100 is way outside [0,1], so we apply sigmoid → ~1.
-    let scores = vec![Some(100.0)];
+    // Sigmoid is always applied to logits (US-005). With a single candidate,
+    // min == max so range_h = 1.0 → hybrid01 = (0.5 - 0.5) / 1.0 = 0.0.
+    // score = 0.75 * 0.0 + 0.25 * sigmoid(100) ≈ 0.25.
+    let scores = vec![Some(100.0_f64)];
     let out = blend_rerank_candidates(&candidates, &scores);
-    // 0.75 * 1.0 + 0.25 * sigmoid(100) ≈ 1.0.
-    assert!((out[0].score - 1.0).abs() < 1e-3);
+    assert!((out[0].score - 0.25).abs() < 1e-3);
+    // scores.rerank holds the sigmoid'd value (~1.0), not the raw logit (100.0).
+    assert!((out[0].scores.rerank.unwrap() - sigmoid(100.0_f64)).abs() < 1e-9);
 }
 
 #[test]
@@ -145,38 +168,39 @@ fn rrf_hybrid_score_never_exceeds_one() {
 
 #[test]
 fn blend_rerank_min_max_normalizes_hybrid_scores() {
-    // When hybrid scores span [0.1, 0.9], the min-max step divides each by
-    // max (0.9) so hybrid01 for the top note becomes 1.0 instead of 0.9.
-    // Without normalization: 0.75 * 0.9 + 0.25 * 0.0 = 0.675.
-    // With normalization:    0.75 * 1.0 + 0.25 * 0.0 = 0.750.
-    // Reference: obsidian-hybrid-search searcher.ts:1299-1325.
+    // Min-max normalization: min=0.1, max=0.9, range=0.8.
+    // Both signals use sigmoid (US-005 / OHS searcher.ts:1299-1325).
+    // high.md (rank 0, w_h=0.75): hybrid01 = (0.9-0.1)/0.8 = 1.0
+    //   rerank01 = sigmoid(0.0) = 0.5
+    //   score = 0.75 * 1.0 + 0.25 * 0.5 = 0.875  ← proves min-max fired
+    // Without min-max: hybrid01 = 0.9/0.9 = 1.0 (same result here, but
+    //   differs for the low candidate).
+    // low.md (rank 1, w_h=0.75): hybrid01 = (0.1-0.1)/0.8 = 0.0
+    //   rerank01 = sigmoid(100) ≈ 1.0
+    //   score = 0.75 * 0.0 + 0.25 * 1.0 = 0.25
     let candidates = vec![
         r_with_hybrid("high.md", 0.9_f64),
         r_with_hybrid("low.md", 0.1_f64),
     ];
-    // Rerank scores in [0,1] are used directly (no sigmoid).
-    // high.md: rerank = 0.0 → rerank01 = 0.0
-    // low.md:  rerank = 100.0 (outside [0,1]) → rerank01 = sigmoid(100) ≈ 1.0
     let scores = vec![Some(0.0_f64), Some(100.0_f64)];
     let out = blend_rerank_candidates(&candidates, &scores);
 
     let high = out.iter().find(|r| r.path == "high.md").unwrap();
     let low = out.iter().find(|r| r.path == "low.md").unwrap();
 
-    // high.md (rank 0, w=0.75): hybrid01 = 0.9/0.9 = 1.0, rerank01 = 0.0
-    //   → 0.75 * 1.0 + 0.25 * 0.0 = 0.750  ← proves min-max fired
+    // high.md: 0.75 * 1.0 + 0.25 * sigmoid(0.0) = 0.75 + 0.125 = 0.875
+    let expected_high = 0.25_f64.mul_add(sigmoid(0.0_f64), 0.75_f64);
     assert!(
-        (high.score - 0.75).abs() < 1e-9,
-        "min-max normalization must produce hybrid01=1.0; expected 0.75, got {}",
+        (high.score - expected_high).abs() < 1e-9,
+        "high.md score: expected {expected_high:.4}, got {}",
         high.score
     );
 
-    // low.md (rank 1, w=0.75): hybrid01 = 0.1/0.9 ≈ 0.111, rerank01 = sigmoid(100) ≈ 1.0
-    //   → 0.75 * 0.111 + 0.25 * 1.0 ≈ 0.333
-    let expected_low = 0.75_f64.mul_add(0.1_f64 / 0.9_f64, 0.25 * sigmoid(100.0_f64));
+    // low.md: 0.75 * 0.0 + 0.25 * sigmoid(100) ≈ 0.25
+    let expected_low = 0.25_f64 * sigmoid(100.0_f64);
     assert!(
-        (low.score - expected_low).abs() < 1e-3,
-        "low.md score mismatch: expected {expected_low:.4}, got {}",
+        (low.score - expected_low).abs() < 1e-9,
+        "low.md score: expected {expected_low:.4}, got {}",
         low.score
     );
 }

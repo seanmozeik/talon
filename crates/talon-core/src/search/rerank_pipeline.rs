@@ -14,6 +14,34 @@ use crate::inference::InferenceClient;
 use super::fuse::blend_rerank_candidates;
 use super::types::RawSearchResult;
 
+/// Standard logistic function. Maps unbounded rerank logits to `[0, 1]`.
+///
+/// Matches OHS `searcher.ts:1319`: `1 / (1 + Math.exp(-logit))`.
+#[cfg(test)]
+fn sigmoid(logit: f64) -> f64 {
+    1.0 / (1.0 + (-logit).exp())
+}
+
+/// Returns `(w_hybrid, w_rerank)` blend weights for a candidate at the given
+/// pre-rerank rank index (0-indexed).
+///
+/// Top results trust hybrid more; deeper results trust rerank more.
+/// - `0..=9`  → `(0.75, 0.25)`
+/// - `10..=19` → `(0.60, 0.40)`
+/// - `20..`   → `(0.40, 0.60)`
+///
+/// Mirrors OHS `searcher.ts:1320`.
+#[cfg(test)]
+const fn position_weights(rank_index: usize) -> (f64, f64) {
+    if rank_index < 10 {
+        (0.75, 0.25)
+    } else if rank_index < 20 {
+        (0.60, 0.40)
+    } else {
+        (0.40, 0.60)
+    }
+}
+
 /// Builds the reranker text payload for a single candidate.
 ///
 /// Matches the TS `rerankText` function: `"${title}\n\n${snippet}"`.
@@ -70,6 +98,30 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    #[test]
+    fn sigmoid_at_zero_is_one_half() {
+        assert!((sigmoid(0.0) - 0.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn sigmoid_large_positive_approaches_one() {
+        assert!((sigmoid(100.0) - 1.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sigmoid_large_negative_approaches_zero() {
+        assert!(sigmoid(-100.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn position_weights_boundary_values() {
+        assert_eq!(position_weights(0), (0.75, 0.25));
+        assert_eq!(position_weights(9), (0.75, 0.25));
+        assert_eq!(position_weights(10), (0.60, 0.40));
+        assert_eq!(position_weights(19), (0.60, 0.40));
+        assert_eq!(position_weights(20), (0.40, 0.60));
+    }
+
     fn make_candidate(p: &str, score: f64) -> RawSearchResult {
         RawSearchResult {
             path: p.to_string(),
@@ -124,10 +176,16 @@ mod tests {
 
     #[test]
     fn blend_math_matches_ts_expectations_within_1e4() {
-        // a: w=0.75 top-tier; hybrid_01=0.5/0.5=1.0; rerank=0.9 (in [0,1])
-        // final_a = clamp01(0.75*(1.0-0.9) + 0.9) = 0.75*0.1 + 0.9 = 0.975
-        // b: hybrid_01=0.4/0.5=0.8; rerank=0.1
-        // final_b = clamp01(0.75*(0.8-0.1) + 0.1) = 0.75*0.7 + 0.1 = 0.625
+        // Min-max normalization (US-005 / OHS searcher.ts:1299-1325):
+        //   min_h=0.4, max_h=0.5, range_h=0.1
+        // a (rank 0, w_h=0.75, w_r=0.25):
+        //   hybrid01 = (0.5-0.4)/0.1 = 1.0
+        //   rerank01 = sigmoid(0.9)
+        //   score = 0.75*1.0 + 0.25*sigmoid(0.9)
+        // b (rank 1, w_h=0.75, w_r=0.25):
+        //   hybrid01 = (0.4-0.4)/0.1 = 0.0
+        //   rerank01 = sigmoid(0.1)
+        //   score = 0.75*0.0 + 0.25*sigmoid(0.1) = 0.25*sigmoid(0.1)
         let rt = runtime();
         let server = rt.block_on(MockServer::start());
         rt.block_on(
@@ -144,8 +202,20 @@ mod tests {
         let result = rerank_candidates(&inference, "query", candidates, 10);
         let a = result.iter().find(|r| r.path == "a.md").unwrap();
         let b = result.iter().find(|r| r.path == "b.md").unwrap();
-        assert!((a.score - 0.975).abs() < 1e-4, "a.score={}", a.score);
-        assert!((b.score - 0.625).abs() < 1e-4, "b.score={}", b.score);
+        let expected_a = 0.25_f64.mul_add(sigmoid(0.9_f64), 0.75_f64);
+        let expected_b = 0.25_f64 * sigmoid(0.1_f64);
+        assert!(
+            (a.score - expected_a).abs() < 1e-4,
+            "a.score={} expected={}",
+            a.score,
+            expected_a
+        );
+        assert!(
+            (b.score - expected_b).abs() < 1e-4,
+            "b.score={} expected={}",
+            b.score,
+            expected_b
+        );
     }
 
     #[test]

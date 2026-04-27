@@ -155,50 +155,53 @@ pub fn fuse_hybrid_result_lists(
     out
 }
 
-fn normalize_within_candidate_batch(score: f64, max_score: f64) -> f64 {
-    if max_score <= 0.0 {
-        0.0
-    } else {
-        clamp01(score / max_score)
-    }
-}
-
-/// Blends each candidate's hybrid score with its rerank score.
+/// Blends each candidate's hybrid score with its rerank logit.
 ///
 /// Uses a rank-tier-dependent weight (top: 0.75 hybrid / 0.25 rerank;
-/// mid: 0.6/0.4; low: 0.4/0.6). Rerank scores already in `[0, 1]` are used
-/// as-is; values outside that range are passed through [`sigmoid`].
+/// mid: 0.6/0.4; low: 0.4/0.6). Hybrid scores are min-max normalized
+/// within the candidate batch; rerank logits are mapped to `[0, 1]` via
+/// [`sigmoid`] before blending. See OHS `searcher.ts:1299-1325`.
+///
+/// `pre_rerank_rank` is the 0-indexed position of each candidate in the
+/// input slice (i.e., before this function reorders by `final_score`).
 #[must_use]
 pub fn blend_rerank_candidates(
     candidates: &[RawSearchResult],
     rerank_scores: &[Option<f64>],
 ) -> Vec<RawSearchResult> {
-    let max_hybrid = candidates
+    let hybrid_values: Vec<f64> = candidates
         .iter()
         .map(|c| c.scores.hybrid.unwrap_or(c.score))
-        .fold(0.0_f64, f64::max);
+        .collect();
+    let min_h = hybrid_values.iter().copied().fold(f64::INFINITY, f64::min);
+    let max_h = hybrid_values
+        .iter()
+        .copied()
+        .fold(f64::NEG_INFINITY, f64::max);
+    // Guard against single-candidate (or all-equal) edge case: use 1.0 so
+    // normHybrid = (score - min) / 1.0 = 0.0 when all scores are equal.
+    // Mirrors OHS `rangeH = maxH - minH || 1`. See searcher.ts:1315.
+    let range_h = if max_h > min_h { max_h - min_h } else { 1.0 };
 
     let mut out: Vec<RawSearchResult> = candidates
         .iter()
         .enumerate()
         .map(|(rank, candidate)| {
-            let Some(rerank) = rerank_scores.get(rank).copied().flatten() else {
+            let Some(logit) = rerank_scores.get(rank).copied().flatten() else {
                 return candidate.clone();
             };
             let base_hybrid = candidate.scores.hybrid.unwrap_or(candidate.score);
-            let hybrid01 = normalize_within_candidate_batch(base_hybrid, max_hybrid);
-            let rerank01 = if (0.0..=1.0).contains(&rerank) {
-                rerank
-            } else {
-                sigmoid(rerank)
-            };
+            let hybrid01 = clamp01((base_hybrid - min_h) / range_h);
+            // Sigmoid'd value, not raw logit — see US-005 / OHS searcher.ts:1319.
+            let rerank01 = sigmoid(logit);
             let w = rerank_weight_for_rank(rank);
-            // Algebraic rewrite of `w*h + (1-w)*r` into a single fused-multiply-add.
+            // `w * hybrid01 + (1-w) * rerank01`, written as an FMA.
             let final_score = clamp01(f64::mul_add(w, hybrid01 - rerank01, rerank01));
 
             let mut scores = candidate.scores.clone();
             scores.hybrid = Some(scores.hybrid.unwrap_or(candidate.score));
-            scores.rerank = Some(rerank);
+            // Sigmoid'd value, not raw logit — see US-005 / OHS searcher.ts:1319.
+            scores.rerank = Some(rerank01);
             RawSearchResult {
                 path: candidate.path.clone(),
                 title: candidate.title.clone(),
