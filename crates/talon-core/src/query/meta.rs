@@ -73,7 +73,7 @@ fn query_tag_counts(conn: &Connection) -> BTreeMap<String, u32> {
     stmt.query_map([], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, u32>(1)?))
     })
-    .map(|rows| rows.filter_map(Result::ok).collect())
+    .and_then(Iterator::collect)
     .unwrap_or_default()
 }
 
@@ -92,7 +92,7 @@ fn query_all_active_notes(conn: &Connection) -> Vec<NoteRow> {
             mtime_ms: row.get(3)?,
         })
     })
-    .map(|rows| rows.filter_map(Result::ok).collect())
+    .and_then(Iterator::collect)
     .unwrap_or_default()
 }
 
@@ -114,7 +114,7 @@ fn query_notes_by_sources(conn: &Connection, target: &str) -> Vec<NoteRow> {
             mtime_ms: row.get(3)?,
         })
     })
-    .map(|rows| rows.filter_map(Result::ok).collect())
+    .and_then(Iterator::collect)
     .unwrap_or_default()
 }
 

@@ -198,7 +198,11 @@ pub fn reconcile_deletions(conn: &mut Connection, vault_root: &Path) -> Result<u
                 context: "query active notes",
                 source,
             })?;
-        rows.filter_map(Result::ok).collect()
+        rows.collect::<rusqlite::Result<_>>()
+            .map_err(|source| TalonError::Sqlite {
+                context: "read active notes",
+                source,
+            })?
     };
 
     let mut deleted: u32 = 0;
@@ -326,7 +330,6 @@ mod tests {
         let mut conn = open_database(&db).unwrap();
         run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
 
-        // Remove one file, then reconcile.
         fs::remove_file(vault.join("go.md")).unwrap();
         let deleted = reconcile_deletions(&mut conn, &vault).unwrap();
         assert_eq!(deleted, 1);

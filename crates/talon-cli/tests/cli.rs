@@ -10,6 +10,8 @@ mod json_error;
 mod json_success;
 #[path = "cli/smoke.rs"]
 mod smoke;
+#[path = "cli/where_clause.rs"]
+mod where_clause;
 
 const BIN: &str = "talon";
 

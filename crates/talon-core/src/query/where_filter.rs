@@ -65,7 +65,7 @@ where
     };
     let values: Vec<String> = stmt
         .query_map(params![note_id, field], |row| row.get::<_, String>(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
+        .and_then(Iterator::collect)
         .unwrap_or_default();
 
     !values.is_empty() && values.iter().any(|v| pred(Some(v.as_str())))
@@ -85,7 +85,7 @@ where
     };
     let values: Vec<String> = stmt
         .query_map(params![note_id, field], |row| row.get::<_, String>(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
+        .and_then(Iterator::collect)
         .unwrap_or_default();
 
     !values.is_empty() && values.iter().any(|v| pred(v.as_str()))

@@ -1,27 +1,34 @@
 use super::{FENCE_PATTERN, HEADING_PATTERN, INLINE_TAG_PATTERN, WIKILINK_PATTERN, WikiLink};
+use regex::Regex;
+use std::sync::LazyLock;
+
+static INLINE_TAG_RE: LazyLock<Regex> =
+    LazyLock::new(|| compile_regex(INLINE_TAG_PATTERN, "inline tag"));
+static WIKILINK_RE: LazyLock<Regex> = LazyLock::new(|| compile_regex(WIKILINK_PATTERN, "wikilink"));
+static FENCE_RE: LazyLock<Regex> = LazyLock::new(|| compile_regex(FENCE_PATTERN, "fence"));
+static HEADING_RE: LazyLock<Regex> = LazyLock::new(|| compile_regex(HEADING_PATTERN, "heading"));
+
+fn compile_regex(pattern: &str, name: &str) -> Regex {
+    Regex::new(pattern).unwrap_or_else(|error| panic!("invalid {name} regex: {error}"))
+}
 
 /// Extracts inline `#tag` syntax from markdown body (outside code fences).
-#[allow(clippy::expect_used)]
 pub(super) fn extract_inline_tags(content: &str) -> Vec<String> {
     let mut tags = Vec::new();
     let mut inside_fence = false;
-    let re = regex::Regex::new(INLINE_TAG_PATTERN).expect("valid regex");
 
     for line in content.lines() {
         let trimmed = line.trim_start();
 
-        // Toggle fence state
         if is_fence_line(trimmed) {
             inside_fence = !inside_fence;
             continue;
         }
 
-        // Only parse tags outside fences and outside headings
         if !inside_fence && !is_heading_line(trimmed) {
-            for capture in re.captures_iter(trimmed) {
+            for capture in INLINE_TAG_RE.captures_iter(trimmed) {
                 if let Some(tag_match) = capture.get(2) {
                     let raw_tag = tag_match.as_str();
-                    // Strip trailing punctuation
                     let tag = raw_tag
                         .trim_end_matches(|c: char| {
                             [')', ']', '}', '.', ',', ';', ':', '!', '?'].contains(&c)
@@ -44,36 +51,31 @@ pub(super) fn extract_inline_tags(content: &str) -> Vec<String> {
 ///
 /// Panics if the internal wikilink regex fails to compile (should never happen).
 #[must_use]
-#[allow(clippy::expect_used, clippy::cast_possible_truncation)]
 pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
     let mut links = Vec::new();
     let mut inside_fence = false;
+    let mut char_offset = 0;
 
-    let re = regex::Regex::new(WIKILINK_PATTERN).expect("valid regex");
-
-    for (line_num, line) in content.lines().enumerate() {
+    for (line_index, raw_line) in content.split_inclusive('\n').enumerate() {
+        let line = trim_line_ending(raw_line);
         let trimmed = line.trim_start();
 
         if is_fence_line(trimmed) {
             inside_fence = !inside_fence;
+            char_offset += raw_line.len();
             continue;
         }
 
         if !inside_fence {
-            let char_offset = content
-                .lines()
-                .take(line_num)
-                .map(|l| l.len() + 1) // +1 for newline
-                .sum::<usize>();
-
-            for caps in re.captures_iter(line) {
+            for caps in WIKILINK_RE.captures_iter(line) {
                 let raw_target = caps.get(1).map_or("", |m| m.as_str());
-
                 let parsed = parse_wiki_link(raw_target);
-                let line_start = (line_num + 1) as u32;
+                let line_start = line_number(line_index);
                 let line_end = line_start;
 
-                let full_match = caps.get(0).expect("capture group 0 always exists");
+                let Some(full_match) = caps.get(0) else {
+                    continue;
+                };
                 links.push(WikiLink {
                     alias: parsed.alias,
                     char_end: char_offset + full_match.end(),
@@ -87,9 +89,22 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
                 });
             }
         }
+
+        char_offset += raw_line.len();
     }
 
     links
+}
+
+fn trim_line_ending(line: &str) -> &str {
+    let line = line.strip_suffix('\n').unwrap_or(line);
+    line.strip_suffix('\r').unwrap_or(line)
+}
+
+fn line_number(line_index: usize) -> u32 {
+    u32::try_from(line_index)
+        .unwrap_or(u32::MAX)
+        .saturating_add(1)
 }
 
 /// Parses a raw wikilink string into components.
@@ -130,14 +145,12 @@ fn parse_wiki_link(raw: &str) -> WikiLink {
 }
 /// Checks if a line is a code fence.
 #[must_use]
-#[allow(clippy::unwrap_used)]
 fn is_fence_line(line: &str) -> bool {
-    regex::Regex::new(FENCE_PATTERN).unwrap().is_match(line)
+    FENCE_RE.is_match(line)
 }
 
 /// Checks if a line is a heading.
 #[must_use]
-#[allow(clippy::unwrap_used)]
 fn is_heading_line(line: &str) -> bool {
-    regex::Regex::new(HEADING_PATTERN).unwrap().is_match(line)
+    HEADING_RE.is_match(line)
 }

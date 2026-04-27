@@ -295,7 +295,6 @@ impl ChangeIndex {
 
     /// Returns index metadata.
     #[must_use]
-    #[allow(clippy::cast_possible_truncation)]
     pub fn to_metadata(&self) -> IndexMetadata {
         IndexMetadata {
             schema_version: 1,
@@ -311,11 +310,15 @@ impl ChangeIndex {
                 .map(|s| s.last_seen_at)
                 .max()
                 .unwrap_or(0),
-            active_notes: self.states.values().filter(|s| s.is_active()).count() as u32,
-            chunk_count: 0, // Computed separately by indexer
-            tombstone_count: self.tombstones.len() as u32,
+            active_notes: saturated_u32(self.states.values().filter(|s| s.is_active()).count()),
+            chunk_count: 0,
+            tombstone_count: saturated_u32(self.tombstones.len()),
         }
     }
+}
+
+fn saturated_u32(value: usize) -> u32 {
+    u32::try_from(value).unwrap_or(u32::MAX)
 }
 
 #[cfg(test)]

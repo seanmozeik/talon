@@ -143,7 +143,7 @@ fn query_outgoing_links(conn: &Connection, vault_path: &str) -> Vec<String> {
         return Vec::new();
     };
     stmt.query_map(params![vault_path], |row| row.get(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
+        .and_then(Iterator::collect)
         .unwrap_or_default()
 }
 
@@ -154,7 +154,7 @@ fn query_backlinks(conn: &Connection, vault_path: &str) -> Vec<String> {
         return Vec::new();
     };
     stmt.query_map(params![vault_path], |row| row.get(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
+        .and_then(Iterator::collect)
         .unwrap_or_default()
 }
 
@@ -164,7 +164,7 @@ fn query_tags(conn: &Connection, note_id: i64) -> Vec<String> {
         return Vec::new();
     };
     stmt.query_map(params![note_id], |row| row.get(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
+        .and_then(Iterator::collect)
         .unwrap_or_default()
 }
 
@@ -175,7 +175,7 @@ fn query_aliases(conn: &Connection, note_id: i64) -> Vec<String> {
         return Vec::new();
     };
     stmt.query_map(params![note_id], |row| row.get(0))
-        .map(|rows| rows.filter_map(Result::ok).collect())
+        .and_then(Iterator::collect)
         .unwrap_or_default()
 }
 

@@ -29,7 +29,11 @@ pub fn perform_note_deletion(
                 context: "query chunk ids",
                 source,
             })?;
-        rows.filter_map(Result::ok).collect()
+        rows.collect::<rusqlite::Result<_>>()
+            .map_err(|source| TalonError::Sqlite {
+                context: "read chunk ids",
+                source,
+            })?
     };
 
     for id in &chunk_ids {

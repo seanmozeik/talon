@@ -163,8 +163,9 @@ fn query_outgoing(conn: &Connection, path: &str) -> Vec<(String, String, Relatio
     stmt.query_map(params![path], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })
-    .map(|rows| {
-        rows.filter_map(Result::ok)
+    .and_then(Iterator::collect)
+    .map(|rows: Vec<(String, String)>| {
+        rows.into_iter()
             .map(|(p, t)| (p, t, RelationKind::Outgoing))
             .collect()
     })
@@ -181,8 +182,9 @@ fn query_backlinks_neighbors(conn: &Connection, path: &str) -> Vec<(String, Stri
     stmt.query_map(params![path], |row| {
         Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
     })
-    .map(|rows| {
-        rows.filter_map(Result::ok)
+    .and_then(Iterator::collect)
+    .map(|rows: Vec<(String, String)>| {
+        rows.into_iter()
             .map(|(p, t)| (p, t, RelationKind::Backlink))
             .collect()
     })
@@ -199,7 +201,6 @@ fn query_title(conn: &Connection, path: &str) -> Option<String> {
     .flatten()
 }
 
-/// Returns true when `scope_only` is empty or the path starts with any listed prefix.
 fn passes_scope_filter(path: &str, scope_only: &[String]) -> bool {
     if scope_only.is_empty() {
         return true;
@@ -321,9 +322,6 @@ mod tests {
         let conn = fresh_db();
         make_graph(&conn);
 
-        // Graph/Child.md has:
-        //   - 1 backlink from Graph/Parent.md
-        //   - 1 outgoing link to Graph/Grandchild.md
         let resp = find_related(&conn, &related_input("Graph/Child.md", 1, Direction::Both));
 
         let paths: Vec<&str> = resp.results.iter().map(|r| r.vault_path.as_str()).collect();

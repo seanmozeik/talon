@@ -2,7 +2,10 @@
 
 use bpaf::{Parser, long, positional, short};
 use std::path::PathBuf;
-use talon_core::{Direction, SearchMode, WhereClause, WhereOperator};
+use talon_core::{Direction, SearchMode};
+
+mod where_clause;
+pub use where_clause::parse_where_clause;
 
 /// Parsed command-line arguments.
 #[derive(Debug, Clone)]
@@ -302,43 +305,4 @@ fn recall_parser() -> impl bpaf::Parser<RecallArgs> {
         prior_messages,
         exclude,
     })
-}
-
-/// Parses a `--where` string into a [`WhereClause`].
-///
-/// Format: `KEY OP VALUE` (three space-separated tokens).
-/// `exists` takes only one token: `KEY exists`.
-///
-/// # Errors
-///
-/// Returns an error string if the format is invalid or the operator is unknown.
-pub fn parse_where_clause(value: &str) -> Result<WhereClause, String> {
-    let parts: Vec<&str> = value.splitn(3, ' ').collect();
-    if parts.len() < 2 {
-        return Err(format!(
-            "invalid where clause '{value}'; expected 'KEY OP VALUE' or 'KEY exists'"
-        ));
-    }
-    let key = parts[0].to_string();
-    let op = match parts[1] {
-        "=" => WhereOperator::Equals,
-        "!=" => WhereOperator::NotEquals,
-        "<" => WhereOperator::LessThan,
-        "<=" => WhereOperator::LessThanOrEqual,
-        ">" => WhereOperator::GreaterThan,
-        ">=" => WhereOperator::GreaterThanOrEqual,
-        "contains" => WhereOperator::Contains,
-        "exists" => WhereOperator::Exists,
-        other => {
-            return Err(format!(
-                "unknown operator '{other}'; try =, !=, <, <=, >, >=, contains, exists"
-            ));
-        }
-    };
-    let value = if op == WhereOperator::Exists {
-        None
-    } else {
-        Some(parts.get(2).unwrap_or(&"").to_string())
-    };
-    Ok(WhereClause { key, op, value })
 }

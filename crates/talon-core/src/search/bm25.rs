@@ -85,7 +85,7 @@ pub fn search_bm25(
     ) else {
         return Vec::new();
     };
-    mapped.filter_map(Result::ok).collect()
+    mapped.collect::<rusqlite::Result<_>>().unwrap_or_default()
 }
 
 /// Looks up notes whose normalized alias exactly matches `query`.
@@ -133,7 +133,7 @@ pub fn search_by_alias_exact(conn: &Connection, query: &str, limit: u32) -> Vec<
     ) else {
         return Vec::new();
     };
-    mapped.filter_map(Result::ok).collect()
+    mapped.collect::<rusqlite::Result<_>>().unwrap_or_default()
 }
 
 #[cfg(test)]

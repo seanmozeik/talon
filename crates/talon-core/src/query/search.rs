@@ -53,8 +53,6 @@ pub fn run_search(
     let limit = u32::from(input.limit.get());
     let fast = input.fast;
 
-    // ── Retrieve results per mode ──────────────────────────────────────────
-
     let raw_results: Vec<RawSearchResult> = match input.mode {
         SearchMode::Hybrid if fast => search_bm25(conn, &query, limit, DEFAULT_SNIPPET_LENGTH),
         SearchMode::Hybrid => {
@@ -91,22 +89,14 @@ pub fn run_search(
         SearchMode::Title => search_fuzzy_title(conn, &query, limit),
     };
 
-    // ── Post-filters ───────────────────────────────────────────────────────
-
     let filtered = apply_where_filter(raw_results, &input.where_, conn);
     let filtered = apply_since_filter(filtered, input.since.as_deref(), conn);
 
-    // ── Scope priority multiplication ──────────────────────────────────────
-
     let scored = apply_scope_priority(filtered, config);
-
-    // ── Truncate to limit ──────────────────────────────────────────────────
 
     let total = u32::try_from(scored.len()).unwrap_or(u32::MAX);
     let mut scored = scored;
     scored.truncate(limit as usize);
-
-    // ── Build response ─────────────────────────────────────────────────────
 
     let expanded = (expansion.is_some() || !input.queries.is_empty())
         && !input.fast

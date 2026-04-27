@@ -89,8 +89,15 @@ pub fn search_title_parts(conn: &Connection, query: &str, limit: u32) -> TitleSe
         };
     };
 
-    let mut fuzzy: Vec<RawSearchResult> = mapped
-        .filter_map(Result::ok)
+    let Ok(fuzzy_rows): rusqlite::Result<Vec<_>> = mapped.collect() else {
+        return TitleSearchParts {
+            exact_alias,
+            fuzzy: Vec::new(),
+        };
+    };
+
+    let mut fuzzy: Vec<RawSearchResult> = fuzzy_rows
+        .into_iter()
         .filter(|row| !exact_alias_paths.contains(&row.path))
         .map(
             |FuzzyRow {
