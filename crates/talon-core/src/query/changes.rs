@@ -52,8 +52,12 @@ fn fetch_events(conn: &Connection) -> Option<Vec<(String, String, u64)>> {
     }) else {
         return None;
     };
+    let Ok(events): rusqlite::Result<Vec<_>> = rows.collect() else {
+        return None;
+    };
     Some(
-        rows.flatten()
+        events
+            .into_iter()
             .filter_map(|(action, path, ts_str)| {
                 rfc3339_to_ms(&ts_str).map(|ms| (action, path, ms))
             })

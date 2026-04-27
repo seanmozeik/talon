@@ -3,6 +3,7 @@
 //! Implements wikilink resolution against the indexed note set, producing
 //! directed edges for the link graph with backlink computation.
 
+use crate::numeric::count_u32;
 use crate::text::frontmatter::{WikiLink, normalize_keyword, normalize_vault_path};
 use serde::{Deserialize, Serialize};
 
@@ -216,9 +217,9 @@ pub fn find_unresolved_links(
 /// Computes link graph statistics.
 #[must_use]
 pub fn compute_link_stats(edges: &[LinkEdge], note_paths: &[String]) -> LinkGraphStats {
-    let total_links = saturated_u32(edges.len());
-    let resolved_links = saturated_u32(edges.iter().filter(|e| e.resolved).count());
-    let unresolved_links = saturated_u32(edges.iter().filter(|e| !e.resolved).count());
+    let total_links = count_u32(edges.len());
+    let resolved_links = count_u32(edges.iter().filter(|e| e.resolved).count());
+    let unresolved_links = count_u32(edges.iter().filter(|e| !e.resolved).count());
 
     let unique_targets: std::collections::BTreeSet<String> = edges
         .iter()
@@ -237,13 +238,9 @@ pub fn compute_link_stats(edges: &[LinkEdge], note_paths: &[String]) -> LinkGrap
         total_links,
         resolved_links,
         unresolved_links,
-        unique_targets: saturated_u32(unique_targets.len()),
-        isolated_nodes: saturated_u32(isolated_nodes),
+        unique_targets: count_u32(unique_targets.len()),
+        isolated_nodes: count_u32(isolated_nodes),
     }
-}
-
-fn saturated_u32(value: usize) -> u32 {
-    u32::try_from(value).unwrap_or(u32::MAX)
 }
 
 #[cfg(test)]

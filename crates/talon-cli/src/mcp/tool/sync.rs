@@ -9,8 +9,7 @@ use talon_core::{
 };
 
 use crate::config;
-
-use super::time::elapsed_ms;
+use crate::telemetry::{count_u32, elapsed_ms};
 
 pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
@@ -55,7 +54,7 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
         status: SyncStatus::Ok,
         fast: input.fast,
         force: input.force,
-        path_count: u32::try_from(input.paths.len()).unwrap_or(u32::MAX),
+        path_count: count_u32(input.paths.len()),
         indexed: stats.indexed,
         skipped: stats.skipped,
         deleted: stats.deleted,

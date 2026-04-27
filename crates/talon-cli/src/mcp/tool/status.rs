@@ -4,8 +4,7 @@ use std::time::Instant;
 use talon_core::{ResponseMeta, StatusResponse, TalonEnvelope, TalonResponseData, open_database};
 
 use crate::config;
-
-use super::time::elapsed_ms;
+use crate::telemetry::elapsed_ms;
 
 pub(super) fn dispatch_status(_input: talon_core::StatusInput) -> TalonEnvelope {
     let started = Instant::now();

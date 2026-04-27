@@ -11,6 +11,7 @@ use crate::config::TalonConfig;
 use crate::contracts::{ContainerPath, VaultPath};
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
+use crate::numeric::count_u32;
 use crate::search::anchor::{build_anchors, resolve_snippet_heading};
 use crate::search::{
     MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause,
@@ -94,7 +95,7 @@ pub fn run_search(
 
     let scored = apply_scope_priority(filtered, config);
 
-    let total = u32::try_from(scored.len()).unwrap_or(u32::MAX);
+    let total = count_u32(scored.len());
     let mut scored = scored;
     scored.truncate(limit as usize);
 

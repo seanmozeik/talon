@@ -3,6 +3,7 @@ use crate::cli::{CliArgs, parse_where_clause};
 use crate::config;
 use crate::output::emit_response;
 use crate::spinner;
+use crate::telemetry::elapsed_ms;
 use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -123,7 +124,7 @@ fn execute_search(
     );
 
     let meta = ResponseMeta {
-        duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        duration_ms: elapsed_ms(started),
         result_count: Some(response.total),
         warnings: Vec::new(),
         scope_set: config

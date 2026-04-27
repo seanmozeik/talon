@@ -5,6 +5,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
+use crate::numeric::count_u32;
+
 mod time;
 
 pub use time::{TOMBSTONE_RETENTION_MS, now_ms, parse_since};
@@ -310,15 +312,11 @@ impl ChangeIndex {
                 .map(|s| s.last_seen_at)
                 .max()
                 .unwrap_or(0),
-            active_notes: saturated_u32(self.states.values().filter(|s| s.is_active()).count()),
+            active_notes: count_u32(self.states.values().filter(|s| s.is_active()).count()),
             chunk_count: 0,
-            tombstone_count: saturated_u32(self.tombstones.len()),
+            tombstone_count: count_u32(self.tombstones.len()),
         }
     }
-}
-
-fn saturated_u32(value: usize) -> u32 {
-    u32::try_from(value).unwrap_or(u32::MAX)
 }
 
 #[cfg(test)]

@@ -13,6 +13,7 @@ pub mod indexer;
 pub mod indexing;
 pub mod inference;
 pub mod links;
+mod numeric;
 pub mod query;
 pub mod search;
 pub mod store;

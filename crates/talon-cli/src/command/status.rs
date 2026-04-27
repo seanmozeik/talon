@@ -2,6 +2,7 @@ use super::output_mode;
 use crate::cli::CliArgs;
 use crate::config;
 use crate::output::emit_response;
+use crate::telemetry::elapsed_ms;
 use eyre::Result;
 use std::time::Instant;
 use talon_core::{ResponseMeta, StatusResponse, TalonEnvelope, TalonResponseData, open_database};
@@ -28,7 +29,7 @@ pub(super) fn emit(args: &CliArgs) -> Result<()> {
                 scopes: None,
             };
             let meta = ResponseMeta {
-                duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                duration_ms: elapsed_ms(started),
                 result_count: None,
                 warnings: Vec::new(),
                 scope_set: None,
@@ -66,7 +67,7 @@ pub(super) fn emit(args: &CliArgs) -> Result<()> {
     };
 
     let meta = ResponseMeta {
-        duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+        duration_ms: elapsed_ms(started),
         result_count: None,
         warnings: Vec::new(),
         scope_set: None,

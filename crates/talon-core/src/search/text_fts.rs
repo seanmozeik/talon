@@ -9,6 +9,8 @@
 
 use std::collections::HashSet;
 
+use crate::numeric::count_u32;
+
 use super::constants::{LITERAL_EMPTY_FTS, TRIGRAM_LEN};
 
 /// FTS5 boolean operator joining query terms.
@@ -53,12 +55,12 @@ pub fn get_trigrams(text: &str) -> HashSet<String> {
 #[must_use]
 pub fn calculate_trigram_overlap(query: &str, title: &str) -> f64 {
     let q = get_trigrams(query);
-    let q_len = u32::try_from(q.len()).unwrap_or(u32::MAX);
+    let q_len = count_u32(q.len());
     if q_len == 0 {
         return 0.0;
     }
     let t = get_trigrams(title);
-    let matches = u32::try_from(q.iter().filter(|tg| t.contains(*tg)).count()).unwrap_or(u32::MAX);
+    let matches = count_u32(q.iter().filter(|tg| t.contains(*tg)).count());
     f64::from(matches) / f64::from(q_len)
 }
 

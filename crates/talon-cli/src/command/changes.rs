@@ -3,6 +3,7 @@ use crate::cli::CliArgs;
 use crate::config;
 use crate::output::emit_response;
 use crate::spinner;
+use crate::telemetry::{count_u32, elapsed_ms};
 use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -36,10 +37,9 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
         let response = query_changes(&conn, &input);
         let result_count =
-            u32::try_from(response.added.len() + response.modified.len() + response.deleted.len())
-                .unwrap_or(u32::MAX);
+            count_u32(response.added.len() + response.modified.len() + response.deleted.len());
         let meta = ResponseMeta {
-            duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            duration_ms: elapsed_ms(started),
             result_count: Some(result_count),
             warnings: Vec::new(),
             scope_set: None,

@@ -3,7 +3,6 @@ mod error;
 mod schema;
 mod status;
 mod sync;
-mod time;
 
 #[cfg(test)]
 mod tests;

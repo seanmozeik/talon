@@ -9,6 +9,7 @@ pub mod mcp;
 pub mod output;
 pub mod platform;
 mod spinner;
+mod telemetry;
 
 /// Embedded skill contract printed by `talon --skill`.
 pub const SKILL_MD: &str =

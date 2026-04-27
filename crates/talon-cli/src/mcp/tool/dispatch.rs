@@ -9,8 +9,7 @@ use talon_core::{
 };
 
 use crate::config;
-
-use super::time::elapsed_ms;
+use crate::telemetry::{count_u32, elapsed_ms};
 
 pub(super) fn dispatch_input(input: TalonInput) -> Result<TalonEnvelope> {
     match input {
@@ -82,7 +81,7 @@ fn dispatch_read(input: &ReadInput) -> Result<TalonEnvelope> {
         .count();
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
-        result_count: Some(u32::try_from(result_count).unwrap_or(u32::MAX)),
+        result_count: Some(count_u32(result_count)),
         warnings: Vec::new(),
         scope_set: None,
         since: None,
@@ -100,7 +99,7 @@ fn dispatch_related(input: &RelatedInput) -> Result<TalonEnvelope> {
     let conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let response = find_related(&conn, input);
-    let result_count = u32::try_from(response.results.len()).unwrap_or(u32::MAX);
+    let result_count = count_u32(response.results.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count: Some(result_count),
@@ -122,7 +121,7 @@ fn dispatch_meta(input: &MetaInput) -> Result<TalonEnvelope> {
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let since = input.since.clone();
     let response = query_meta(&conn, input);
-    let result_count = u32::try_from(response.entries.len()).unwrap_or(u32::MAX);
+    let result_count = count_u32(response.entries.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count: Some(result_count),
@@ -145,8 +144,7 @@ fn dispatch_changes(input: &ChangesInput) -> Result<TalonEnvelope> {
     let since = input.since.clone();
     let response = query_changes(&conn, input);
     let result_count =
-        u32::try_from(response.added.len() + response.modified.len() + response.deleted.len())
-            .unwrap_or(u32::MAX);
+        count_u32(response.added.len() + response.modified.len() + response.deleted.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count: Some(result_count),
@@ -167,7 +165,7 @@ fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
     let conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let response = query_lint(&conn, input);
-    let result_count = u32::try_from(response.findings.len()).unwrap_or(u32::MAX);
+    let result_count = count_u32(response.findings.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count: Some(result_count),
@@ -212,7 +210,7 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
     let result_count = response
         .vault_recall
         .as_ref()
-        .map(|r| u32::try_from(r.active_notes.len()).unwrap_or(u32::MAX));
+        .map(|r| count_u32(r.active_notes.len()));
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count,

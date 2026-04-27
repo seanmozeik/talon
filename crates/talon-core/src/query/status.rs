@@ -5,6 +5,7 @@ use rusqlite::Connection;
 use crate::config::TalonConfig;
 use crate::contracts::ContainerPath;
 use crate::indexing::{IndexStats, ScopeReport, StatusResponse, StatusState};
+use crate::numeric::count_u32;
 use crate::vec_ext::get_vec_chunks_dimensions;
 
 /// Returns real index statistics for the connected vault.
@@ -59,7 +60,7 @@ fn read_db_version(conn: &Connection) -> String {
 }
 
 fn build_scope_report(conn: &Connection, config: &TalonConfig) -> ScopeReport {
-    let total_scopes = u32::try_from(config.scopes.len()).unwrap_or(u32::MAX);
+    let total_scopes = count_u32(config.scopes.len());
     let default_scopes = config.default_scope_names().into_iter().cloned().collect();
     let unscoped_count = if config.scopes.is_empty() {
         0
@@ -78,13 +79,13 @@ fn count_unscoped(conn: &Connection, config: &TalonConfig) -> u32 {
         .prepare("SELECT vault_path FROM notes WHERE active=1")
         .map(|mut stmt| {
             stmt.query_map([], |r| r.get(0))
-                .map(|rows| rows.flatten().collect::<Vec<_>>())
+                .and_then(Iterator::collect)
                 .unwrap_or_default()
         })
         .unwrap_or_default();
 
     let count = paths.iter().filter(|p| is_unscoped(p, config)).count();
-    u32::try_from(count).unwrap_or(u32::MAX)
+    count_u32(count)
 }
 
 fn is_unscoped(path: &str, config: &TalonConfig) -> bool {

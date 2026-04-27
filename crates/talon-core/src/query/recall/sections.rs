@@ -4,6 +4,7 @@ use rusqlite::{Connection, params};
 
 use crate::contracts::VaultPath;
 use crate::indexing::change_tracking;
+use crate::numeric::count_u32;
 use crate::query::related::find_related;
 use crate::query::{
     EditedNote, FrontmatterFact, FuzzyAnchor, LinkedNote, NoteExcerpt, RecallInput, RelatedInput,
@@ -29,7 +30,7 @@ pub(super) fn build_linked_context(
         scope_only: input.scope_only.clone(),
     };
     let rel = find_related(conn, &ri);
-    let link_count = u32::try_from(rel.results.len()).unwrap_or(u32::MAX);
+    let link_count = count_u32(rel.results.len());
     let notes: Vec<LinkedNote> = rel
         .results
         .into_iter()
@@ -70,7 +71,7 @@ pub(super) fn to_note_excerpts(pipeline_results: &[RawSearchResult]) -> Vec<Note
                 title: r.title.clone(),
                 snippet: r.snippet.clone(),
                 score: r.score,
-                rank: u32::try_from(i + 1).unwrap_or(u32::MAX),
+                rank: count_u32(i + 1),
             })
         })
         .collect()
@@ -93,7 +94,11 @@ fn extract_frontmatter_facts(conn: &Connection, vault_path: &str) -> Vec<Frontma
     let Ok(vp) = VaultPath::parse(vault_path) else {
         return Vec::new();
     };
-    rows.flatten()
+    let Ok(facts): rusqlite::Result<Vec<_>> = rows.collect() else {
+        return Vec::new();
+    };
+    facts
+        .into_iter()
         .map(|(key, val_str)| {
             let value: serde_json::Value =
                 serde_json::from_str(&val_str).unwrap_or(serde_json::Value::String(val_str));
@@ -140,9 +145,12 @@ pub(super) fn collect_recent_edits(
     let now_ms = now_millis();
     let active_set: HashSet<&str> = active_paths.iter().map(String::as_str).collect();
     let half_life = f64::from(half_life_days);
+    let Ok(rows): rusqlite::Result<Vec<_>> = rows.collect() else {
+        return Vec::new();
+    };
 
     let mut edits: Vec<EditedNote> = rows
-        .flatten()
+        .into_iter()
         .filter(|(path, _, _)| !excluded.contains(path))
         .filter_map(|(path, title, mtime_ms)| {
             let diff_days =

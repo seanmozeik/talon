@@ -3,6 +3,7 @@ use crate::cli::CliArgs;
 use crate::config;
 use crate::output::emit_response;
 use crate::spinner;
+use crate::telemetry::{count_u32, elapsed_ms};
 use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -32,7 +33,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
 
     let work = async move {
         let started = Instant::now();
-        let path_count = u32::try_from(input.paths.len()).unwrap_or(u32::MAX);
+        let path_count = count_u32(input.paths.len());
         let result = tokio::task::spawn_blocking(move || -> Result<SyncResponse> {
             register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
             let mut conn = open_database(&db_path)
@@ -88,7 +89,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
                 dimension_mismatch,
                 embed_remediation,
                 embed_diagnostics,
-                duration_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+                duration_ms: elapsed_ms(started),
             })
         })
         .await

@@ -3,6 +3,7 @@ use crate::cli::CliArgs;
 use crate::config;
 use crate::output::{emit_response, format_recall_prompt_xml};
 use crate::spinner;
+use crate::telemetry::{count_u32, elapsed_ms};
 use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
@@ -82,11 +83,11 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
                 config.as_ref().map(|c| c as &talon_core::TalonConfig),
             );
 
-            let duration_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+            let duration_ms = elapsed_ms(started);
             let result_count = response
                 .vault_recall
                 .as_ref()
-                .map(|r| u32::try_from(r.active_notes.len()).unwrap_or(u32::MAX));
+                .map(|r| count_u32(r.active_notes.len()));
             let vault = config
                 .as_ref()
                 .map_or_else(String::new, |c| c.vault_path.to_string_lossy().into_owned());
