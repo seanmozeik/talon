@@ -15,6 +15,7 @@ pub(super) fn input_schema() -> Value {
             "mode": { "type": "string", "enum": ["hybrid", "semantic", "fulltext", "title"] },
             "fast": { "type": "boolean" },
             "limit": { "type": "integer", "minimum": 1 },
+            "candidate_limit": { "type": "integer", "minimum": 1 },
             "path": { "type": ["string", "null"] },
             "paths": { "type": "array", "items": { "type": "string" } },
             "raw": { "type": "boolean" },

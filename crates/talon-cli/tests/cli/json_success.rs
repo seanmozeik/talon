@@ -180,3 +180,40 @@ fn json_envelope_lint_defaults_to_all() {
     let envelope = assert_success_envelope(&stdout, "lint");
     assert_eq!(envelope["data"]["check"], "all");
 }
+
+#[test]
+fn search_candidate_limit_flag_accepted() {
+    let vault = TempVault::new("search-candidate-limit");
+    let out = vault.run(&[
+        "search",
+        "hello",
+        "--fast",
+        "--candidate-limit",
+        "80",
+        "--limit",
+        "10",
+    ]);
+    assert!(
+        out.status.success(),
+        "talon search --candidate-limit 80 should exit 0"
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_success_envelope(&stdout, "search");
+}
+
+#[test]
+fn search_candidate_limit_zero_rejected() {
+    let vault = TempVault::new("search-candidate-limit-zero");
+    let out = vault.run(&["search", "hello", "--fast", "--candidate-limit", "0"]);
+    assert!(
+        !out.status.success(),
+        "--candidate-limit 0 should exit nonzero"
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v = super::assert_error_envelope(&stdout, "search");
+    let msg = v["error"]["message"].as_str().unwrap_or("");
+    assert!(
+        msg.contains("must be") || msg.contains("positive") || msg.contains("zero"),
+        "error message should explain the constraint, got: {msg}"
+    );
+}

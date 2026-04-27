@@ -32,6 +32,8 @@ pub struct CliArgs {
     pub mode: Option<SearchMode>,
     /// Result limit.
     pub limit: Option<u16>,
+    /// Rerank pool size.
+    pub candidate_limit: Option<u16>,
     /// First line for read.
     pub from_line: Option<u16>,
     /// Maximum lines for read.
@@ -165,6 +167,10 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .help("Search result limit.")
         .argument::<u16>("N")
         .optional();
+    let candidate_limit = long("candidate-limit")
+        .help("Rerank pool size (default 40, configurable in talon.toml).")
+        .argument::<u16>("N")
+        .optional();
     let from_line = long("from-line")
         .help("First line for read.")
         .argument::<u16>("N")
@@ -207,6 +213,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         config_file,
         mode,
         limit,
+        candidate_limit,
         from_line,
         max_lines,
         depth,

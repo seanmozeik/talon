@@ -22,6 +22,8 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     let mode = args.mode.unwrap_or_default();
     let fast = args.fast.enabled();
     let limit = args.limit;
+    // TODO(US-025): consult talon.toml [search].candidate_limit before falling back to CANDIDATE_FLOOR
+    let candidate_limit = args.candidate_limit;
 
     let where_clauses: Vec<talon_core::WhereClause> = args
         .where_clauses
@@ -44,6 +46,9 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     };
     if let Some(n) = limit {
         input.limit = PositiveCount::new(n, "limit")?;
+    }
+    if let Some(n) = candidate_limit {
+        input.candidate_limit = PositiveCount::new(n, "candidate_limit")?;
     }
 
     let started = Instant::now();
