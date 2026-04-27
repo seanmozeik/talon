@@ -9,8 +9,11 @@ use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
 
+use fs_err as fs;
+
 use crate::links::NoteReference;
-use crate::text::frontmatter::FrontmatterValue;
+use crate::text::frontmatter::{FrontmatterValue, parse_frontmatter};
+use crate::text::normalize_vault_path;
 
 /// Hard-coded ignore patterns matching the `TypeScript` reference. These are
 /// always applied, in addition to whatever the caller passes through
@@ -101,6 +104,59 @@ pub fn load_notes_for_linking(conn: &Connection) -> rusqlite::Result<Vec<NoteRef
         })
     })?;
     rows.collect()
+}
+
+/// Loads DB notes and overlays current vault notes for full-scan link resolution.
+///
+/// # Errors
+///
+/// Returns the underlying `rusqlite::Error` if loading DB notes fails.
+pub fn load_scan_notes_for_linking(
+    conn: &Connection,
+    vault_root: &Path,
+    include_patterns: &[String],
+    ignore_patterns: &[String],
+) -> rusqlite::Result<Vec<NoteReference>> {
+    let mut cache = load_notes_for_linking(conn)?;
+    for note in load_vault_notes_for_linking(vault_root, include_patterns, ignore_patterns) {
+        cache = merge_current_path_for_linking(
+            &cache,
+            &note.vault_path,
+            note.title.as_deref().unwrap_or_default(),
+            &note.aliases,
+        );
+    }
+    Ok(cache)
+}
+
+/// Loads note references directly from the vault for order-independent link resolution.
+///
+/// A fresh scan cannot resolve links against notes that have not been written
+/// to the DB yet. This preflight cache makes every included markdown file
+/// visible before per-note indexing begins.
+#[must_use]
+pub fn load_vault_notes_for_linking(
+    vault_root: &Path,
+    include_patterns: &[String],
+    ignore_patterns: &[String],
+) -> Vec<NoteReference> {
+    scan_vault_markdown(vault_root)
+        .filter(|rel_path| {
+            matches_include_patterns(rel_path, include_patterns)
+                && !matches_ignore_patterns(rel_path, ignore_patterns)
+        })
+        .filter_map(|rel_path| {
+            let content = fs::read_to_string(vault_root.join(&rel_path)).ok()?;
+            let vault_path = normalize_vault_path(&rel_path);
+            let parsed = parse_frontmatter(&content);
+            let title = extract_title(&vault_path, &parsed.frontmatter);
+            Some(NoteReference {
+                vault_path,
+                title: Some(title),
+                aliases: parsed.aliases,
+            })
+        })
+        .collect()
 }
 
 /// Returns `base` with the entry for `path` replaced by a fresh

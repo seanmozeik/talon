@@ -1,10 +1,4 @@
 //! Full-vault scan and deletion reconciliation.
-//!
-//! Ports `services/talon/indexer/wiring-scan.ts`. The entry point
-//! [`run_full_scan`] walks the vault, applies include/ignore filters, skips
-//! files whose mtime+size match the indexed copy, and re-indexes the rest.
-//! [`reconcile_deletions`] complements it by soft-deleting notes whose
-//! source files have been removed since the last scan.
 
 use std::path::Path;
 use std::time::UNIX_EPOCH;
@@ -17,7 +11,8 @@ use crate::config::ChunkerConfig;
 use crate::indexing::perform_note_deletion;
 
 use super::prelude::{
-    load_notes_for_linking, matches_ignore_patterns, matches_include_patterns, scan_vault_markdown,
+    load_scan_notes_for_linking, matches_ignore_patterns, matches_include_patterns,
+    scan_vault_markdown,
 };
 use super::wiring::index_one_note_with_config;
 
@@ -92,7 +87,13 @@ pub fn run_full_scan_with_chunker(
     chunker_config: &ChunkerConfig,
 ) -> Result<IndexerStats, TalonError> {
     let mut stats = IndexerStats::default();
-    let mut linking_cache = load_notes_for_linking(conn).map_err(|source| TalonError::Sqlite {
+    let mut linking_cache = load_scan_notes_for_linking(
+        conn,
+        vault_root,
+        &config.include_patterns,
+        &config.ignore_patterns,
+    )
+    .map_err(|source| TalonError::Sqlite {
         context: "load notes for link cache",
         source,
     })?;
