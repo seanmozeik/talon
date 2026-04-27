@@ -130,6 +130,7 @@ fn minimal_config(vault: &std::path::Path) -> TalonConfig {
             max_tokens: None,
         },
         scopes: ScopesConfig::default(),
+        search: talon_core::SearchConfig::default(),
         chunker: talon_core::ChunkerConfig::default(),
     }
 }

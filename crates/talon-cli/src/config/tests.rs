@@ -36,11 +36,57 @@ fn config_template_parses_indexer_chunk_settings() {
     assert_eq!(config.chunker.chunk_tokens, 512);
     assert_eq!(config.chunker.chunk_overlap, 64);
     assert_eq!(config.chunker.chunk_min_tokens, 16);
+    assert_eq!(config.search.candidate_limit, 60);
+    assert_eq!(config.search.limit, 10);
+    assert_eq!(config.search.cache_size, 200);
+    assert_eq!(config.search.rerank_cache_size, 2000);
+    assert_eq!(config.search.rerank_batch_size, 4);
+    assert_eq!(config.search.rerank_max_tokens, 128);
     assert!(
         config.db_path.is_absolute(),
         "template db_path should load as an absolute path, got {}",
         config.db_path.display()
     );
+}
+
+#[test]
+fn load_config_file_parses_search_tunables() {
+    let config = r#"
+vault_path = "/tmp/vault"
+db_path = "/tmp/index.sqlite"
+
+[search]
+candidate_limit = 60
+limit = 10
+cache_size = 200
+rerank_cache_size = 2000
+rerank_batch_size = 4
+rerank_max_tokens = 128
+
+[inference]
+base_url = "http://localhost:8080"
+
+[inference.models]
+query_embedding = "embed"
+document_embedding = "embed"
+chunk_embedding = "embed_chunked"
+reranker = "rerank"
+
+[expansion]
+provider = "openai-compatible"
+base_url = "http://localhost:1234/v1"
+model = "gemma-smol"
+"#;
+
+    let config = load_config_str("search-tunables", config)
+        .unwrap_or_else(|err| panic!("config should load: {err}"));
+
+    assert_eq!(config.search.candidate_limit, 60);
+    assert_eq!(config.search.limit, 10);
+    assert_eq!(config.search.cache_size, 200);
+    assert_eq!(config.search.rerank_cache_size, 2000);
+    assert_eq!(config.search.rerank_batch_size, 4);
+    assert_eq!(config.search.rerank_max_tokens, 128);
 }
 
 #[test]

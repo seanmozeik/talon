@@ -143,6 +143,7 @@ mod tests {
                 max_tokens: None,
             },
             scopes: ScopesConfig::new(),
+            search: crate::config::SearchConfig::default(),
             chunker: crate::config::ChunkerConfig::default(),
         }
     }
@@ -245,6 +246,7 @@ mod tests {
                 max_tokens: None,
             },
             scopes,
+            search: crate::config::SearchConfig::default(),
             chunker: crate::config::ChunkerConfig::default(),
         };
 

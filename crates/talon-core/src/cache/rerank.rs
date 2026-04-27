@@ -1,12 +1,12 @@
 //! Per-snippet rerank cache invalidated by the `SQLite` index content version.
 
 use std::num::NonZeroUsize;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, OnceLock};
 
 use lru::LruCache;
 use xxhash_rust::xxh3::xxh3_64;
 
-use crate::constants::LLM_CACHE_LIMIT;
+use crate::search::constants::RERANK_CACHE_SIZE;
 
 /// Opaque cache key for a `(chunk_text, query_text)` rerank pair.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -98,12 +98,21 @@ pub fn store(chunk_text: &str, query_text: &str, score: f64, db_version: u64) {
     cache.put(key, score, db_version);
 }
 
-const fn default_capacity() -> usize {
-    LLM_CACHE_LIMIT
+/// Configures the process-global rerank cache capacity before first use.
+pub fn configure_capacity(capacity: usize) {
+    let _ = RERANK_CACHE_CAPACITY.set(capacity);
+}
+
+fn default_capacity() -> usize {
+    RERANK_CACHE_CAPACITY
+        .get()
+        .copied()
+        .unwrap_or(RERANK_CACHE_SIZE)
 }
 
 static RERANK_CACHE: LazyLock<Mutex<RerankCache>> =
     LazyLock::new(|| Mutex::new(RerankCache::new(default_capacity())));
+static RERANK_CACHE_CAPACITY: OnceLock<usize> = OnceLock::new();
 
 #[cfg(test)]
 mod tests {

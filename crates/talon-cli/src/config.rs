@@ -56,6 +56,14 @@ chunk_tokens = 512
 chunk_overlap = 64
 chunk_min_tokens = 16
 
+[search]
+candidate_limit = 60
+limit = 10
+cache_size = 200
+rerank_cache_size = 2000
+rerank_batch_size = 4
+rerank_max_tokens = 128
+
 [inference]
 base_url = "http://localhost:8080"
 
@@ -194,6 +202,7 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
             max_tokens: None,
         },
         scopes: default_karpathy_scopes(),
+        search: talon_core::SearchConfig::default(),
         chunker: talon_core::ChunkerConfig::default(),
     }
 }

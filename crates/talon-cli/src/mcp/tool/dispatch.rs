@@ -37,8 +37,14 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
             (None, None)
         } else {
+            talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
             (
-                InferenceClient::new(&config.inference.base_url).ok(),
+                InferenceClient::with_rerank_options(
+                    &config.inference.base_url,
+                    config.search.rerank_batch_size,
+                    config.search.rerank_max_tokens,
+                )
+                .ok(),
                 ExpansionClient::with_max_tokens(
                     config.expansion.base_url.clone(),
                     &config.expansion.model,
@@ -190,8 +196,14 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
     let (inference, expansion) = if fast {
         (None, None)
     } else {
+        talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
         (
-            InferenceClient::new(&config.inference.base_url).ok(),
+            InferenceClient::with_rerank_options(
+                &config.inference.base_url,
+                config.search.rerank_batch_size,
+                config.search.rerank_max_tokens,
+            )
+            .ok(),
             ExpansionClient::with_max_tokens(
                 config.expansion.base_url.clone(),
                 &config.expansion.model,

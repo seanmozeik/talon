@@ -20,6 +20,8 @@ fn test_client(server_uri: String) -> InferenceClient {
         base_url: server_uri,
         http: HttpClient::builder().build().unwrap(),
         sleep: no_sleep,
+        rerank_batch_size: RERANK_BATCH_SIZE,
+        _rerank_max_tokens: crate::search::constants::RERANK_MAX_TOKENS,
     }
 }
 

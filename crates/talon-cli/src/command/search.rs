@@ -8,9 +8,8 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, PositiveCount, ResponseMeta, SearchInput, SearchMode, TalonEnvelope,
-    TalonResponseData, inference::InferenceClient, open_database, run_search,
-    vec_ext::register_sqlite_vec,
+    ExpansionClient, ResponseMeta, SearchInput, SearchMode, TalonEnvelope, TalonResponseData,
+    inference::InferenceClient, open_database, run_search, vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
@@ -21,9 +20,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     let query = rest.join(" ");
     let mode = args.mode.unwrap_or_default();
     let fast = args.fast.enabled();
-    let limit = args.limit;
-    // TODO(US-025): consult talon.toml [search].candidate_limit before falling back to CANDIDATE_FLOOR
-    let candidate_limit = args.candidate_limit;
+    let config = config::load_config(args.config_file.as_deref()).ok();
 
     let where_clauses: Vec<talon_core::WhereClause> = args
         .where_clauses
@@ -31,29 +28,20 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         .map(|s| parse_where_clause(s).map_err(|e| eyre::eyre!("invalid --where: {s}: {e}")))
         .collect::<Result<Vec<_>>>()?;
 
-    let mut input = SearchInput {
-        query: Some(query),
-        intent: talon_core::search::intent::normalize_optional(args.intent.clone()),
+    let mut input = SearchInput::from_cli_query(
+        query,
+        args.intent.clone(),
         mode,
         fast,
-        where_: where_clauses,
-        since: args.since.clone(),
-        anchors: if args.anchors.enabled() {
-            Some(true)
-        } else {
-            None
-        },
-        ..SearchInput::default()
-    };
-    if let Some(n) = limit {
-        input.limit = PositiveCount::new(n, "limit")?;
-    }
-    if let Some(n) = candidate_limit {
-        input.candidate_limit = PositiveCount::new(n, "candidate_limit")?;
-    }
+        args.limit,
+        args.candidate_limit,
+        config.as_ref().map(|config| &config.search),
+    )?;
+    input.where_ = where_clauses;
+    input.since = args.since.clone();
+    input.anchors = args.anchors.enabled().then_some(true);
 
     let started = Instant::now();
-    let config = config::load_config(args.config_file.as_deref()).ok();
 
     let work = async move {
         tokio::task::spawn_blocking(move || {
@@ -94,9 +82,19 @@ fn execute_search(
                 || "http://localhost:8080".to_string(),
                 |c| c.inference.base_url.clone(),
             );
-            let inference = InferenceClient::new(inference_url)
-                .wrap_err("building inference client")
-                .ok();
+            if let Some(config) = config {
+                talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
+            }
+            let inference = match config {
+                Some(config) => InferenceClient::with_rerank_options(
+                    inference_url,
+                    config.search.rerank_batch_size,
+                    config.search.rerank_max_tokens,
+                ),
+                None => InferenceClient::new(inference_url),
+            }
+            .wrap_err("building inference client")
+            .ok();
             let expansion = config
                 .as_ref()
                 .map(|c| {

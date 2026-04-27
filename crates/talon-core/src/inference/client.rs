@@ -30,6 +30,8 @@ pub struct InferenceClient {
     base_url: String,
     http: HttpClient,
     sleep: fn(Duration),
+    rerank_batch_size: usize,
+    _rerank_max_tokens: u32,
 }
 
 impl InferenceClient {
@@ -52,6 +54,38 @@ impl InferenceClient {
         base_url: impl Into<String>,
         timeout: Duration,
     ) -> Result<Self, InferenceError> {
+        Self::with_timeout_and_rerank_options(
+            base_url,
+            timeout,
+            RERANK_BATCH_SIZE,
+            crate::search::constants::RERANK_MAX_TOKENS,
+        )
+    }
+
+    /// Builds a client with custom rerank process tunables.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InferenceError::Build`] on `reqwest::Client` build failure.
+    pub fn with_rerank_options(
+        base_url: impl Into<String>,
+        rerank_batch_size: usize,
+        rerank_max_tokens: u32,
+    ) -> Result<Self, InferenceError> {
+        Self::with_timeout_and_rerank_options(
+            base_url,
+            DEFAULT_INFERENCE_TIMEOUT,
+            rerank_batch_size,
+            rerank_max_tokens,
+        )
+    }
+
+    fn with_timeout_and_rerank_options(
+        base_url: impl Into<String>,
+        timeout: Duration,
+        rerank_batch_size: usize,
+        rerank_max_tokens: u32,
+    ) -> Result<Self, InferenceError> {
         let http = HttpClient::builder()
             .timeout(timeout)
             .build()
@@ -62,6 +96,8 @@ impl InferenceClient {
             base_url: base_url.into(),
             http,
             sleep: std::thread::sleep,
+            rerank_batch_size: rerank_batch_size.max(1),
+            _rerank_max_tokens: rerank_max_tokens,
         })
     }
 
@@ -124,18 +160,19 @@ impl InferenceClient {
         let url = format!("{}/rerank", self.base_url.trim_end_matches('/'));
         let mut results = Vec::with_capacity(texts.len());
 
-        for (batch_index, batch) in texts.chunks(RERANK_BATCH_SIZE).enumerate() {
+        for (batch_index, batch) in texts.chunks(self.rerank_batch_size).enumerate() {
             let body = RerankRequest {
                 query: query.to_string(),
                 texts: batch.to_vec(),
                 return_text,
             };
             let mut batch_results: Vec<RerankResult> = self.post_json(&url, &body)?;
-            let batch_offset = u32::try_from(batch_index * RERANK_BATCH_SIZE).map_err(|_| {
-                InferenceError::Decode {
-                    message: "rerank index overflow".to_owned(),
-                }
-            })?;
+            let batch_offset =
+                u32::try_from(batch_index * self.rerank_batch_size).map_err(|_| {
+                    InferenceError::Decode {
+                        message: "rerank index overflow".to_owned(),
+                    }
+                })?;
             for result in &mut batch_results {
                 result.index = result.index.checked_add(batch_offset).ok_or_else(|| {
                     InferenceError::Decode {

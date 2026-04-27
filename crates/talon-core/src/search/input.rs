@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::config::SearchConfig;
 use crate::constants::{DEFAULT_LIMIT, RELATED_DEFAULT_DEPTH};
 use crate::contracts::PositiveCount;
 use crate::error::TalonResult;
@@ -171,22 +172,21 @@ impl SearchInput {
     /// # Errors
     ///
     /// Returns [`TalonError::InvalidInput`] when `limit` or `candidate_limit` is zero.
-    // pub(crate) — wired up by US-025 (config-sourced defaults).
-    #[allow(dead_code)]
-    pub(crate) fn from_cli_query(
+    pub fn from_cli_query(
         query: String,
         intent: Option<String>,
         mode: SearchMode,
         fast: bool,
         limit: Option<u16>,
         candidate_limit: Option<u16>,
+        config: Option<&SearchConfig>,
     ) -> TalonResult<Self> {
         let mut input = Self {
             query: Some(query),
             intent: crate::search::intent::normalize_optional(intent),
             mode,
             fast,
-            ..Self::default()
+            ..Self::from_search_config(config)?
         };
         if let Some(limit) = limit {
             input.limit = PositiveCount::new(limit, "limit")?;
@@ -196,8 +196,78 @@ impl SearchInput {
         }
         Ok(input)
     }
+
+    /// Builds a search request seeded from configured defaults.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`TalonError::InvalidInput`] when configured `limit` or
+    /// `candidate_limit` is zero.
+    pub fn from_search_config(config: Option<&SearchConfig>) -> TalonResult<Self> {
+        let Some(config) = config else {
+            return Ok(Self::default());
+        };
+
+        Ok(Self {
+            limit: PositiveCount::new(config.limit, "limit")?,
+            candidate_limit: PositiveCount::new(config.candidate_limit, "candidate_limit")?,
+            ..Self::default()
+        })
+    }
 }
 
 const fn default_depth() -> u8 {
     RELATED_DEFAULT_DEPTH
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::SearchConfig;
+
+    #[test]
+    fn from_cli_query_uses_config_defaults_when_flags_are_absent() {
+        let config = SearchConfig {
+            candidate_limit: 60,
+            limit: 12,
+            ..SearchConfig::default()
+        };
+
+        let input = SearchInput::from_cli_query(
+            "hello".to_string(),
+            None,
+            SearchMode::Hybrid,
+            false,
+            None,
+            None,
+            Some(&config),
+        )
+        .unwrap_or_else(|err| panic!("search input should build: {err}"));
+
+        assert_eq!(input.limit.get(), 12);
+        assert_eq!(input.candidate_limit.get(), 60);
+    }
+
+    #[test]
+    fn from_cli_query_flags_override_config_defaults() {
+        let config = SearchConfig {
+            candidate_limit: 60,
+            limit: 12,
+            ..SearchConfig::default()
+        };
+
+        let input = SearchInput::from_cli_query(
+            "hello".to_string(),
+            None,
+            SearchMode::Hybrid,
+            false,
+            Some(20),
+            Some(80),
+            Some(&config),
+        )
+        .unwrap_or_else(|err| panic!("search input should build: {err}"));
+
+        assert_eq!(input.limit.get(), 20);
+        assert_eq!(input.candidate_limit.get(), 80);
+    }
 }

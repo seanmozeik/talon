@@ -3,7 +3,7 @@
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::num::NonZeroUsize;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{LazyLock, Mutex, OnceLock};
 
 use lru::LruCache;
 use rusqlite::Connection;
@@ -18,6 +18,7 @@ const SEARCH_CACHE_SIZE_ENV: &str = "TALON_SEARCH_CACHE_SIZE";
 
 static SEARCH_CACHE: LazyLock<Mutex<SearchCache>> =
     LazyLock::new(|| Mutex::new(SearchCache::new(default_capacity())));
+static SEARCH_CACHE_CAPACITY: OnceLock<usize> = OnceLock::new();
 
 /// Opaque hash of the stable inputs that influence a search response.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -93,6 +94,7 @@ pub fn lookup(
     input: &SearchInput,
     config: Option<&TalonConfig>,
 ) -> Option<SearchResponse> {
+    configure_from(config);
     let db_version = read_db_version(conn);
     let key = key_for(conn, input, config);
     let Ok(mut cache) = SEARCH_CACHE.lock() else {
@@ -108,6 +110,7 @@ pub fn store(
     config: Option<&TalonConfig>,
     response: &SearchResponse,
 ) {
+    configure_from(config);
     let db_version = read_db_version(conn);
     let key = key_for(conn, input, config);
     let Ok(mut cache) = SEARCH_CACHE.lock() else {
@@ -146,10 +149,19 @@ pub fn key_for(conn: &Connection, input: &SearchInput, config: Option<&TalonConf
 }
 
 fn default_capacity() -> usize {
+    if let Some(capacity) = SEARCH_CACHE_CAPACITY.get() {
+        return *capacity;
+    }
     std::env::var(SEARCH_CACHE_SIZE_ENV)
         .ok()
         .and_then(|value| value.parse::<usize>().ok())
         .unwrap_or(GLOBAL_HYBRID_CACHE_SIZE)
+}
+
+fn configure_from(config: Option<&TalonConfig>) {
+    if let Some(config) = config {
+        let _ = SEARCH_CACHE_CAPACITY.set(config.search.cache_size);
+    }
 }
 
 fn normalized_query(query: &str) -> String {

@@ -12,6 +12,39 @@ use talon_core::{
     inference::InferenceClient, open_database, run_recall, vec_ext::register_sqlite_vec,
 };
 
+fn recall_clients(
+    config: Option<&talon_core::TalonConfig>,
+) -> (Option<InferenceClient>, Option<ExpansionClient>) {
+    let inference_url = config.map_or_else(
+        || "http://localhost:8080".to_string(),
+        |c| c.inference.base_url.clone(),
+    );
+    if let Some(config) = config {
+        talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
+    }
+    let inference = match config {
+        Some(config) => InferenceClient::with_rerank_options(
+            inference_url,
+            config.search.rerank_batch_size,
+            config.search.rerank_max_tokens,
+        ),
+        None => InferenceClient::new(inference_url),
+    }
+    .ok();
+    let expansion = config
+        .map(|c| {
+            ExpansionClient::with_max_tokens(
+                c.expansion.base_url.clone(),
+                &c.expansion.model,
+                c.expansion.max_tokens,
+            )
+        })
+        .transpose()
+        .ok()
+        .flatten();
+    (inference, expansion)
+}
+
 pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     if rest.is_empty() {
         bail!("recall requires a message; usage: talon recall <message...>");
@@ -55,24 +88,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
             let (inference, expansion) = if fast {
                 (None, None)
             } else {
-                let inference_url = config.as_ref().map_or_else(
-                    || "http://localhost:8080".to_string(),
-                    |c| c.inference.base_url.clone(),
-                );
-                let inference = InferenceClient::new(inference_url).ok();
-                let expansion = config
-                    .as_ref()
-                    .map(|c| {
-                        ExpansionClient::with_max_tokens(
-                            c.expansion.base_url.clone(),
-                            &c.expansion.model,
-                            c.expansion.max_tokens,
-                        )
-                    })
-                    .transpose()
-                    .ok()
-                    .flatten();
-                (inference, expansion)
+                recall_clients(config.as_ref().map(|c| c as &talon_core::TalonConfig))
             };
 
             let mut response = run_recall(

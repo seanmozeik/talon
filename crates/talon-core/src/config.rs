@@ -3,6 +3,12 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+mod defaults;
+use defaults::{
+    default_candidate_limit, default_limit, default_rerank_batch_size, default_rerank_cache_size,
+    default_rerank_max_tokens, default_search_cache_size,
+};
+
 /// Priority tier for scope-based ranking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -114,6 +120,9 @@ pub struct TalonConfig {
     /// Named scopes for vault partitioning and ranking.
     #[serde(default)]
     pub scopes: ScopesConfig,
+    /// Search defaults and cache/client tunables.
+    #[serde(default)]
+    pub search: SearchConfig,
     /// Chunker settings from the `[indexer]` table.
     #[serde(default, rename = "indexer")]
     pub chunker: ChunkerConfig,
@@ -182,6 +191,43 @@ fn matches_path_glob(path: &Path, glob: &ScopeGlob) -> bool {
         ScopeGlob::Multiple(globs) => globs
             .iter()
             .any(|g| glob::Pattern::new(g).is_ok_and(|p| p.matches(&path_str))),
+    }
+}
+
+/// Search defaults and process-level cache/client tunables.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SearchConfig {
+    /// Candidate pool size used when no CLI flag is provided.
+    #[serde(default = "default_candidate_limit")]
+    pub candidate_limit: u16,
+    /// Result limit used when no CLI flag is provided.
+    #[serde(default = "default_limit")]
+    pub limit: u16,
+    /// Search-response LRU capacity.
+    #[serde(default = "default_search_cache_size")]
+    pub cache_size: usize,
+    /// Rerank score LRU capacity.
+    #[serde(default = "default_rerank_cache_size")]
+    pub rerank_cache_size: usize,
+    /// Reranker HTTP request batch size.
+    #[serde(default = "default_rerank_batch_size")]
+    pub rerank_batch_size: usize,
+    /// Approximate reranker text budget.
+    #[serde(default = "default_rerank_max_tokens")]
+    pub rerank_max_tokens: u32,
+}
+
+impl Default for SearchConfig {
+    fn default() -> Self {
+        Self {
+            candidate_limit: default_candidate_limit(),
+            limit: default_limit(),
+            cache_size: default_search_cache_size(),
+            rerank_cache_size: default_rerank_cache_size(),
+            rerank_batch_size: default_rerank_batch_size(),
+            rerank_max_tokens: default_rerank_max_tokens(),
+        }
     }
 }
 

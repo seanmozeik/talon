@@ -134,8 +134,14 @@ pub const RERANK_TOP_K: u32 = 40;
 /// Reranker request batch size.
 pub const RERANK_BATCH_SIZE: usize = 4;
 
+/// Client-side reranker text budget, in approximate tokens.
+pub const RERANK_MAX_TOKENS: u32 = 128;
+
 /// Default LRU size for the in-process hybrid result cache.
 pub const GLOBAL_HYBRID_CACHE_SIZE: usize = 100;
+
+/// Default LRU size for the in-process rerank score cache.
+pub const RERANK_CACHE_SIZE: usize = 1_000;
 
 /// Default chunk size in tokens for the `MarkdownSplitter`.
 pub const EMBED_CHUNK_TOKENS_DEFAULT: usize = 512;
