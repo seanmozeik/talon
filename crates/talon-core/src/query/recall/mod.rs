@@ -12,7 +12,6 @@ use std::collections::HashSet;
 use rusqlite::Connection;
 
 use crate::config::TalonConfig;
-use crate::contracts::{ContainerPath, VaultPath};
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::query::{
@@ -114,6 +113,7 @@ pub fn run_recall(
 
     if evidence_score < input.min_confidence || pipeline_results.is_empty() {
         return RecallResponse {
+            vault: None,
             vault_recall: None,
             evidence_score,
             tokens_used: 0,
@@ -178,29 +178,15 @@ struct RecallResponseParts {
     excluded_by_budget: Vec<String>,
 }
 
-fn build_response(config: Option<&TalonConfig>, parts: RecallResponseParts) -> RecallResponse {
-    let mut active_notes = parts.active_notes;
-    let mut linked_notes = parts.linked_notes;
-    let mut frontmatter = parts.frontmatter;
-    let mut recent_edits = parts.recent_edits;
-    let mut fuzzy_anchors = parts.fuzzy_anchors;
-
-    attach_absolute_paths(
-        config,
-        &mut active_notes,
-        &mut linked_notes,
-        &mut frontmatter,
-        &mut recent_edits,
-        &mut fuzzy_anchors,
-    );
-
+fn build_response(_config: Option<&TalonConfig>, parts: RecallResponseParts) -> RecallResponse {
     RecallResponse {
+        vault: None,
         vault_recall: Some(VaultRecall {
-            active_notes,
-            linked_context: linked_notes,
-            frontmatter,
-            recent_edits,
-            fuzzy_anchors,
+            active_notes: parts.active_notes,
+            linked_context: parts.linked_notes,
+            frontmatter: parts.frontmatter,
+            recent_edits: parts.recent_edits,
+            fuzzy_anchors: parts.fuzzy_anchors,
         }),
         evidence_score: parts.evidence_score,
         tokens_used: u32::try_from(parts.tokens_used).unwrap_or(u32::MAX),
@@ -210,41 +196,9 @@ fn build_response(config: Option<&TalonConfig>, parts: RecallResponseParts) -> R
     }
 }
 
-fn attach_absolute_paths(
-    config: Option<&TalonConfig>,
-    active_notes: &mut [NoteExcerpt],
-    linked_notes: &mut [LinkedNote],
-    frontmatter: &mut [FrontmatterFact],
-    recent_edits: &mut [EditedNote],
-    fuzzy_anchors: &mut [FuzzyAnchor],
-) {
-    let Some(config) = config else {
-        return;
-    };
-
-    for note in active_notes {
-        note.path = absolute_path(&config.vault_path, &note.vault_path);
-    }
-    for note in linked_notes {
-        note.path = absolute_path(&config.vault_path, &note.vault_path);
-    }
-    for fact in frontmatter {
-        fact.path = absolute_path(&config.vault_path, &fact.vault_path);
-    }
-    for edit in recent_edits {
-        edit.path = absolute_path(&config.vault_path, &edit.vault_path);
-    }
-    for anchor in fuzzy_anchors {
-        anchor.path = absolute_path(&config.vault_path, &anchor.vault_path);
-    }
-}
-
-fn absolute_path(vault_root: &std::path::Path, vault_path: &VaultPath) -> Option<ContainerPath> {
-    ContainerPath::parse(vault_root.join(vault_path.as_str()).to_string_lossy()).ok()
-}
-
 const fn make_skipped(evidence_score: f64) -> RecallResponse {
     RecallResponse {
+        vault: None,
         vault_recall: None,
         evidence_score,
         tokens_used: 0,

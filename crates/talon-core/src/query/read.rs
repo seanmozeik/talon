@@ -8,7 +8,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, params};
 
-use crate::contracts::{ContainerPath, PositiveCount, VaultPath};
+use crate::contracts::{PositiveCount, VaultPath};
 use crate::query::{ReadInput, ReadResponse, ReadResult};
 use crate::text::frontmatter::parse_frontmatter;
 
@@ -27,11 +27,13 @@ struct NoteRow {
 pub fn run_read(conn: &Connection, vault_root: &Path, input: &ReadInput) -> ReadResponse {
     let Some(path) = input.path.as_deref().filter(|p| !p.trim().is_empty()) else {
         return ReadResponse {
+            vault: None,
             results: Vec::new(),
         };
     };
 
     ReadResponse {
+        vault: None,
         results: vec![build_read_result(conn, vault_root, path, input)],
     }
 }
@@ -64,7 +66,6 @@ fn build_read_result(
         return ReadResult {
             found: false,
             vault_path,
-            path: build_container_path(vault_root, vault_path_str),
             title: None,
             content: None,
             links: Vec::new(),
@@ -85,7 +86,6 @@ fn build_read_result(
     ReadResult {
         found: true,
         vault_path,
-        path: build_container_path(vault_root, vault_path_str),
         title: note.title,
         content: Some(content),
         links: query_outgoing_links(conn, vault_path_str),
@@ -95,13 +95,12 @@ fn build_read_result(
     }
 }
 
-fn not_found_result(vault_path_str: &str, vault_root: &Path) -> ReadResult {
+fn not_found_result(vault_path_str: &str, _vault_root: &Path) -> ReadResult {
     let vault_path = VaultPath::parse(vault_path_str)
         .unwrap_or_else(|_| VaultPath::parse("_").unwrap_or_else(|_| unreachable!()));
     ReadResult {
         found: false,
         vault_path,
-        path: build_container_path(vault_root, vault_path_str),
         title: None,
         content: None,
         links: Vec::new(),
@@ -109,13 +108,6 @@ fn not_found_result(vault_path_str: &str, vault_root: &Path) -> ReadResult {
         tags: Vec::new(),
         aliases: Vec::new(),
     }
-}
-
-fn build_container_path(vault_root: &Path, vault_path: &str) -> ContainerPath {
-    let full = vault_root.join(vault_path);
-    // A non-empty vault_path joined to vault_root always yields a non-empty path.
-    ContainerPath::parse(full.to_string_lossy().as_ref())
-        .unwrap_or_else(|_| ContainerPath::parse("/").unwrap_or_else(|_| unreachable!()))
 }
 
 fn apply_line_slice(

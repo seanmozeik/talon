@@ -59,8 +59,6 @@ pub struct MatchAnchor {
 pub struct SearchResult {
     /// Vault-relative path.
     pub vault_path: VaultPath,
-    /// Container path.
-    pub path: ContainerPath,
     /// Display title.
     pub title: String,
     /// Result snippet (with heading breadcrumb prepended when available).
@@ -84,6 +82,9 @@ pub struct SearchResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
     /// Effective query.
     pub query: Option<String>,
     /// Effective mode.
@@ -107,6 +108,7 @@ impl SearchResponse {
     #[must_use]
     pub fn empty_input() -> Self {
         Self {
+            vault: None,
             query: None,
             mode: SearchMode::Hybrid,
             fast: false,

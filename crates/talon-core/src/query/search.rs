@@ -8,7 +8,7 @@
 use rusqlite::Connection;
 
 use crate::config::TalonConfig;
-use crate::contracts::{ContainerPath, VaultPath};
+use crate::contracts::VaultPath;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::numeric::count_u32;
@@ -59,6 +59,7 @@ pub fn run_search(
         SearchMode::Hybrid => {
             let Some(inference) = inference else {
                 return SearchResponse {
+                    vault: None,
                     query: Some(query),
                     mode: input.mode,
                     fast,
@@ -106,6 +107,7 @@ pub fn run_search(
 
     let anchors_requested = input.anchors.unwrap_or(false);
     SearchResponse {
+        vault: None,
         query: Some(query),
         mode: input.mode,
         fast,
@@ -115,7 +117,7 @@ pub fn run_search(
         total,
         results: scored
             .into_iter()
-            .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested, config))
+            .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested))
             .collect(),
     }
 }
@@ -132,7 +134,6 @@ fn raw_to_search_result(
     mode: SearchMode,
     conn: &Connection,
     anchors_requested: bool,
-    config: Option<&TalonConfig>,
 ) -> Option<SearchResult> {
     let match_kind = match mode {
         SearchMode::Hybrid | SearchMode::Fulltext => MatchKind::Fulltext,
@@ -160,7 +161,6 @@ fn raw_to_search_result(
 
     Some(SearchResult {
         vault_path: VaultPath::parse(&raw.path).ok()?,
-        path: search_result_path(config, &raw.path)?,
         title: raw.title.clone(),
         snippet,
         score: raw.score,
@@ -169,19 +169,6 @@ fn raw_to_search_result(
         scope: None,
         preview_anchors,
     })
-}
-
-fn search_result_path(config: Option<&TalonConfig>, vault_path: &str) -> Option<ContainerPath> {
-    let path = config.map_or_else(
-        || vault_path.to_string(),
-        |cfg| {
-            cfg.vault_path
-                .join(vault_path)
-                .to_string_lossy()
-                .into_owned()
-        },
-    );
-    ContainerPath::parse(path).ok()
 }
 
 /// Applies `--where` frontmatter filters to the result list.

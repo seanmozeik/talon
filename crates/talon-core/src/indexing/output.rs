@@ -139,6 +139,9 @@ pub struct LintFinding {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LintResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
     /// The check that was run.
     pub check: LintCheck,
     /// Lint findings.

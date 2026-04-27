@@ -16,8 +16,6 @@ pub struct ReadResult {
     pub found: bool,
     /// Vault-relative path.
     pub vault_path: VaultPath,
-    /// Container path.
-    pub path: ContainerPath,
     /// Optional note title.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
@@ -42,6 +40,9 @@ pub struct ReadResult {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReadResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
     /// Read results.
     pub results: Vec<ReadResult>,
 }
@@ -51,6 +52,7 @@ impl ReadResponse {
     #[must_use]
     pub const fn stub() -> Self {
         Self {
+            vault: None,
             results: Vec::new(),
         }
     }
@@ -78,9 +80,6 @@ pub struct VaultRecall {
 pub struct FuzzyAnchor {
     /// Vault-relative path.
     pub vault_path: VaultPath,
-    /// Container-absolute path.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// Matching snippet or alias text.
@@ -95,9 +94,6 @@ pub struct FuzzyAnchor {
 pub struct FrontmatterFact {
     /// Vault-relative path of the containing note.
     pub vault_path: VaultPath,
-    /// Container-absolute path of the containing note.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<ContainerPath>,
     /// Frontmatter key.
     pub key: String,
     /// Frontmatter value.
@@ -110,9 +106,6 @@ pub struct FrontmatterFact {
 pub struct NoteExcerpt {
     /// Vault-relative path.
     pub vault_path: VaultPath,
-    /// Container-absolute path.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// Result snippet (with heading breadcrumb when available).
@@ -129,9 +122,6 @@ pub struct NoteExcerpt {
 pub struct LinkedNote {
     /// Vault-relative path.
     pub vault_path: VaultPath,
-    /// Container-absolute path.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// Raw link text that created this edge.
@@ -148,9 +138,6 @@ pub struct LinkedNote {
 pub struct EditedNote {
     /// Vault-relative path.
     pub vault_path: VaultPath,
-    /// Container-absolute path.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// When the note was last indexed (millis since epoch).
@@ -165,6 +152,9 @@ pub struct EditedNote {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecallResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
     /// The five recall sections, or null when skipped by confidence gate.
     pub vault_recall: Option<VaultRecall>,
     /// Calibrated evidence quality score in [0, 1].
@@ -193,6 +183,9 @@ pub struct MetaEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MetaResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
     /// Frontmatter entries.
     pub entries: Vec<MetaEntry>,
     /// Tag counts, if requested.
@@ -224,6 +217,9 @@ pub struct TombstoneEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangesResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
     /// Files newly indexed since the timestamp.
     pub added: Vec<ChangeEntry>,
     /// Files re-indexed since the timestamp.

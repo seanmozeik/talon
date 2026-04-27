@@ -55,6 +55,7 @@ pub fn query_meta(conn: &Connection, input: &MetaInput) -> MetaResponse {
         .collect();
 
     MetaResponse {
+        vault: None,
         entries,
         tag_counts,
     }

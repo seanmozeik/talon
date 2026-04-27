@@ -3,6 +3,8 @@ use talon_core::{LintCheck, LintFinding, LintResponse};
 
 #[derive(Debug, Serialize)]
 pub(super) struct AgentLint<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault: Option<&'a str>,
     total: usize,
     checks: AgentLintChecks<'a>,
 }
@@ -35,6 +37,7 @@ impl<'a> From<&'a LintResponse> for AgentLint<'a> {
             checks.push(finding);
         }
         Self {
+            vault: lint.vault.as_ref().map(talon_core::ContainerPath::as_str),
             total: lint.findings.len(),
             checks,
         }

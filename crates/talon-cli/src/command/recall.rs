@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::CliArgs;
-use crate::config;
+use crate::config::{self, vault_container_path};
 use crate::output::{emit_response, format_recall_prompt_xml};
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
@@ -75,13 +75,15 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
                 (inference, expansion)
             };
 
-            let response = run_recall(
+            let mut response = run_recall(
                 &conn,
                 inference.as_ref(),
                 expansion.as_ref(),
                 &input,
                 config.as_ref().map(|c| c as &talon_core::TalonConfig),
             );
+            response.vault =
+                vault_container_path(config.as_ref().map(|c| c as &talon_core::TalonConfig));
 
             let duration_ms = elapsed_ms(started);
             let result_count = response

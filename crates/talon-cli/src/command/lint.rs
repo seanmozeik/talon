@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::CliArgs;
-use crate::config;
+use crate::config::{self, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
@@ -35,12 +35,14 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
 
     let config = config::load_config(args.config_file.as_deref())?;
     let db_path: PathBuf = config.db_path.clone();
+    let vault = vault_container_path(Some(&config));
 
     let started = Instant::now();
     let work = async move {
         let conn = open_database(&db_path)
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-        let response = query_lint(&conn, &input);
+        let mut response = query_lint(&conn, &input);
+        response.vault = vault;
         let result_count = count_u32(response.findings.len());
         let meta = ResponseMeta {
             duration_ms: elapsed_ms(started),

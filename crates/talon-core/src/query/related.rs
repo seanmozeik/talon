@@ -6,7 +6,7 @@ use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
 use crate::constants::RELATED_MAX_DEPTH;
-use crate::contracts::VaultPath;
+use crate::contracts::{ContainerPath, VaultPath};
 use crate::search::Direction;
 
 /// Related-note request.
@@ -33,6 +33,9 @@ pub struct RelatedInput {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelatedResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
     /// Source path.
     pub path: VaultPath,
     /// Direction traversed.
@@ -78,6 +81,7 @@ pub fn find_related(conn: &Connection, input: &RelatedInput) -> RelatedResponse 
 
     let Ok(source_path) = VaultPath::parse(path) else {
         return RelatedResponse {
+            vault: None,
             path: VaultPath::parse("_").unwrap_or_else(|_| unreachable!()),
             direction: input.direction,
             results: Vec::new(),
@@ -131,6 +135,7 @@ pub fn find_related(conn: &Connection, input: &RelatedInput) -> RelatedResponse 
     }
 
     RelatedResponse {
+        vault: None,
         path: source_path,
         direction,
         results,

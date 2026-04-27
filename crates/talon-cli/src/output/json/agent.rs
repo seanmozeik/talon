@@ -2,41 +2,32 @@ use eyre::Result;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use talon_core::{
-    ChangeEntry, ChangesResponse, MetaEntry, MetaResponse, ReadResult, RecallResponse,
-    RelatedResult, SearchResult, StatusResponse, SyncResponse, TalonEnvelope, TalonResponseData,
-    TombstoneEntry,
+    ChangeEntry, ChangesResponse, MetaEntry, MetaResponse, ReadResult, RelatedResult, SearchResult,
+    StatusResponse, SyncResponse, TalonEnvelope, TalonResponseData, TombstoneEntry,
 };
 
 mod lint;
+mod recall;
 
 pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
     match envelope.data.as_ref() {
         Some(TalonResponseData::Search(search)) => {
-            let hits: Vec<AgentSearchHit<'_>> =
-                search.results.iter().map(AgentSearchHit::from).collect();
-            super::emit_compact(&hits)
+            super::emit_compact(&AgentSearchResponse::from(search))
         }
         Some(TalonResponseData::Sync(sync)) => super::emit_compact(&AgentSync::from(sync)),
         Some(TalonResponseData::Status(status)) => super::emit_compact(&AgentStatus::from(status)),
-        Some(TalonResponseData::Read(read)) => {
-            let results: Vec<AgentReadResult<'_>> =
-                read.results.iter().map(AgentReadResult::from).collect();
-            super::emit_compact(&results)
-        }
+        Some(TalonResponseData::Read(read)) => super::emit_compact(&AgentReadResponse::from(read)),
         Some(TalonResponseData::Related(related)) => {
-            let results: Vec<AgentRelatedResult<'_>> = related
-                .results
-                .iter()
-                .map(AgentRelatedResult::from)
-                .collect();
-            super::emit_compact(&results)
+            super::emit_compact(&AgentRelatedResponse::from(related))
         }
         Some(TalonResponseData::Meta(meta)) => super::emit_compact(&AgentMeta::from(meta)),
         Some(TalonResponseData::Changes(changes)) => {
             super::emit_compact(&AgentChanges::from(changes))
         }
         Some(TalonResponseData::Lint(lint)) => super::emit_compact(&lint::AgentLint::from(lint)),
-        Some(TalonResponseData::Recall(recall)) => super::emit_compact(&AgentRecall::from(recall)),
+        Some(TalonResponseData::Recall(recall)) => {
+            super::emit_compact(&recall::AgentRecall::from(recall))
+        }
         None => envelope.error.as_ref().map_or_else(
             || super::emit_compact(envelope),
             |e| super::emit_compact(&AgentError::from(e)),
@@ -62,6 +53,24 @@ impl<'a> From<&'a talon_core::ErrorEnvelope> for AgentError<'a> {
     }
 }
 
+// ── Search ────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct AgentSearchResponse<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault: Option<&'a str>,
+    results: Vec<AgentSearchHit<'a>>,
+}
+
+impl<'a> From<&'a talon_core::SearchResponse> for AgentSearchResponse<'a> {
+    fn from(search: &'a talon_core::SearchResponse) -> Self {
+        Self {
+            vault: search.vault.as_ref().map(talon_core::ContainerPath::as_str),
+            results: search.results.iter().map(AgentSearchHit::from).collect(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 struct AgentSearchHit<'a> {
     path: &'a str,
@@ -73,7 +82,7 @@ struct AgentSearchHit<'a> {
 impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {
     fn from(result: &'a SearchResult) -> Self {
         Self {
-            path: result.path.as_str(),
+            path: result.vault_path.as_str(),
             title: &result.title,
             snippet: &result.snippet,
             score: round_score(result.score),
@@ -84,6 +93,8 @@ impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {
 fn round_score(score: f64) -> f64 {
     (score * 100.0).round() / 100.0
 }
+
+// ── Sync ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -124,6 +135,8 @@ const fn non_zero(value: u32) -> Option<u32> {
     if value == 0 { None } else { Some(value) }
 }
 
+// ── Status ────────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentStatus<'a> {
@@ -147,6 +160,24 @@ impl<'a> From<&'a StatusResponse> for AgentStatus<'a> {
             chunks: status.index.chunk_count,
             failed_embeddings: non_zero(status.index.failed_embeddings),
             vector_dimensions: status.index.vector_dimensions,
+        }
+    }
+}
+
+// ── Read ──────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct AgentReadResponse<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault: Option<&'a str>,
+    results: Vec<AgentReadResult<'a>>,
+}
+
+impl<'a> From<&'a talon_core::ReadResponse> for AgentReadResponse<'a> {
+    fn from(read: &'a talon_core::ReadResponse) -> Self {
+        Self {
+            vault: read.vault.as_ref().map(talon_core::ContainerPath::as_str),
+            results: read.results.iter().map(AgentReadResult::from).collect(),
         }
     }
 }
@@ -185,6 +216,31 @@ impl<'a> From<&'a ReadResult> for AgentReadResult<'a> {
     }
 }
 
+// ── Related ───────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+struct AgentRelatedResponse<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault: Option<&'a str>,
+    results: Vec<AgentRelatedResult<'a>>,
+}
+
+impl<'a> From<&'a talon_core::RelatedResponse> for AgentRelatedResponse<'a> {
+    fn from(related: &'a talon_core::RelatedResponse) -> Self {
+        Self {
+            vault: related
+                .vault
+                .as_ref()
+                .map(talon_core::ContainerPath::as_str),
+            results: related
+                .results
+                .iter()
+                .map(AgentRelatedResult::from)
+                .collect(),
+        }
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentRelatedResult<'a> {
@@ -205,9 +261,13 @@ impl<'a> From<&'a RelatedResult> for AgentRelatedResult<'a> {
     }
 }
 
+// ── Meta ──────────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct AgentMeta<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault: Option<&'a str>,
     entries: Vec<AgentMetaEntry<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tag_counts: Option<&'a BTreeMap<String, u32>>,
@@ -222,6 +282,7 @@ struct AgentMetaEntry<'a> {
 impl<'a> From<&'a MetaResponse> for AgentMeta<'a> {
     fn from(meta: &'a MetaResponse) -> Self {
         Self {
+            vault: meta.vault.as_ref().map(talon_core::ContainerPath::as_str),
             entries: meta.entries.iter().map(AgentMetaEntry::from).collect(),
             tag_counts: meta.tag_counts.as_ref(),
         }
@@ -237,8 +298,12 @@ impl<'a> From<&'a MetaEntry> for AgentMetaEntry<'a> {
     }
 }
 
+// ── Changes ───────────────────────────────────────────────────────────────────
+
 #[derive(Debug, Serialize)]
 struct AgentChanges<'a> {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    vault: Option<&'a str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     added: Vec<&'a str>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
@@ -250,6 +315,10 @@ struct AgentChanges<'a> {
 impl<'a> From<&'a ChangesResponse> for AgentChanges<'a> {
     fn from(changes: &'a ChangesResponse) -> Self {
         Self {
+            vault: changes
+                .vault
+                .as_ref()
+                .map(talon_core::ContainerPath::as_str),
             added: changes.added.iter().map(change_path).collect(),
             modified: changes.modified.iter().map(change_path).collect(),
             deleted: changes.deleted.iter().map(tombstone_path).collect(),
@@ -263,44 +332,4 @@ fn change_path(change: &ChangeEntry) -> &str {
 
 fn tombstone_path(change: &TombstoneEntry) -> &str {
     change.path.as_str()
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AgentRecall<'a> {
-    notes: Vec<AgentRecallNote<'a>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    skipped: Option<bool>,
-}
-
-#[derive(Debug, Serialize)]
-struct AgentRecallNote<'a> {
-    path: &'a str,
-    title: &'a str,
-    snippet: &'a str,
-    score: f64,
-}
-
-impl<'a> From<&'a RecallResponse> for AgentRecall<'a> {
-    fn from(recall: &'a RecallResponse) -> Self {
-        let notes = recall.vault_recall.as_ref().map_or_else(Vec::new, |vault| {
-            vault
-                .active_notes
-                .iter()
-                .map(|note| AgentRecallNote {
-                    path: note
-                        .path
-                        .as_ref()
-                        .map_or(note.vault_path.as_str(), talon_core::ContainerPath::as_str),
-                    title: &note.title,
-                    snippet: &note.snippet,
-                    score: round_score(note.score),
-                })
-                .collect()
-        });
-        Self {
-            notes,
-            skipped: recall.skipped.then_some(true),
-        }
-    }
 }

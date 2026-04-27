@@ -38,6 +38,7 @@ fn error_envelope() -> ErrorEnvelope {
 #[test]
 fn search_success_round_trip() {
     let data = TalonResponseData::Search(SearchResponse {
+        vault: None,
         query: Some("hello world".to_string()),
         mode: SearchMode::Hybrid,
         fast: false,
@@ -124,6 +125,7 @@ fn read_success_round_trip() {
 #[test]
 fn related_success_round_trip() {
     let data = TalonResponseData::Related(RelatedResponse {
+        vault: None,
         path: VaultPath::parse("test.md").unwrap(),
         direction: Direction::Both,
         results: Vec::new(),
@@ -138,6 +140,7 @@ fn related_success_round_trip() {
 #[test]
 fn meta_success_round_trip() {
     let data = TalonResponseData::Meta(MetaResponse {
+        vault: None,
         entries: Vec::new(),
         tag_counts: Some(BTreeMap::new()),
     });
@@ -151,6 +154,7 @@ fn meta_success_round_trip() {
 #[test]
 fn changes_success_round_trip() {
     let data = TalonResponseData::Changes(ChangesResponse {
+        vault: None,
         added: Vec::new(),
         modified: Vec::new(),
         deleted: Vec::new(),
@@ -165,6 +169,7 @@ fn changes_success_round_trip() {
 #[test]
 fn lint_success_round_trip() {
     let data = TalonResponseData::Lint(LintResponse {
+        vault: None,
         check: LintCheck::Orphans,
         findings: Vec::new(),
     });
@@ -178,6 +183,7 @@ fn lint_success_round_trip() {
 #[test]
 fn recall_success_round_trip() {
     let data = TalonResponseData::Recall(RecallResponse {
+        vault: None,
         vault_recall: Some(VaultRecall {
             active_notes: Vec::new(),
             linked_context: Vec::new(),
@@ -202,6 +208,7 @@ fn recall_success_round_trip() {
 #[test]
 fn recall_skipped_round_trip() {
     let data = TalonResponseData::Recall(RecallResponse {
+        vault: None,
         vault_recall: None,
         evidence_score: 0.05,
         tokens_used: 0,

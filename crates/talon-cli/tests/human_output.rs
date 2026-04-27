@@ -32,6 +32,7 @@ fn make_container_path(s: &str) -> Result<ContainerPath> {
 #[test]
 fn snapshot_search_empty() -> Result<()> {
     let resp = SearchResponse {
+        vault: None,
         query: Some("orchard".to_string()),
         mode: SearchMode::Hybrid,
         fast: false,
@@ -50,6 +51,7 @@ fn snapshot_search_empty() -> Result<()> {
 #[test]
 fn snapshot_search_results() -> Result<()> {
     let resp = SearchResponse {
+        vault: None,
         query: Some("galaxy brain".to_string()),
         mode: SearchMode::Hybrid,
         fast: false,
@@ -60,7 +62,6 @@ fn snapshot_search_results() -> Result<()> {
         results: vec![
             SearchResult {
                 vault_path: make_vault_path("Atlas/Overview.md")?,
-                path: make_container_path("/vault/Atlas/Overview.md")?,
                 title: "Atlas Overview".to_string(),
                 snippet: "This is a snippet about galaxy brains and neural pathways that may wrap."
                     .to_string(),
@@ -72,7 +73,6 @@ fn snapshot_search_results() -> Result<()> {
             },
             SearchResult {
                 vault_path: make_vault_path("Graph/Hub.md")?,
-                path: make_container_path("/vault/Graph/Hub.md")?,
                 title: "Hub".to_string(),
                 snippet: "Semantic match snippet here.".to_string(),
                 score: 0.723,
@@ -168,6 +168,7 @@ fn snapshot_status_ready() -> Result<()> {
 #[test]
 fn snapshot_lint_orphans() -> Result<()> {
     let resp = LintResponse {
+        vault: None,
         check: LintCheck::Orphans,
         findings: vec![
             LintFinding {

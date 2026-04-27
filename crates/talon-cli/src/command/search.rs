@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::{CliArgs, parse_where_clause};
-use crate::config;
+use crate::config::{self, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::elapsed_ms;
@@ -115,13 +115,14 @@ fn execute_search(
             (inference, expansion)
         };
 
-    let response = run_search(
+    let mut response = run_search(
         &conn,
         &input,
         inference.as_ref(),
         expansion.as_ref(),
         config,
     );
+    response.vault = vault_container_path(config);
 
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),

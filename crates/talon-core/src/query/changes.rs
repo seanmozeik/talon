@@ -20,6 +20,7 @@ use crate::query::{ChangeEntry, ChangesInput, ChangesResponse, TombstoneEntry};
 #[must_use]
 pub fn query_changes(conn: &Connection, input: &ChangesInput) -> ChangesResponse {
     let empty = ChangesResponse {
+        vault: None,
         added: Vec::new(),
         modified: Vec::new(),
         deleted: Vec::new(),
@@ -140,6 +141,7 @@ fn classify(
     deleted.truncate(remaining);
 
     ChangesResponse {
+        vault: None,
         added,
         modified,
         deleted,

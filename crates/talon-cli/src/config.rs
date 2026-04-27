@@ -3,7 +3,9 @@
 use eyre::{Result, WrapErr as _, bail};
 use fs_err as fs;
 use std::path::{Component, Path, PathBuf};
-use talon_core::{InferenceConfig, InferenceModels, Scope, ScopePriority, TalonConfig};
+use talon_core::{
+    ContainerPath, InferenceConfig, InferenceModels, Scope, ScopePriority, TalonConfig,
+};
 
 /// Default config filename.
 pub const CONFIG_FILE_NAME: &str = "config.toml";
@@ -313,6 +315,13 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
     );
 
     scopes
+}
+
+/// Converts the configured vault path to a [`ContainerPath`], or `None` when
+/// config is absent (e.g. when running without a config file).
+#[must_use]
+pub fn vault_container_path(config: Option<&TalonConfig>) -> Option<ContainerPath> {
+    config.and_then(|c| ContainerPath::parse(c.vault_path.to_string_lossy().as_ref()).ok())
 }
 
 #[cfg(test)]

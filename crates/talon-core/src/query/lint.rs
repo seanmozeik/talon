@@ -13,6 +13,7 @@ pub fn query_lint(conn: &Connection, input: &LintInput) -> LintResponse {
         LintCheck::Unreferenced => find_unreferenced(conn, &input.scope_only),
     };
     LintResponse {
+        vault: None,
         check: input.check,
         findings,
     }
