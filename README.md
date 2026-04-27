@@ -28,6 +28,32 @@ cargo run -p talon-cli -- --skill
 
 Set `inference.base_url` in `~/.config/talon/config.toml` to a local HTTP TEI-compatible endpoint. Good defaults are Hugging Face `text-embeddings-inference`, Infinity, or ultraclaw's local sidecar if you are running one. Talon only expects `/embed`, `/embed-chunked`, and `/rerank` endpoints with the shapes described in the design doc.
 
+## Scopes
+
+Scopes partition the vault by role and let queries opt in or out of each partition. Declare them in `~/.config/talon/config.toml`:
+
+```toml
+[scopes.wiki]
+glob = "wiki/**"
+priority = "boosted"
+default = true
+
+[scopes.private]
+glob = "private/**"
+priority = "buried"
+default = false
+```
+
+By default, queries (`search`, `recall`, `related`, `meta`, `changes`, `lint`) cover only scopes with `default = true`. Scopes with `default = false` are **excluded** entirely — not just down-ranked.
+
+To include a `default = false` scope, opt in explicitly:
+
+- `--scope NAME` (repeatable, additive, short form `-s`): adds the named scope to the default pool.
+- `--scope-only NAME` (repeatable): searches only the named scope(s).
+- `--scope-all`: searches every configured scope, overriding the `default` flag.
+
+The three are mutually exclusive on a single invocation. Unknown scope names error with the list of configured names. The response's `meta.scope_set` echoes the resolved active scope names. See `examples/config.toml` for a Karpathy-style preset.
+
 ## Chunking
 
 Markdown chunking is configured under `[indexer]` in `talon.toml`:

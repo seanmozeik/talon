@@ -8,7 +8,7 @@
 use rusqlite::Connection;
 
 use crate::cache::search as search_cache;
-use crate::config::TalonConfig;
+use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
@@ -18,15 +18,10 @@ use crate::search::{
     MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause,
 };
 
-use super::search_hybrid::{
-    HybridArgs, HybridOutcome, empty_hybrid_response, infer_hybrid_match_kind, run_hybrid_mode,
-};
-use crate::search::bm25::search_bm25;
+use super::search_hybrid::{empty_hybrid_response, infer_hybrid_match_kind};
+use super::search_retrieval::{RetrievalOutcome, retrieve_raw_results};
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
-use crate::search::fuzzy_title::search_fuzzy_title;
-use crate::search::pool;
 use crate::search::types::RawSearchResult;
-use crate::search::vector::search_vector;
 
 /// Runs a search query and returns a [`SearchResponse`].
 ///
@@ -83,70 +78,44 @@ fn run_search_inner(
     let fast = input.fast;
 
     // Step 1: retrieve wide pool.
-    let mut expanded_queries = Vec::new();
-    let mut diagnostics: Option<crate::search::SearchDiagnostics> = None;
-    let raw_results: Vec<RawSearchResult> = match input.mode {
-        SearchMode::Hybrid if fast => search_bm25(
-            conn,
-            &query,
-            pool::bm25_pool(limit, candidate_floor),
-            DEFAULT_SNIPPET_LENGTH,
-        ),
-        SearchMode::Hybrid => match run_hybrid_mode(&HybridArgs {
-            conn,
-            input,
-            inference,
-            expansion,
-            query: &query,
-            limit,
-            candidate_floor,
-            fast,
-            include_expanded_queries,
-        }) {
-            HybridOutcome::NoInference => {
-                return empty_hybrid_response(query, input.mode, fast);
-            }
-            HybridOutcome::Ok {
-                results,
-                expanded_queries: ex,
-                diagnostics: diag,
-            } => {
-                expanded_queries = ex;
-                diagnostics = diag;
-                results
-            }
-        },
-        SearchMode::Semantic => {
-            let Some(inference) = inference else {
-                return SearchResponse::empty_input();
-            };
-            let Ok(embeddings) = inference.embed(std::slice::from_ref(&query)) else {
-                return SearchResponse::empty_input();
-            };
-            let embedding = embeddings.first().map_or(&[] as &[f32], Vec::as_slice);
-            search_vector(conn, embedding, pool::vector_pool(limit, candidate_floor))
-        }
-        SearchMode::Fulltext => search_bm25(
-            conn,
-            &query,
-            pool::bm25_pool(limit, candidate_floor),
-            DEFAULT_SNIPPET_LENGTH,
-        ),
-        SearchMode::Title => {
-            search_fuzzy_title(conn, &query, pool::fuzzy_pool(limit, candidate_floor))
-        }
+    let (raw_results, expanded_queries, diagnostics) = match retrieve_raw_results(
+        conn,
+        input,
+        inference,
+        expansion,
+        &query,
+        limit,
+        candidate_floor,
+        fast,
+        include_expanded_queries,
+    ) {
+        RetrievalOutcome::Empty => return SearchResponse::empty_input(),
+        RetrievalOutcome::EmptyHybrid => return empty_hybrid_response(query, input.mode, fast),
+        RetrievalOutcome::Ok {
+            results,
+            expanded_queries,
+            diagnostics,
+        } => (results, expanded_queries, diagnostics),
     };
 
     // Step 2: apply --where filter (no truncation).
     let filtered = apply_where_filter(raw_results, &input.where_, conn);
     // Step 3: apply --since filter (no truncation).
     let filtered = apply_since_filter(filtered, input.since.as_deref(), conn);
-    // Step 4: scope priority multiplication.
+    // Step 4: apply scope filter (default = false scopes excluded unless opted in).
+    let filtered = apply_scope_filter(
+        filtered,
+        config,
+        &input.scope,
+        &input.scope_only,
+        input.scope_all,
+    );
+    // Step 5: scope priority multiplication.
     let scored = apply_scope_priority(filtered, config);
 
-    // Step 5: total is post-filter, pre-truncate.
+    // Step 6: total is post-filter, pre-truncate.
     let total = count_u32(scored.len());
-    // Step 6: final output trim.
+    // Step 7: final output trim.
     let mut scored = scored;
     scored.truncate(limit as usize);
 
@@ -297,6 +266,30 @@ fn apply_since_filter(
             };
             get_note_mtime(conn, note_id).is_some_and(|mtime| mtime >= timestamp)
         })
+        .collect()
+}
+
+/// Filters results by scope membership.
+///
+/// With no config, all results pass through unchanged. Otherwise, builds a
+/// [`ScopeFilter`] from the input flags and keeps only the paths it accepts.
+/// Invalid scope arguments would have been rejected at the CLI/MCP boundary,
+/// so any error here falls back to the default filter.
+fn apply_scope_filter(
+    results: Vec<RawSearchResult>,
+    config: Option<&TalonConfig>,
+    scope: &[String],
+    scope_only: &[String],
+    scope_all: bool,
+) -> Vec<RawSearchResult> {
+    let Some(cfg) = config else {
+        return results;
+    };
+    let filter = ScopeFilter::from_args(cfg, scope, scope_only, scope_all)
+        .unwrap_or_else(|_| ScopeFilter::default_for(cfg));
+    results
+        .into_iter()
+        .filter(|r| filter.accepts(&r.path))
         .collect()
 }
 

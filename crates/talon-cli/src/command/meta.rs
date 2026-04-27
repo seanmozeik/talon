@@ -8,8 +8,8 @@ use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    MetaInput, PositiveCount, ResponseMeta, TalonEnvelope, TalonResponseData, open_database,
-    query_meta,
+    MetaInput, PositiveCount, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData,
+    open_database, query_meta,
 };
 
 pub(super) async fn emit(args: &CliArgs) -> Result<()> {
@@ -22,8 +22,9 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
     let input = MetaInput {
         where_: where_clauses,
         since: args.since.clone(),
-        scope: vec![],
-        scope_only: vec![],
+        scope: args.scope.scope.clone(),
+        scope_only: args.scope.scope_only.clone(),
+        scope_all: args.scope.scope_all,
         select: args.meta.select.clone(),
         tag_counts: args.meta.tag_counts,
         sources: args.meta.sources.clone(),
@@ -37,13 +38,18 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
     let db_path: PathBuf = config.db_path.clone();
     let vault = vault_container_path(Some(&config));
     let since_str = input.since.clone();
+    let scope_set = Some(
+        ScopeFilter::from_args(&config, &input.scope, &input.scope_only, input.scope_all)
+            .map_err(|e| eyre::eyre!("{e}"))?
+            .resolved_set(),
+    );
 
     let started = Instant::now();
     let work = async move {
         let conn = open_database(&db_path)
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
 
-        let mut response = query_meta(&conn, &input);
+        let mut response = query_meta(&conn, &input, Some(&config));
         response.vault = vault;
         let result_count = count_u32(response.entries.len());
 
@@ -51,7 +57,7 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
             duration_ms: elapsed_ms(started),
             result_count: Some(result_count),
             warnings: Vec::new(),
-            scope_set: None,
+            scope_set,
             since: since_str,
         };
         let data = TalonResponseData::Meta(response);

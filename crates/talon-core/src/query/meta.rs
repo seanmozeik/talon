@@ -8,6 +8,7 @@ use std::collections::BTreeMap;
 
 use rusqlite::{Connection, params};
 
+use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::query::{MetaEntry, MetaInput, MetaResponse};
 use crate::text::frontmatter::FrontmatterValue;
@@ -20,7 +21,11 @@ struct NoteRow {
 }
 
 /// Queries active notes by the filters in `input` and returns a [`MetaResponse`].
-pub fn query_meta(conn: &Connection, input: &MetaInput) -> MetaResponse {
+pub fn query_meta(
+    conn: &Connection,
+    input: &MetaInput,
+    config: Option<&TalonConfig>,
+) -> MetaResponse {
     let tag_counts = if input.tag_counts {
         Some(query_tag_counts(conn))
     } else {
@@ -42,8 +47,12 @@ pub fn query_meta(conn: &Connection, input: &MetaInput) -> MetaResponse {
         notes.retain(|n| super::where_filter::passes_where_clauses(conn, n.note_id, &input.where_));
     }
 
-    if !input.scope_only.is_empty() {
-        notes.retain(|n| passes_scope_filter(&n.vault_path, &input.scope_only));
+    let filter = config.map(|cfg| {
+        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .unwrap_or_else(|_| ScopeFilter::default_for(cfg))
+    });
+    if let Some(ref f) = filter {
+        notes.retain(|n| f.accepts(&n.vault_path));
     }
 
     let limit = input.limit.get() as usize;
@@ -117,13 +126,6 @@ fn query_notes_by_sources(conn: &Connection, target: &str) -> Vec<NoteRow> {
     })
     .and_then(Iterator::collect)
     .unwrap_or_default()
-}
-
-fn passes_scope_filter(path: &str, scope_only: &[String]) -> bool {
-    if scope_only.is_empty() {
-        return true;
-    }
-    scope_only.iter().any(|s| path.starts_with(s.as_str()))
 }
 
 fn build_meta_entry(

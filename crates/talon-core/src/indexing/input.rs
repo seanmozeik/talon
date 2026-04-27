@@ -57,4 +57,7 @@ pub struct LintInput {
     /// Scope names to search exclusively.
     #[serde(default)]
     pub scope_only: Vec<String>,
+    /// Include every configured scope, overriding `default = false`.
+    #[serde(default)]
+    pub scope_all: bool,
 }

@@ -34,6 +34,7 @@ fn related_input(path: &str, depth: u8, direction: Direction) -> RelatedInput {
         direction,
         scope: Vec::new(),
         scope_only: Vec::new(),
+        scope_all: false,
     }
 }
 
@@ -58,6 +59,7 @@ fn outgoing_depth1_returns_direct_links() {
     let resp = find_related(
         &conn,
         &related_input("Graph/Parent.md", 1, Direction::Outgoing),
+        None,
     );
 
     assert_eq!(resp.results.len(), 1);
@@ -74,6 +76,7 @@ fn outgoing_depth2_returns_transitive_links() {
     let resp = find_related(
         &conn,
         &related_input("Graph/Parent.md", 2, Direction::Outgoing),
+        None,
     );
 
     let paths: Vec<&str> = resp.results.iter().map(|r| r.vault_path.as_str()).collect();
@@ -96,6 +99,7 @@ fn backlinks_depth1_returns_inbound_links() {
     let resp = find_related(
         &conn,
         &related_input("Graph/Child.md", 1, Direction::Backlinks),
+        None,
     );
 
     assert_eq!(resp.results.len(), 1);
@@ -108,7 +112,11 @@ fn both_direction_returns_outgoing_and_backlinks() {
     let conn = fresh_db();
     make_graph(&conn);
 
-    let resp = find_related(&conn, &related_input("Graph/Child.md", 1, Direction::Both));
+    let resp = find_related(
+        &conn,
+        &related_input("Graph/Child.md", 1, Direction::Both),
+        None,
+    );
 
     let paths: Vec<&str> = resp.results.iter().map(|r| r.vault_path.as_str()).collect();
     assert!(paths.contains(&"Graph/Parent.md"), "must include backlink");
@@ -124,7 +132,7 @@ fn orphan_note_returns_empty_results() {
     let conn = fresh_db();
     insert_note(&conn, "Orphan.md", "Orphan");
 
-    let resp = find_related(&conn, &related_input("Orphan.md", 3, Direction::Both));
+    let resp = find_related(&conn, &related_input("Orphan.md", 3, Direction::Both), None);
 
     assert!(
         resp.results.is_empty(),

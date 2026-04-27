@@ -4,7 +4,9 @@ use bpaf::{Parser, long, positional, short};
 use std::path::PathBuf;
 use talon_core::{Direction, SearchMode};
 
+mod scope;
 mod where_clause;
+pub use scope::{ScopeArgs, scope_parser};
 pub use where_clause::parse_where_clause;
 
 /// Parsed command-line arguments.
@@ -56,6 +58,8 @@ pub struct CliArgs {
     pub meta: MetaArgs,
     /// Recall-command specific flags.
     pub recall: RecallArgs,
+    /// Scope selection flags shared across query commands.
+    pub scope: ScopeArgs,
     /// Positional command and command arguments.
     pub positionals: Vec<String>,
 }
@@ -141,6 +145,10 @@ fn short_switch_flag(
     short(short_name).long(long_name).help(help).switch()
 }
 
+// One line over the 100-line clippy threshold. Splitting the parser is awkward
+// because every binding lands in a single bpaf::construct! call below; the
+// function is a flat composition that doesn't decompose cleanly.
+#[allow(clippy::too_many_lines)]
 fn cli_parser() -> bpaf::OptionParser<CliArgs> {
     let mcp = switch_flag("mcp", "Run MCP-over-stdio mode.").map(McpFlag::from);
     let skill = switch_flag("skill", "Print embedded SKILL.md.").map(SkillFlag::from);
@@ -210,6 +218,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
     let anchors = anchors_parser();
     let meta = meta_parser();
     let recall = recall_parser();
+    let scope = scope_parser();
     let positionals = positionals_parser();
 
     bpaf::construct!(CliArgs {
@@ -236,6 +245,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         anchors,
         meta,
         recall,
+        scope,
         positionals
     })
     .map(normalize_cli_args)

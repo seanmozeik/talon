@@ -68,7 +68,7 @@ pub fn run_recall(
         })));
 
     let (linked_notes, top_link_count) =
-        build_linked_context(conn, &pipeline_results, input, &excluded_set);
+        build_linked_context(conn, &pipeline_results, input, &excluded_set, config);
 
     let top_days = pipeline_results
         .first()

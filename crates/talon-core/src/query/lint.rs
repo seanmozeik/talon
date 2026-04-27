@@ -1,16 +1,25 @@
 //! Lint checks for vault graph health.
 
+use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::indexing::{LintCheck, LintFinding, LintInput, LintResponse};
 use rusqlite::Connection;
 
-pub fn query_lint(conn: &Connection, input: &LintInput) -> LintResponse {
+pub fn query_lint(
+    conn: &Connection,
+    input: &LintInput,
+    config: Option<&TalonConfig>,
+) -> LintResponse {
+    let filter = config.map(|cfg| {
+        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .unwrap_or_else(|_| ScopeFilter::default_for(cfg))
+    });
     let findings = match input.check {
-        LintCheck::All => find_all(conn, &input.scope_only),
-        LintCheck::Orphans => find_orphans(conn, &input.scope_only),
-        LintCheck::BrokenLinks => find_broken_links(conn, &input.scope_only),
-        LintCheck::DanglingRefs => find_dangling_refs(conn, &input.scope_only),
-        LintCheck::Unreferenced => find_unreferenced(conn, &input.scope_only),
+        LintCheck::All => find_all(conn, filter.as_ref()),
+        LintCheck::Orphans => find_orphans(conn, filter.as_ref()),
+        LintCheck::BrokenLinks => find_broken_links(conn, filter.as_ref()),
+        LintCheck::DanglingRefs => find_dangling_refs(conn, filter.as_ref()),
+        LintCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
     };
     LintResponse {
         vault: None,
@@ -19,19 +28,15 @@ pub fn query_lint(conn: &Connection, input: &LintInput) -> LintResponse {
     }
 }
 
-fn find_all(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
-    let mut findings = find_orphans(conn, scope_only);
-    findings.extend(find_broken_links(conn, scope_only));
-    findings.extend(find_dangling_refs(conn, scope_only));
-    findings.extend(find_unreferenced(conn, scope_only));
+fn find_all(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+    let mut findings = find_orphans(conn, filter);
+    findings.extend(find_broken_links(conn, filter));
+    findings.extend(find_dangling_refs(conn, filter));
+    findings.extend(find_unreferenced(conn, filter));
     findings
 }
 
-fn passes_scope_filter(path: &str, scope_only: &[String]) -> bool {
-    scope_only.is_empty() || scope_only.iter().any(|s| path.starts_with(s.as_str()))
-}
-
-fn find_orphans(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
+fn find_orphans(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT vault_path FROM notes \
          WHERE active = 1 \
@@ -48,7 +53,7 @@ fn find_orphans(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
     };
     paths
         .into_iter()
-        .filter(|p| passes_scope_filter(p, scope_only))
+        .filter(|p| filter.is_none_or(|f| f.accepts(p)))
         .filter_map(|path| {
             VaultPath::parse(&path).ok().map(|vp| LintFinding {
                 check: LintCheck::Orphans,
@@ -60,7 +65,7 @@ fn find_orphans(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
         .collect()
 }
 
-fn find_broken_links(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
+fn find_broken_links(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT DISTINCT from_path, to_path, raw_target FROM links \
          WHERE to_path NOT IN (SELECT vault_path FROM notes WHERE active = 1) \
@@ -82,7 +87,7 @@ fn find_broken_links(conn: &Connection, scope_only: &[String]) -> Vec<LintFindin
     };
     links
         .into_iter()
-        .filter(|(from, _, _)| passes_scope_filter(from, scope_only))
+        .filter(|(from, _, _)| filter.is_none_or(|f| f.accepts(from)))
         .filter_map(|(from, to, raw)| {
             let display = if raw.is_empty() { to.clone() } else { raw };
             VaultPath::parse(&from).ok().map(|vp| LintFinding {
@@ -95,7 +100,7 @@ fn find_broken_links(conn: &Connection, scope_only: &[String]) -> Vec<LintFindin
         .collect()
 }
 
-fn find_dangling_refs(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
+fn find_dangling_refs(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT n.vault_path, f.field, f.value \
          FROM notes n \
@@ -121,7 +126,7 @@ fn find_dangling_refs(conn: &Connection, scope_only: &[String]) -> Vec<LintFindi
     };
     references
         .into_iter()
-        .filter(|(path, _, _)| passes_scope_filter(path, scope_only))
+        .filter(|(path, _, _)| filter.is_none_or(|f| f.accepts(path)))
         .filter_map(|(path, field, value)| {
             VaultPath::parse(&path).ok().map(|vp| LintFinding {
                 check: LintCheck::DanglingRefs,
@@ -133,7 +138,7 @@ fn find_dangling_refs(conn: &Connection, scope_only: &[String]) -> Vec<LintFindi
         .collect()
 }
 
-fn find_unreferenced(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
+fn find_unreferenced(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT vault_path FROM notes \
          WHERE active = 1 \
@@ -151,7 +156,7 @@ fn find_unreferenced(conn: &Connection, scope_only: &[String]) -> Vec<LintFindin
     };
     paths
         .into_iter()
-        .filter(|p| passes_scope_filter(p, scope_only))
+        .filter(|p| filter.is_none_or(|f| f.accepts(p)))
         .filter_map(|path| {
             VaultPath::parse(&path).ok().map(|vp| LintFinding {
                 check: LintCheck::Unreferenced,

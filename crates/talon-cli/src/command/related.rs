@@ -8,7 +8,8 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    RelatedInput, ResponseMeta, TalonEnvelope, TalonResponseData, find_related, open_database,
+    RelatedInput, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData, find_related,
+    open_database,
 };
 
 pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
@@ -22,20 +23,26 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
             .depth
             .unwrap_or(talon_core::constants::RELATED_DEFAULT_DEPTH),
         direction: args.direction.unwrap_or_default(),
-        scope: vec![],
-        scope_only: vec![],
+        scope: args.scope.scope.clone(),
+        scope_only: args.scope.scope_only.clone(),
+        scope_all: args.scope.scope_all,
     };
 
     let config = config::load_config(args.config_file.as_deref())?;
     let db_path: PathBuf = config.db_path.clone();
     let vault = vault_container_path(Some(&config));
+    let scope_set = Some(
+        ScopeFilter::from_args(&config, &input.scope, &input.scope_only, input.scope_all)
+            .map_err(|e| eyre::eyre!("{e}"))?
+            .resolved_set(),
+    );
 
     let started = Instant::now();
     let work = async move {
         let conn = open_database(&db_path)
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
 
-        let mut response = find_related(&conn, &input);
+        let mut response = find_related(&conn, &input, Some(&config));
         response.vault = vault;
         let result_count = response.results.len();
 
@@ -43,7 +50,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
             duration_ms: elapsed_ms(started),
             result_count: Some(count_u32(result_count)),
             warnings: Vec::new(),
-            scope_set: None,
+            scope_set,
             since: None,
         };
         let data = TalonResponseData::Related(response);

@@ -47,9 +47,10 @@ fn fixture_vault_related_hub_depth2() {
         direction: Direction::Outgoing,
         scope: Vec::new(),
         scope_only: Vec::new(),
+        scope_all: false,
     };
 
-    let response = talon_core::find_related(&conn, &input);
+    let response = talon_core::find_related(&conn, &input, None);
 
     let paths: Vec<&str> = response
         .results
@@ -126,13 +127,14 @@ fn fixture_vault_meta_where_archived() {
         since: None,
         scope: Vec::new(),
         scope_only: Vec::new(),
+        scope_all: false,
         select: Vec::new(),
         tag_counts: false,
         sources: None,
         limit: PositiveCount::new(50, "limit").unwrap(),
     };
 
-    let response = query_meta(&conn, &input);
+    let response = query_meta(&conn, &input, None);
 
     assert_eq!(
         response.entries.len(),
@@ -194,9 +196,10 @@ fn fixture_vault_lint_orphans() {
         check: LintCheck::Orphans,
         scope: Vec::new(),
         scope_only: Vec::new(),
+        scope_all: false,
     };
 
-    let response = query_lint(&conn, &input);
+    let response = query_lint(&conn, &input, None);
 
     assert!(
         !response.findings.is_empty(),
@@ -305,7 +308,7 @@ fn fixture_vault_frontmatter_excluded_from_chunks() {
         }],
         ..MetaInput::default()
     };
-    let meta_resp = query_meta(&conn, &meta_input);
+    let meta_resp = query_meta(&conn, &meta_input, None);
     let paths: Vec<_> = meta_resp.entries.iter().map(|e| e.path.as_str()).collect();
     assert!(
         paths.contains(&"Filters/Frontmatter.md"),

@@ -1,9 +1,54 @@
 use rusqlite::{Connection, params};
 
 use super::*;
+use crate::config::{
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, Scope, ScopeGlob,
+    ScopePriority, SearchConfig, TalonConfig,
+};
 use crate::indexing::migrations::run_migrations;
 use crate::query::MetaInput;
 use crate::search::{WhereClause, WhereOperator};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
+    let mut map = BTreeMap::new();
+    for (name, glob) in scopes {
+        map.insert(
+            name.to_string(),
+            Scope {
+                glob: ScopeGlob::Single(glob.to_string()),
+                priority: ScopePriority::Normal,
+                default: true,
+            },
+        );
+    }
+    TalonConfig {
+        vault_path: PathBuf::from("/vault"),
+        db_path: PathBuf::from("/vault/.talon/index.db"),
+        config_file_path: None,
+        include_patterns: Vec::new(),
+        ignore_patterns: Vec::new(),
+        inference: InferenceConfig {
+            base_url: "http://localhost:8080".to_string(),
+            models: InferenceModels {
+                query_embedding: "q".to_string(),
+                document_embedding: "d".to_string(),
+                chunk_embedding: "c".to_string(),
+                reranker: "r".to_string(),
+            },
+        },
+        expansion: ExpansionConfig {
+            provider: "openai-compatible".to_string(),
+            base_url: "http://localhost:8080".to_string(),
+            model: "x".to_string(),
+            max_tokens: None,
+        },
+        scopes: map,
+        search: SearchConfig::default(),
+        chunker: ChunkerConfig::default(),
+    }
+}
 
 fn fresh_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -63,6 +108,7 @@ fn tag_counts_aggregates_by_tag() {
             tag_counts: true,
             ..MetaInput::default()
         },
+        None,
     );
 
     let tc = resp
@@ -93,6 +139,7 @@ fn where_equals_filters_notes() {
             }],
             ..MetaInput::default()
         },
+        None,
     );
 
     assert_eq!(resp.entries.len(), 1);
@@ -118,6 +165,7 @@ fn where_exists_returns_notes_with_field() {
             }],
             ..MetaInput::default()
         },
+        None,
     );
 
     assert_eq!(resp.entries.len(), 1);
@@ -144,6 +192,7 @@ fn where_contains_matches_substring() {
             }],
             ..MetaInput::default()
         },
+        None,
     );
 
     assert_eq!(resp.entries.len(), 1);
@@ -166,6 +215,7 @@ fn sources_returns_notes_referencing_target() {
             sources: Some("target.md".into()),
             ..MetaInput::default()
         },
+        None,
     );
 
     assert_eq!(resp.entries.len(), 1);
@@ -186,6 +236,7 @@ fn since_filter_excludes_old_notes() {
             since: Some("2000".into()),
             ..MetaInput::default()
         },
+        None,
     );
 
     assert_eq!(resp.entries.len(), 1);
@@ -195,17 +246,19 @@ fn since_filter_excludes_old_notes() {
 // ── Test 7: scope_only filter ─────────────────────────────────────────────
 
 #[test]
-fn scope_only_filters_by_prefix() {
+fn scope_only_filters_by_configured_scope() {
     let conn = fresh_db();
     insert_note_with_fm(&conn, "Atlas/note.md", "{}", 0);
     insert_note_with_fm(&conn, "Search/note.md", "{}", 0);
 
+    let config = test_config_with_scopes(vec![("atlas", "Atlas/**"), ("search", "Search/**")]);
     let resp = query_meta(
         &conn,
         &MetaInput {
-            scope_only: vec!["Atlas".into()],
+            scope_only: vec!["atlas".into()],
             ..MetaInput::default()
         },
+        Some(&config),
     );
 
     assert_eq!(resp.entries.len(), 1);
@@ -227,6 +280,7 @@ fn select_projects_only_requested_fields() {
             select: vec!["type".into()],
             ..MetaInput::default()
         },
+        None,
     );
 
     assert_eq!(resp.entries.len(), 1);

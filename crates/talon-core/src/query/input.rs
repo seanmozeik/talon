@@ -55,6 +55,9 @@ pub struct RecallInput {
     /// Scope names to search exclusively.
     #[serde(default)]
     pub scope_only: Vec<String>,
+    /// Include every configured scope, overriding `default = false`.
+    #[serde(default)]
+    pub scope_all: bool,
     /// Output format.
     #[serde(default)]
     pub format: RecallFormat,
@@ -86,6 +89,7 @@ impl Default for RecallInput {
             exclude: Vec::new(),
             scope: Vec::new(),
             scope_only: Vec::new(),
+            scope_all: false,
             format: RecallFormat::Json,
             depth: default_recall_depth(),
             min_confidence: 0.0,
@@ -110,6 +114,9 @@ pub struct MetaInput {
     /// Scope names to search exclusively.
     #[serde(default)]
     pub scope_only: Vec<String>,
+    /// Include every configured scope, overriding `default = false`.
+    #[serde(default)]
+    pub scope_all: bool,
     /// Frontmatter fields to select (comma-separated).
     #[serde(default)]
     pub select: Vec<String>,
@@ -131,6 +138,7 @@ impl Default for MetaInput {
             since: None,
             scope: Vec::new(),
             scope_only: Vec::new(),
+            scope_all: false,
             select: Vec::new(),
             tag_counts: false,
             sources: None,
@@ -151,6 +159,9 @@ pub struct ChangesInput {
     /// Scope names to search exclusively.
     #[serde(default)]
     pub scope_only: Vec<String>,
+    /// Include every configured scope, overriding `default = false`.
+    #[serde(default)]
+    pub scope_all: bool,
     /// Result limit.
     #[serde(default)]
     pub limit: PositiveCount,

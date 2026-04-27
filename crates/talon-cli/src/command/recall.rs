@@ -8,8 +8,9 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, RecallInput, RecallResponse, ResponseMeta, TalonEnvelope, TalonResponseData,
-    inference::InferenceClient, open_database, run_recall, vec_ext::register_sqlite_vec,
+    ExpansionClient, RecallInput, RecallResponse, ResponseMeta, ScopeFilter, TalonEnvelope,
+    TalonResponseData, inference::InferenceClient, open_database, run_recall,
+    vec_ext::register_sqlite_vec,
 };
 
 fn recall_clients(
@@ -59,8 +60,9 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         prior_messages: args.recall.prior_messages.clone(),
         budget_tokens: args.recall.budget_tokens.unwrap_or(500),
         exclude: args.recall.exclude.clone(),
-        scope: Vec::new(),
-        scope_only: Vec::new(),
+        scope: args.scope.scope.clone(),
+        scope_only: args.scope.scope_only.clone(),
+        scope_all: args.scope.scope_all,
         format: if prompt_xml {
             talon_core::RecallFormat::PromptXml
         } else {
@@ -73,6 +75,10 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
 
     let started = Instant::now();
     let config = config::load_config(args.config_file.as_deref()).ok();
+    if let Some(cfg) = config.as_ref() {
+        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .map_err(|e| eyre::eyre!("{e}"))?;
+    }
 
     let work = async move {
         tokio::task::spawn_blocking(move || -> Result<(RecallResponse, ResponseMeta, String)> {
@@ -111,9 +117,13 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
                 duration_ms,
                 result_count,
                 warnings: Vec::new(),
-                scope_set: config
-                    .as_ref()
-                    .map(|c| c.default_scope_names().into_iter().cloned().collect()),
+                scope_set: config.as_ref().map(|c| {
+                    ScopeFilter::from_args(c, &input.scope, &input.scope_only, input.scope_all)
+                        .map_or_else(
+                            |_| ScopeFilter::default_for(c).resolved_set(),
+                            |f| f.resolved_set(),
+                        )
+                }),
                 since: None,
             };
             Ok((response, meta, vault))

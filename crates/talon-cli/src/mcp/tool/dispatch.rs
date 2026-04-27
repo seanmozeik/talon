@@ -104,7 +104,7 @@ fn dispatch_related(input: &RelatedInput) -> Result<TalonEnvelope> {
     let config = config::load_config(None)?;
     let conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
-    let response = find_related(&conn, input);
+    let response = find_related(&conn, input, Some(&config));
     let result_count = count_u32(response.results.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
@@ -126,7 +126,7 @@ fn dispatch_meta(input: &MetaInput) -> Result<TalonEnvelope> {
     let conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let since = input.since.clone();
-    let response = query_meta(&conn, input);
+    let response = query_meta(&conn, input, Some(&config));
     let result_count = count_u32(response.entries.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
@@ -148,7 +148,7 @@ fn dispatch_changes(input: &ChangesInput) -> Result<TalonEnvelope> {
     let conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let since = input.since.clone();
-    let response = query_changes(&conn, input);
+    let response = query_changes(&conn, input, Some(&config));
     let result_count =
         count_u32(response.added.len() + response.modified.len() + response.deleted.len());
     let meta = ResponseMeta {
@@ -170,7 +170,7 @@ fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
     let config = config::load_config(None)?;
     let conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
-    let response = query_lint(&conn, input);
+    let response = query_lint(&conn, input, Some(&config));
     let result_count = count_u32(response.findings.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),

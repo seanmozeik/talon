@@ -30,6 +30,17 @@ All commands emit `{action, version, ok, data, meta}` JSON on success; `{action,
 - **`lint [check]`**: Surface graph health issues. Default/checks: `all`, `orphans`, `broken-links`, `dangling-refs`, `unreferenced`.
 - **`status`**: Report active note count, chunk count, vector dimensions, scope summary, and readiness state.
 
+## Scope flags
+
+`search`, `recall`, `related`, `meta`, `changes`, and `lint` honor a shared scope-selection surface. Scopes are named in `~/.config/talon/config.toml` under `[scopes.<name>]` and have a `default = true|false` flag.
+
+- **No flag**: query covers only scopes with `default = true`. Scopes with `default = false` (e.g. `private`, `archive`) are excluded from results entirely — they are not just down-ranked.
+- **`-s NAME` / `--scope NAME`** (repeatable, additive): re-includes the named scope on top of the default pool. Required to surface any `default = false` scope.
+- **`--scope-only NAME`** (repeatable): replaces the pool with the named scope(s); ignores `default`.
+- **`--scope-all`**: covers every configured scope, overriding `default`.
+
+The three forms are mutually exclusive on a single invocation. Unknown scope names error with the configured-name list. Each response's `meta.scope_set` reports the resolved active scope names so the caller can verify what was searched.
+
 ## Output flags
 
 - `--json`: Pretty-printed JSON envelope.
@@ -43,6 +54,9 @@ talon sync --fast
 talon search "zettelkasten atomic notes"
 talon search "zettelkasten atomic notes" --fast
 talon search "project alpha" --where status=active --since 2024-01-01
+talon search "lease renewal" --scope private        # opt in to a default=false scope
+talon search "fermented hot sauce" --scope-only wiki # search only the wiki scope
+talon search "agenda" --scope-all                    # every configured scope
 talon read notes/pkm/zettelkasten.md --raw
 talon related notes/pkm/zettelkasten.md --depth 2 --direction both
 talon meta --where status=archived --select title --select status

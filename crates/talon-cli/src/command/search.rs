@@ -8,9 +8,9 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, ResponseMeta, SearchInput, SearchMode, TalonEnvelope, TalonResponseData,
-    inference::InferenceClient, open_database, run_search, run_search_with_expanded_queries,
-    vec_ext::register_sqlite_vec,
+    ExpansionClient, ResponseMeta, ScopeFilter, SearchInput, SearchMode, TalonEnvelope,
+    TalonResponseData, inference::InferenceClient, open_database, run_search,
+    run_search_with_expanded_queries, vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
@@ -42,6 +42,14 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     input.where_ = where_clauses;
     input.since = args.since.clone();
     input.anchors = args.anchors.enabled().then_some(true);
+    input.scope.clone_from(&args.scope.scope);
+    input.scope_only.clone_from(&args.scope.scope_only);
+    input.scope_all = args.scope.scope_all;
+
+    if let Some(cfg) = config.as_ref() {
+        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .map_err(|e| eyre::eyre!("{e}"))?;
+    }
 
     let started = Instant::now();
 
@@ -139,13 +147,17 @@ fn execute_search(
     };
     response.vault = vault_container_path(config);
 
+    let scope_set = config.as_ref().map(|cfg| {
+        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all).map_or_else(
+            |_| ScopeFilter::default_for(cfg).resolved_set(),
+            |f| f.resolved_set(),
+        )
+    });
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count: Some(response.total),
         warnings: Vec::new(),
-        scope_set: config
-            .as_ref()
-            .map(|c| c.default_scope_names().into_iter().cloned().collect()),
+        scope_set,
         since: input.since,
     };
     Ok(TalonEnvelope::ok(

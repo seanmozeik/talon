@@ -129,6 +129,9 @@ pub struct SearchInput {
     /// Scope names to search exclusively (mutually exclusive with `scope`).
     #[serde(default)]
     pub scope_only: Vec<String>,
+    /// Include every configured scope, overriding `default = false`.
+    #[serde(default)]
+    pub scope_all: bool,
     /// Frontmatter `--where` filters (AND-composed).
     #[serde(default)]
     pub where_: Vec<WhereClause>,
@@ -159,6 +162,7 @@ impl Default for SearchInput {
             direction: Direction::Both,
             scope: Vec::new(),
             scope_only: Vec::new(),
+            scope_all: false,
             where_: Vec::new(),
             since: None,
             anchors: None,

@@ -79,6 +79,7 @@ Short alias C#.
         direction: talon_core::Direction::Both,
         scope: Vec::new(),
         scope_only: Vec::new(),
+        scope_all: false,
         where_: Vec::new(),
         since: None,
         anchors: None,

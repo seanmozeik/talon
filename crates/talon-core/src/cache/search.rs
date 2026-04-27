@@ -144,6 +144,7 @@ pub fn key_for(conn: &Connection, input: &SearchInput, config: Option<&TalonConf
     input.tag.hash(&mut hasher);
     input.scope.hash(&mut hasher);
     input.scope_only.hash(&mut hasher);
+    input.scope_all.hash(&mut hasher);
     config.map(config_fingerprint).hash(&mut hasher);
     CacheKey(hasher.finish())
 }

@@ -4,10 +4,13 @@ use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 mod defaults;
+mod scope_filter;
 use defaults::{
     default_candidate_limit, default_limit, default_rerank_batch_size, default_rerank_cache_size,
     default_rerank_max_tokens, default_search_cache_size,
 };
+
+pub use scope_filter::ScopeFilter;
 
 /// Priority tier for scope-based ranking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -157,6 +160,18 @@ impl TalonConfig {
         }
         // Unmatched files fall into synthetic unscoped bucket: normal priority, default true
         ScopeResolution::default()
+    }
+
+    /// Returns the name of the scope this path resolves to, or `None` for the
+    /// synthetic unscoped bucket.
+    #[must_use]
+    pub fn resolve_scope_name(&self, path: &Path) -> Option<&str> {
+        for (name, scope) in &self.scopes {
+            if matches_path_glob(path, &scope.glob) {
+                return Some(name.as_str());
+            }
+        }
+        None
     }
 
     /// Returns the set of scope names that are in the default search set.

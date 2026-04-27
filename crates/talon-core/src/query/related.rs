@@ -5,6 +5,7 @@ use std::collections::{HashSet, VecDeque};
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
+use crate::config::{ScopeFilter, TalonConfig};
 use crate::constants::RELATED_MAX_DEPTH;
 use crate::contracts::{ContainerPath, VaultPath};
 use crate::search::Direction;
@@ -27,6 +28,9 @@ pub struct RelatedInput {
     /// Scope names to search exclusively.
     #[serde(default)]
     pub scope_only: Vec<String>,
+    /// Include every configured scope, overriding `default = false`.
+    #[serde(default)]
+    pub scope_all: bool,
 }
 
 /// Related-note response.
@@ -76,7 +80,11 @@ const fn default_depth() -> u8 {
 /// - Cycles are detected via a visited set — each path appears at most once.
 /// - `scope_only` filters results to notes whose vault path starts with any
 ///   listed prefix. `scope` and `scope_only` both empty means no filtering.
-pub fn find_related(conn: &Connection, input: &RelatedInput) -> RelatedResponse {
+pub fn find_related(
+    conn: &Connection,
+    input: &RelatedInput,
+    config: Option<&TalonConfig>,
+) -> RelatedResponse {
     let path = input.path.trim();
 
     let Ok(source_path) = VaultPath::parse(path) else {
@@ -90,6 +98,11 @@ pub fn find_related(conn: &Connection, input: &RelatedInput) -> RelatedResponse 
 
     let depth = input.depth.clamp(1, RELATED_MAX_DEPTH);
     let direction = input.direction;
+
+    let filter = config.map(|cfg| {
+        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .unwrap_or_else(|_| ScopeFilter::default_for(cfg))
+    });
 
     let mut visited: HashSet<String> = HashSet::new();
     visited.insert(path.to_string());
@@ -113,7 +126,9 @@ pub fn find_related(conn: &Connection, input: &RelatedInput) -> RelatedResponse 
             }
             visited.insert(neighbor_path.clone());
 
-            if !passes_scope_filter(&neighbor_path, &input.scope_only) {
+            if let Some(ref f) = filter
+                && !f.accepts(&neighbor_path)
+            {
                 continue;
             }
 
@@ -204,13 +219,6 @@ fn query_title(conn: &Connection, path: &str) -> Option<String> {
     )
     .ok()
     .flatten()
-}
-
-fn passes_scope_filter(path: &str, scope_only: &[String]) -> bool {
-    if scope_only.is_empty() {
-        return true;
-    }
-    scope_only.iter().any(|s| path.starts_with(s.as_str()))
 }
 
 #[cfg(test)]

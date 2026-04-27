@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use rusqlite::{Connection, params};
 
+use crate::config::TalonConfig;
 use crate::contracts::VaultPath;
 use crate::numeric::count_u32;
 use crate::query::related::find_related;
@@ -40,6 +41,7 @@ pub(super) fn build_linked_context(
     pipeline_results: &[RawSearchResult],
     input: &RecallInput,
     excluded_set: &HashSet<String>,
+    config: Option<&TalonConfig>,
 ) -> (Vec<LinkedNote>, u32) {
     let Some(top_path) = pipeline_results.first().map(|r| r.path.clone()) else {
         return (Vec::new(), 0);
@@ -50,8 +52,9 @@ pub(super) fn build_linked_context(
         direction: Direction::Both,
         scope: input.scope.clone(),
         scope_only: input.scope_only.clone(),
+        scope_all: input.scope_all,
     };
-    let rel = find_related(conn, &ri);
+    let rel = find_related(conn, &ri, config);
     let link_count = count_u32(rel.results.len());
     let notes: Vec<LinkedNote> = rel
         .results

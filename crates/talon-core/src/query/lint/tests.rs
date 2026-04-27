@@ -1,6 +1,51 @@
 use super::*;
+use crate::config::{
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, Scope, ScopeGlob,
+    ScopePriority, SearchConfig, TalonConfig,
+};
 use crate::indexing::migrations::run_migrations;
 use rusqlite::{Connection, params};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+
+fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
+    let mut map = BTreeMap::new();
+    for (name, glob) in scopes {
+        map.insert(
+            name.to_string(),
+            Scope {
+                glob: ScopeGlob::Single(glob.to_string()),
+                priority: ScopePriority::Normal,
+                default: true,
+            },
+        );
+    }
+    TalonConfig {
+        vault_path: PathBuf::from("/vault"),
+        db_path: PathBuf::from("/vault/.talon/index.db"),
+        config_file_path: None,
+        include_patterns: Vec::new(),
+        ignore_patterns: Vec::new(),
+        inference: InferenceConfig {
+            base_url: "http://localhost:8080".to_string(),
+            models: InferenceModels {
+                query_embedding: "q".to_string(),
+                document_embedding: "d".to_string(),
+                chunk_embedding: "c".to_string(),
+                reranker: "r".to_string(),
+            },
+        },
+        expansion: ExpansionConfig {
+            provider: "openai-compatible".to_string(),
+            base_url: "http://localhost:8080".to_string(),
+            model: "x".to_string(),
+            max_tokens: None,
+        },
+        scopes: map,
+        search: SearchConfig::default(),
+        chunker: ChunkerConfig::default(),
+    }
+}
 
 fn fresh_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -44,6 +89,7 @@ fn lint_input(check: LintCheck) -> LintInput {
         check,
         scope: Vec::new(),
         scope_only: Vec::new(),
+        scope_all: false,
     }
 }
 
@@ -52,6 +98,7 @@ fn lint_input_scoped(check: LintCheck, scope_only: Vec<String>) -> LintInput {
         check,
         scope: Vec::new(),
         scope_only,
+        scope_all: false,
     }
 }
 
@@ -65,7 +112,7 @@ fn test_all_runs_every_lint_check() {
     insert_link(&conn, "Graph/Source.md", "Graph/Target.md", "[[Target]]");
     insert_link(&conn, "Graph/Source.md", "Graph/Missing.md", "[[Missing]]");
     insert_fm_field(&conn, source_id, "sources", "Graph/Ghost.md");
-    let resp = query_lint(&conn, &lint_input(LintCheck::All));
+    let resp = query_lint(&conn, &lint_input(LintCheck::All), None);
     let messages: Vec<&str> = resp.findings.iter().map(|f| f.message.as_str()).collect();
 
     assert!(messages.iter().any(|msg| msg.contains("no incoming links")));
@@ -86,7 +133,7 @@ fn test_orphans_detects_notes_with_no_incoming_links() {
     insert_note(&conn, "Graph/Grandchild.md");
     insert_link(&conn, "Graph/Parent.md", "Graph/Child.md", "[[Child]]");
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::Orphans));
+    let resp = query_lint(&conn, &lint_input(LintCheck::Orphans), None);
     let paths: Vec<&str> = resp.findings.iter().map(|f| f.path.as_str()).collect();
     assert!(
         paths.contains(&"Graph/Grandchild.md"),
@@ -120,7 +167,7 @@ fn test_broken_links_detects_missing_targets() {
         "[[Doomed]]",
     );
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::BrokenLinks));
+    let resp = query_lint(&conn, &lint_input(LintCheck::BrokenLinks), None);
     assert_eq!(resp.findings.len(), 1);
     assert_eq!(resp.findings[0].path.as_str(), "Lifecycle/Doomed.md");
     assert!(resp.findings[0].message.contains("Nonexistent"));
@@ -136,7 +183,7 @@ fn test_dangling_refs_detects_missing_frontmatter_paths() {
     insert_fm_field(&conn, node_id, "sources", "Atlas/Real.md");
     insert_fm_field(&conn, node_id, "sources", "Atlas/Ghost.md");
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::DanglingRefs));
+    let resp = query_lint(&conn, &lint_input(LintCheck::DanglingRefs), None);
     assert_eq!(resp.findings.len(), 1);
     assert_eq!(resp.findings[0].path.as_str(), "Atlas/Node.md");
     assert!(resp.findings[0].message.contains("Ghost.md"));
@@ -150,7 +197,7 @@ fn test_unreferenced_requires_both_no_incoming_and_no_outgoing() {
     insert_note(&conn, "Search/Target.md");
     insert_link(&conn, "Search/Linker.md", "Search/Target.md", "[[Target]]");
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::Unreferenced));
+    let resp = query_lint(&conn, &lint_input(LintCheck::Unreferenced), None);
     let paths: Vec<&str> = resp.findings.iter().map(|f| f.path.as_str()).collect();
     assert!(
         paths.contains(&"Search/Isolated.md"),
@@ -172,9 +219,11 @@ fn test_scope_filter_limits_orphan_findings() {
     insert_note(&conn, "Atlas/A.md");
     insert_note(&conn, "Graph/B.md");
 
+    let config = test_config_with_scopes(vec![("atlas", "Atlas/**"), ("graph", "Graph/**")]);
     let resp = query_lint(
         &conn,
-        &lint_input_scoped(LintCheck::Orphans, vec!["Atlas/".to_string()]),
+        &lint_input_scoped(LintCheck::Orphans, vec!["atlas".to_string()]),
+        Some(&config),
     );
     let paths: Vec<&str> = resp.findings.iter().map(|f| f.path.as_str()).collect();
     assert!(paths.contains(&"Atlas/A.md"), "Atlas/A should appear");

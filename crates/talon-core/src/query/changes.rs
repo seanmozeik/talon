@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 
 use rusqlite::Connection;
 
+use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::indexing::change_tracking;
 use crate::query::{ChangeEntry, ChangesInput, ChangesResponse, TombstoneEntry};
@@ -18,7 +19,11 @@ use crate::query::{ChangeEntry, ChangesInput, ChangesResponse, TombstoneEntry};
 ///
 /// Returns empty lists when `since` cannot be parsed.
 #[must_use]
-pub fn query_changes(conn: &Connection, input: &ChangesInput) -> ChangesResponse {
+pub fn query_changes(
+    conn: &Connection,
+    input: &ChangesInput,
+    config: Option<&TalonConfig>,
+) -> ChangesResponse {
     let empty = ChangesResponse {
         vault: None,
         added: Vec::new(),
@@ -31,10 +36,14 @@ pub fn query_changes(conn: &Connection, input: &ChangesInput) -> ChangesResponse
     let Some(all_events) = fetch_events(conn) else {
         return empty;
     };
+    let filter = config.map(|cfg| {
+        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .unwrap_or_else(|_| ScopeFilter::default_for(cfg))
+    });
     classify(
         &all_events,
         since_ms,
-        &input.scope_only,
+        filter.as_ref(),
         input.limit.get() as usize,
     )
 }
@@ -70,7 +79,7 @@ fn fetch_events(conn: &Connection) -> Option<Vec<(String, String, u64)>> {
 fn classify(
     all_events: &[(String, String, u64)],
     since_ms: u64,
-    scope_only: &[String],
+    filter: Option<&ScopeFilter<'_>>,
     limit: usize,
 ) -> ChangesResponse {
     let indexed_before: HashSet<String> = all_events
@@ -83,7 +92,12 @@ fn classify(
     let mut latest_delete: HashMap<String, u64> = HashMap::new();
 
     for (action, path, ts_ms) in all_events {
-        if *ts_ms < since_ms || !passes_scope_filter(path, scope_only) {
+        if *ts_ms < since_ms {
+            continue;
+        }
+        if let Some(f) = filter
+            && !f.accepts(path)
+        {
             continue;
         }
         let map = if action == "index" {
@@ -148,10 +162,6 @@ fn classify(
     }
 }
 
-fn passes_scope_filter(path: &str, scope_only: &[String]) -> bool {
-    scope_only.is_empty() || scope_only.iter().any(|p| path.starts_with(p.as_str()))
-}
-
 fn rfc3339_to_ms(s: &str) -> Option<u64> {
     time::OffsetDateTime::parse(s, &time::format_description::well_known::Rfc3339)
         .ok()
@@ -187,6 +197,7 @@ mod tests {
             since: since.to_string(),
             scope: Vec::new(),
             scope_only: Vec::new(),
+            scope_all: false,
             limit: PositiveCount::new(100, "limit").unwrap(),
         }
     }
@@ -196,7 +207,7 @@ mod tests {
         let conn = fresh_db();
         insert_event(&conn, "index", "a.md", "2024-01-15T10:30:01Z");
 
-        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"));
+        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"), None);
 
         assert_eq!(result.added.len(), 1);
         assert_eq!(result.added[0].path.as_str(), "a.md");
@@ -210,7 +221,7 @@ mod tests {
         insert_event(&conn, "index", "a.md", "2024-01-15T09:00:00Z");
         insert_event(&conn, "index", "a.md", "2024-01-15T10:30:01Z");
 
-        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"));
+        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"), None);
 
         assert!(result.added.is_empty());
         assert_eq!(result.modified.len(), 1);
@@ -224,7 +235,7 @@ mod tests {
         insert_event(&conn, "index", "a.md", "2024-01-15T09:00:00Z");
         insert_event(&conn, "delete", "a.md", "2024-01-15T10:30:01Z");
 
-        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"));
+        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"), None);
 
         assert!(result.added.is_empty());
         assert!(result.modified.is_empty());
@@ -237,7 +248,7 @@ mod tests {
         let conn = fresh_db();
         insert_event(&conn, "index", "a.md", "2024-01-15T09:00:00Z");
 
-        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"));
+        let result = query_changes(&conn, &changes_input("2024-01-15T10:30:00Z"), None);
 
         assert!(result.added.is_empty());
         assert!(result.modified.is_empty());
@@ -249,7 +260,7 @@ mod tests {
         let conn = fresh_db();
         insert_event(&conn, "index", "a.md", "2024-01-15T10:30:01Z");
 
-        let result = query_changes(&conn, &changes_input("not-a-timestamp"));
+        let result = query_changes(&conn, &changes_input("not-a-timestamp"), None);
 
         assert!(result.added.is_empty());
         assert!(result.modified.is_empty());
