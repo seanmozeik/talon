@@ -9,8 +9,10 @@
 #
 # See docs/CONFIG.md for the full reference.
 
-vault_path = "examples/calle-sur-vault"
-db_path    = "examples/calle-sur-vault/.talon/calle-sur.db"
+# Relative paths in this file are resolved against the config file's
+# directory (i.e. `examples/`), not CWD.
+vault_path = "calle-sur-vault"
+db_path    = "calle-sur-vault/.talon/calle-sur.db"
 
 include_patterns = ["**/*.md"]
 ignore_patterns  = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
