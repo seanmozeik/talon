@@ -5,6 +5,8 @@ Use `just check` for formatting and linting.
 Never touch linter config without express user approval.
 Always prefer refactors to suppressions, even when tedious. If suppressions are necessary, flag to the user.
 
+Always commit with conventional commit formatted messages.
+
 ## Code exploration — prefer `ast-outline` over full reads
 
 For `.rs`, `.cs`, `.py`, `.pyi`, `.ts`, `.tsx`, `.js`, `.jsx`, `.java`, `.kt`, `.kts`,
