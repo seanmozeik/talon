@@ -227,7 +227,7 @@ Update `talon-cli/src/lib.rs` or wherever command is declared.
 
 ---
 
-### Task 12 — Split CLI output.rs into output/ subdir (704 lines) [ ]
+### Task 12 — Split CLI output.rs into output/ subdir (704 lines) [x]
 
 Split `crates/talon-cli/src/output.rs` into `output/` subdirectory.  
 `cargo check` must pass.
