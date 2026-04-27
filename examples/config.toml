@@ -1,0 +1,98 @@
+# Talon example configuration — Karpathy LLM Wiki preset.
+#
+# Designed to be usable as-is against the bundled `examples/calle-sur-vault/`.
+# Copy to `~/.config/talon/config.toml` and adjust as needed:
+#   - `vault_path`         — point at your real Obsidian vault when ready
+#   - `db_path`            — pick a stable home; default below writes alongside the vault
+#   - `inference.base_url` — point at your TEI-compatible endpoint
+#   - `expansion.base_url` — point at your OpenAI-compatible chat endpoint
+#
+# See docs/CONFIG.md for the full reference.
+
+vault_path = "examples/calle-sur-vault"
+db_path    = "examples/calle-sur-vault/.talon/calle-sur.db"
+
+include_patterns = ["**/*.md"]
+ignore_patterns  = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
+
+[indexer]
+chunk_tokens     = 512
+chunk_overlap    = 64
+chunk_min_tokens = 16
+
+# Inference endpoint. Anything TEI-compatible (text-embeddings-inference,
+# Infinity, ultraclaw's local sidecar) works. Adjust base_url to taste.
+[inference]
+base_url = "http://host.docker.internal:8000"
+
+[inference.models]
+query_embedding    = "embed"
+document_embedding = "embed"
+chunk_embedding    = "embed_chunked"
+reranker           = "rerank"
+
+# Query-expansion endpoint. OpenAI-compatible chat completions.
+[expansion]
+provider = "openai-compatible"
+base_url = "http://host.docker.internal:8000/v1"
+model    = "bonsai"
+# Optional total completion cap. Leave unset for thinking models.
+# max_tokens = 768
+
+# ── Scopes ─────────────────────────────────────────────────────────────────
+# Karpathy LLM-Wiki preset. Rationale per directory:
+#   wiki/      compiled, agent-curated knowledge — top signal
+#   projects/  active workspaces — strong signal
+#   artifacts/ agent outputs for the user — neutral
+#   daily/     ephemeral; only useful when the user asks about a date or
+#              when the agent is processing today's note
+#   raw/       source material the agent hasn't compiled yet — useful but noisy
+#   archive/   completed/stale — deprioritised heavily
+#   private/   sensitive — never auto-searched, only via explicit --scope private
+#   _meta/     vault infrastructure — only via --scope meta
+#
+# Talon has 5 priority tiers (boosted=3.0, elevated=1.5, normal=1.0,
+# muted=0.3, buried=0.05). daily/+raw/ both collapse to muted;
+# archive/+private/+_meta/ all collapse to buried — the user-visible
+# distinction is `default`, which controls whether a scope is auto-included
+# in default search.
+
+[scopes.wiki]
+glob     = ["wiki/**"]
+priority = "boosted"
+default  = true
+
+[scopes.projects]
+glob     = ["projects/**"]
+priority = "elevated"
+default  = true
+
+[scopes.artifacts]
+glob     = ["artifacts/**"]
+priority = "normal"
+default  = true
+
+[scopes.daily]
+glob     = ["daily/**"]
+priority = "muted"
+default  = false
+
+[scopes.raw]
+glob     = ["raw/**"]
+priority = "muted"
+default  = false
+
+[scopes.archive]
+glob     = ["archive/**"]
+priority = "buried"
+default  = false
+
+[scopes.private]
+glob     = ["private/**"]
+priority = "buried"
+default  = false
+
+[scopes.meta]
+glob     = ["_meta/**"]
+priority = "buried"
+default  = false
