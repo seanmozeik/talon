@@ -81,11 +81,6 @@ pub fn run_recall(
         build_linked_context(conn, &pipeline_results, input, &excluded_set);
 
     let frontmatter_facts = collect_frontmatter(conn, &pipeline_results, &excluded_set);
-    let frontmatter_match_indicator = if frontmatter_facts.is_empty() {
-        0.0
-    } else {
-        1.0
-    };
 
     let since_str = input.since.clone().unwrap_or_else(default_since_7d);
     let active_paths: Vec<String> = pipeline_results.iter().map(|r| r.path.clone()).collect();
@@ -108,7 +103,6 @@ pub fn run_recall(
         top_lexical_indicator,
         top_result_link_count: top_link_count,
         days_since_top_result_modified: top_days,
-        frontmatter_match_indicator,
     });
 
     if evidence_score < input.min_confidence || pipeline_results.is_empty() {
