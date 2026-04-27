@@ -11,6 +11,10 @@ use std::sync::OnceLock;
 use regex::Regex;
 use sha2::{Digest, Sha256};
 use text_splitter::{ChunkConfig, ChunkSizer, MarkdownSplitter};
+// Intentional divergence from OHS `chunker.ts:23-35` and `chunker.ts:110`:
+// `tokenx-rs` preserves Unicode-aware estimates for CJK/Hangul/Cyrillic/
+// fullwidth text, and we keep its overlap wiring instead of porting the
+// coarser OHS heuristic.
 use tokenx_rs::estimate_token_count;
 
 use crate::config::ChunkerConfig;
