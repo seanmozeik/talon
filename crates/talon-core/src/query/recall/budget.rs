@@ -8,7 +8,10 @@ pub(super) fn estimate_payload_tokens(
 ) -> usize {
     let mut total = 0usize;
     for n in active_notes {
-        total += estimate_token_count(&n.title) + estimate_token_count(&n.snippet) + 10;
+        total += estimate_token_count(n.vault_path.as_str())
+            + estimate_token_count(&n.title)
+            + estimate_token_count(&n.snippet)
+            + 10; // XML structure, mtime attr, score attr
     }
     for l in linked_context {
         total += estimate_token_count(&l.title) + estimate_token_count(&l.link_text) + 8;
