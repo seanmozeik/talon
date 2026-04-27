@@ -20,6 +20,32 @@ fn json_envelope_sync_success() {
 }
 
 #[test]
+fn agent_sync_omits_envelope_metadata() {
+    let vault = TempVault::new("agent-sync");
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
+        .args(["sync", "--fast", "--agent", "--config"])
+        .arg(&vault.config_path)
+        .output()
+        .unwrap_or_else(|e| panic!("spawn talon: {e}"));
+    assert!(out.status.success(), "talon sync should exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
+    assert!(
+        v.get("indexed").is_some(),
+        "agent sync should include indexed count"
+    );
+    assert!(v.get("action").is_none(), "agent sync should omit action");
+    assert!(v.get("version").is_none(), "agent sync should omit version");
+    assert!(v.get("ok").is_none(), "agent sync should omit ok");
+    assert!(v.get("meta").is_none(), "agent sync should omit meta");
+    assert!(
+        v.get("durationMs").is_none(),
+        "agent sync should omit duration metadata"
+    );
+}
+
+#[test]
 fn json_envelope_search_success() {
     let vault = TempVault::new("search");
     let out = vault.run(&["search", "hello", "--fast"]);

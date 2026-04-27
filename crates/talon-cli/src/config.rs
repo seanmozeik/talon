@@ -44,6 +44,7 @@ pub const CONFIG_TEMPLATE: &str = r#"# Talon configuration.
 # Location: ~/.config/talon/config.toml
 
 vault_path = "/Users/you/path/to/obsidian"
+# Convention: ~/.talon/{workspace}.db. Update this if you rename the vault.
 db_path = "~/.talon/obsidian.db"
 include_patterns = ["**/*.md"]
 ignore_patterns = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
@@ -150,31 +151,10 @@ pub fn init_config() -> Result<bool> {
             .wrap_err_with(|| format!("failed to create config directory: {}", parent.display()))?;
     }
 
-    let db_path = default_db_path();
-    if let Some(parent) = db_path.parent() {
-        fs::create_dir_all(parent).wrap_err_with(|| {
-            format!("failed to create database directory: {}", parent.display())
-        })?;
-    }
-
-    fs::write(&path, rendered_config_template())
+    fs::write(&path, CONFIG_TEMPLATE)
         .wrap_err_with(|| format!("failed to write config file: {}", path.display()))?;
 
     Ok(true)
-}
-
-fn rendered_config_template() -> String {
-    CONFIG_TEMPLATE.replace(
-        "db_path = \"~/.talon/obsidian.db\"",
-        &format!(
-            "db_path = \"{}\"",
-            toml_basic_string(&default_db_path_for_workspace("obsidian").to_string_lossy())
-        ),
-    )
-}
-
-fn toml_basic_string(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 /// Builds a default config from a vault path.
