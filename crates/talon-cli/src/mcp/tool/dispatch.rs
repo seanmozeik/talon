@@ -228,7 +228,7 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
         result_count,
         warnings: Vec::new(),
         scope_set: Some(config.default_scope_names().into_iter().cloned().collect()),
-        since: input.since.clone(),
+        since: None,
     };
     Ok(TalonEnvelope::ok(
         "recall",

@@ -57,19 +57,17 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     let input = RecallInput {
         message,
         prior_messages: args.recall.prior_messages.clone(),
-        budget_tokens: args.recall.budget_tokens.unwrap_or(2000),
+        budget_tokens: args.recall.budget_tokens.unwrap_or(500),
         exclude: args.recall.exclude.clone(),
         scope: Vec::new(),
         scope_only: Vec::new(),
-        since: args.since.clone(),
         format: if prompt_xml {
             talon_core::RecallFormat::PromptXml
         } else {
             talon_core::RecallFormat::Json
         },
         depth: args.depth.unwrap_or(1),
-        recency_half_life_days: args.recall.recency_half_life_days.unwrap_or(7),
-        min_confidence: args.recall.min_confidence.unwrap_or(0.0),
+        min_confidence: args.recall.min_confidence.unwrap_or(0.4),
         fast,
     };
 
@@ -116,7 +114,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
                 scope_set: config
                     .as_ref()
                     .map(|c| c.default_scope_names().into_iter().cloned().collect()),
-                since: input.since,
+                since: None,
             };
             Ok((response, meta, vault))
         })

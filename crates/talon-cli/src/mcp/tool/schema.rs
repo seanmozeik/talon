@@ -37,11 +37,10 @@ pub(super) fn input_schema() -> Value {
             "check": { "type": "string", "enum": ["all", "orphans", "broken-links", "dangling-refs", "unreferenced"] },
             "message": { "type": "string", "description": "User message for recall context" },
             "priorMessages": { "type": "array", "items": { "type": "string" }, "description": "Prior conversation turns fed to expansion" },
-            "budgetTokens": { "type": "integer", "minimum": 1, "description": "Token budget for the recall payload (default 2000)" },
+            "budgetTokens": { "type": "integer", "minimum": 1, "description": "Token budget for the recall payload (default 500)" },
             "exclude": { "type": "array", "items": { "type": "string" }, "description": "Vault paths to exclude from all retrieval" },
             "format": { "type": "string", "enum": ["json", "prompt-xml"], "description": "Output format" },
-            "minConfidence": { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Minimum evidence score threshold" },
-            "recencyHalfLifeDays": { "type": "integer", "minimum": 1, "description": "Half-life days for recency scoring" }
+            "minConfidence": { "type": "number", "minimum": 0.0, "maximum": 1.0, "description": "Minimum evidence score threshold (default 0.4)" }
         },
         "$defs": {
             "whereClause": {

@@ -80,8 +80,6 @@ pub struct RecallArgs {
     pub budget_tokens: Option<u32>,
     /// Minimum evidence score; below this, returns empty context.
     pub min_confidence: Option<f64>,
-    /// Half-life in days for recency decay weighting.
-    pub recency_half_life_days: Option<u8>,
     /// Prior turn messages to widen the query (repeatable).
     pub prior_messages: Vec<String>,
     /// Vault paths to exclude from recall candidates (repeatable).
@@ -313,16 +311,12 @@ fn recall_parser() -> impl bpaf::Parser<RecallArgs> {
         .argument::<String>("FORMAT")
         .optional();
     let budget_tokens = long("budget-tokens")
-        .help("Token budget for the recall context block (default 2000).")
+        .help("Token budget for the recall context block (default 500).")
         .argument::<u32>("N")
         .optional();
     let min_confidence = long("min-confidence")
-        .help("Minimum evidence score threshold 0.0-1.0 (default 0.0).")
+        .help("Minimum evidence score threshold 0.0-1.0 (default 0.4).")
         .argument::<f64>("F")
-        .optional();
-    let recency_half_life_days = long("recency-half-life-days")
-        .help("Half-life in days for recency decay (default 7).")
-        .argument::<u8>("N")
         .optional();
     let prior_messages = long("prior-message")
         .help("Prior turn message to widen the query (repeatable).")
@@ -336,7 +330,6 @@ fn recall_parser() -> impl bpaf::Parser<RecallArgs> {
         format,
         budget_tokens,
         min_confidence,
-        recency_half_life_days,
         prior_messages,
         exclude,
     })
