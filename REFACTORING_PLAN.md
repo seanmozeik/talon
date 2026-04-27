@@ -249,7 +249,7 @@ Split `crates/talon-core/tests/fixture_vault.rs` into focused test helper module
 
 ---
 
-### Task 15 — Split tests/search_integration.rs (476 lines) [ ]
+### Task 15 — Split tests/search_integration.rs (476 lines) [x]
 
 Split `crates/talon-core/tests/search_integration.rs`.  
 `cargo check --all-targets` must pass.
