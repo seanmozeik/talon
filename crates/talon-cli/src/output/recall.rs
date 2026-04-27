@@ -46,8 +46,6 @@ pub fn format_recall_human(
     if let Some(vr) = &resp.vault_recall {
         recall_section_active_notes(w, &vr.active_notes, opts, &head, &dim)?;
         recall_section_linked(w, &vr.linked_context, &head, &dim)?;
-        recall_section_recent_edits(w, &vr.recent_edits, &head, &dim)?;
-        recall_section_fuzzy_anchors(w, &vr.fuzzy_anchors, &head)?;
     }
 
     if !resp.excluded_by_budget.is_empty() {
@@ -75,13 +73,19 @@ fn recall_section_active_notes(
     writeln!(w, "\n{}Active Notes:{}", head.render(), head.render_reset())?;
     let max_width = opts.width.saturating_sub(4) as usize;
     for note in notes {
+        let mtime_suffix = if note.mtime.is_empty() {
+            String::new()
+        } else {
+            format!("  ({})", note.mtime)
+        };
         writeln!(
             w,
-            "  {}[{}]{} {} {:.3}",
+            "  {}[{}]{} {}{} {:.3}",
             dim.render(),
             note.rank,
             dim.render_reset(),
             note.vault_path.as_str(),
+            mtime_suffix,
             note.score
         )?;
         for line in note.snippet.trim().lines().take(3) {
@@ -125,56 +129,6 @@ fn recall_section_linked(
     Ok(())
 }
 
-fn recall_section_recent_edits(
-    w: &mut impl Write,
-    edits: &[talon_core::EditedNote],
-    head: &Style,
-    dim: &Style,
-) -> Result<()> {
-    if edits.is_empty() {
-        return Ok(());
-    }
-    writeln!(
-        w,
-        "\n{}Recent Edits:{} ({} notes)",
-        head.render(),
-        head.render_reset(),
-        edits.len()
-    )?;
-    for e in edits {
-        writeln!(
-            w,
-            "  {} {}{:.0}d ago{}",
-            e.vault_path.as_str(),
-            dim.render(),
-            e.days_since_modified,
-            dim.render_reset()
-        )?;
-    }
-    Ok(())
-}
-
-fn recall_section_fuzzy_anchors(
-    w: &mut impl Write,
-    anchors: &[talon_core::FuzzyAnchor],
-    head: &Style,
-) -> Result<()> {
-    if anchors.is_empty() {
-        return Ok(());
-    }
-    writeln!(
-        w,
-        "\n{}Fuzzy Anchors:{} ({} matches)",
-        head.render(),
-        head.render_reset(),
-        anchors.len()
-    )?;
-    for a in anchors {
-        writeln!(w, "  {} ({:.3})", a.vault_path.as_str(), a.match_score)?;
-    }
-    Ok(())
-}
-
 /// Renders a recall response as a `<vault_recall>` prompt-XML block.
 ///
 /// When `resp.skipped == true`, emits a self-closing tag per spec.
@@ -205,14 +159,14 @@ pub fn format_recall_prompt_xml(
     if let Some(vr) = &resp.vault_recall {
         writeln!(w, "  <active_notes>")?;
         for note in &vr.active_notes {
-            let snippet_escaped = xml_escape(&note.snippet);
             writeln!(
                 w,
-                r#"    <note path="{}" title="{}" score="{:.4}">{}</note>"#,
+                r#"    <note path="{}" title="{}" mtime="{}" score="{:.4}">{}</note>"#,
                 xml_escape(note.vault_path.as_str()),
                 xml_escape(&note.title),
+                xml_escape(&note.mtime),
                 note.score,
-                snippet_escaped
+                xml_escape(&note.snippet),
             )?;
         }
         writeln!(w, "  </active_notes>")?;
@@ -229,43 +183,6 @@ pub fn format_recall_prompt_xml(
             )?;
         }
         writeln!(w, "  </linked_context>")?;
-
-        writeln!(w, "  <frontmatter>")?;
-        for f in &vr.frontmatter {
-            writeln!(
-                w,
-                r#"    <fact path="{}" key="{}">{}</fact>"#,
-                xml_escape(f.vault_path.as_str()),
-                xml_escape(&f.key),
-                xml_escape(&f.value.to_string())
-            )?;
-        }
-        writeln!(w, "  </frontmatter>")?;
-
-        writeln!(w, "  <recent_edits>")?;
-        for e in &vr.recent_edits {
-            writeln!(
-                w,
-                r#"    <note path="{}" title="{}" days_ago="{:.1}" score="{:.4}"/>"#,
-                xml_escape(e.vault_path.as_str()),
-                xml_escape(&e.title),
-                e.days_since_modified,
-                e.score
-            )?;
-        }
-        writeln!(w, "  </recent_edits>")?;
-
-        writeln!(w, "  <fuzzy_anchors>")?;
-        for a in &vr.fuzzy_anchors {
-            writeln!(
-                w,
-                r#"    <anchor path="{}" title="{}" score="{:.4}"/>"#,
-                xml_escape(a.vault_path.as_str()),
-                xml_escape(&a.title),
-                a.match_score
-            )?;
-        }
-        writeln!(w, "  </fuzzy_anchors>")?;
     }
 
     writeln!(w, "</vault_recall>")?;
