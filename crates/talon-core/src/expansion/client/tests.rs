@@ -62,6 +62,7 @@ fn request_does_not_cap_thinking_tokens() {
     let body: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
     assert!(body.get("max_tokens").is_none());
     assert!(body.get("max_completion_tokens").is_none());
+    assert_eq!(body["temperature"].as_f64(), Some(0.0));
 }
 
 #[test]

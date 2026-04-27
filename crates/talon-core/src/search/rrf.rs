@@ -176,6 +176,7 @@ pub fn normalize_and_merge_rrf_results(
             .unwrap_or(0.0)
             .partial_cmp(&a.hybrid_before_norm.unwrap_or(0.0))
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.path.cmp(&b.path))
     });
     hybrid.truncate(limit);
     hybrid
@@ -317,6 +318,23 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(normalize_and_merge_rrf_results(&acc, &inputs, 3).len(), 3);
+    }
+
+    #[test]
+    fn equal_rrf_scores_sort_by_path() {
+        let bm25 = vec![r("z.md", 0.0), r("a.md", 0.0)];
+        let semantic = vec![r("a.md", 0.0), r("z.md", 0.0)];
+        let mut acc = RrfScoreAccumulator::new();
+        acc.accumulate(&bm25, RrfList::Bm25);
+        acc.accumulate(&semantic, RrfList::Semantic);
+        let inputs = RrfInputs {
+            semantic: &semantic,
+            bm25: &bm25,
+            ..Default::default()
+        };
+        let out = normalize_and_merge_rrf_results(&acc, &inputs, 10);
+        assert_eq!(out[0].path, "a.md");
+        assert_eq!(out[1].path, "z.md");
     }
 
     #[test]

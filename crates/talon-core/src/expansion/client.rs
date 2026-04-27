@@ -26,8 +26,9 @@ use super::types::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, E
 /// hangs when the sidecar is stalled.
 pub const DEFAULT_EXPANSION_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Sampling temperature — low for consistent, near-deterministic reformulations.
-const EXPANSION_TEMPERATURE: f32 = 0.2;
+/// Sampling temperature — deterministic reformulations are required so the
+/// same search does not produce a different candidate pool on each process run.
+const EXPANSION_TEMPERATURE: f32 = 0.0;
 
 /// System prompt ported from `clients/sidecar-llm/local-llm.ts`.
 const SYSTEM_PROMPT: &str = "Return only valid JSON of the form \

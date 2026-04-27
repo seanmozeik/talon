@@ -155,6 +155,18 @@ fn blend_rerank_passes_through_when_no_rerank_score() {
 }
 
 #[test]
+fn blend_rerank_ties_sort_by_path() {
+    let candidates = vec![
+        r_with_hybrid("z.md", 0.5_f64),
+        r_with_hybrid("a.md", 0.5_f64),
+    ];
+    let scores = vec![Some(0.0_f64), Some(0.0_f64)];
+    let out = blend_rerank_candidates(&candidates, &scores);
+    assert_eq!(out[0].path, "a.md");
+    assert_eq!(out[1].path, "z.md");
+}
+
+#[test]
 fn blend_rerank_always_applies_sigmoid() {
     let candidates = vec![r_with_hybrid("a.md", 0.5)];
     // Sigmoid is always applied to logits (US-005). With a single candidate,

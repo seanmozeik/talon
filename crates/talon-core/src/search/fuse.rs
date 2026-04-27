@@ -16,6 +16,16 @@ use super::constants::{
 };
 use super::types::RawSearchResult;
 
+fn compare_raw_results_by_score_then_path(
+    a: &RawSearchResult,
+    b: &RawSearchResult,
+) -> std::cmp::Ordering {
+    b.score
+        .partial_cmp(&a.score)
+        .unwrap_or(std::cmp::Ordering::Equal)
+        .then_with(|| a.path.cmp(&b.path))
+}
+
 /// Clamps a value to the closed interval `[0, 1]`.
 #[must_use]
 pub const fn clamp01(value: f64) -> f64 {
@@ -174,11 +184,7 @@ pub fn fuse_hybrid_result_lists(
             },
         )
         .collect();
-    out.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    out.sort_by(compare_raw_results_by_score_then_path);
     // Top-rank bonus applied after normalization; rank-0 can reach up to
     // 1.05 (no clamp — callers sort by score only).
     // Algorithm ported verbatim from qmd — store.ts:3377-3384
@@ -268,11 +274,7 @@ pub fn blend_rerank_probabilities(
             }
         })
         .collect();
-    out.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    out.sort_by(compare_raw_results_by_score_then_path);
     out
 }
 
