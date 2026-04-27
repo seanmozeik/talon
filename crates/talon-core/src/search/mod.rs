@@ -25,6 +25,7 @@ pub mod hybrid_single;
 pub mod input;
 pub mod match_text;
 pub mod output;
+pub mod pool;
 pub mod rerank_pipeline;
 pub mod rrf;
 pub mod text_fts;
