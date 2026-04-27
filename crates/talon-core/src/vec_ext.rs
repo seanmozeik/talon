@@ -117,30 +117,64 @@ fn mark_active_chunks_pending(conn: &Connection) -> Result<(), TalonError> {
     Ok(())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VecEmbeddingStorage {
+    Float,
+    Int8,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct VecChunksSchema {
+    dimensions: u32,
+    storage: VecEmbeddingStorage,
+}
+
 /// Returns the `vec_chunks` virtual table's embedding dimension, parsed from
 /// `sqlite_master.sql`, or `None` if the table does not exist.
 #[must_use]
 pub fn get_vec_chunks_dimensions(conn: &Connection) -> Option<u32> {
+    get_vec_chunks_schema(conn).map(|schema| schema.dimensions)
+}
+
+fn get_vec_chunks_schema(conn: &Connection) -> Option<VecChunksSchema> {
     let sql: rusqlite::Result<String> = conn.query_row(
         "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?",
         params!["vec_chunks"],
         |row| row.get(0),
     );
     let sql = sql.ok()?;
-    parse_dimensions_from_create_sql(&sql)
+    parse_schema_from_create_sql(&sql)
 }
 
+#[cfg(test)]
 fn parse_dimensions_from_create_sql(sql: &str) -> Option<u32> {
+    parse_schema_from_create_sql(sql).map(|schema| schema.dimensions)
+}
+
+fn parse_schema_from_create_sql(sql: &str) -> Option<VecChunksSchema> {
     let lower = sql.to_ascii_lowercase();
     let key = "embedding";
     let start = lower.find(key)?;
     let after = &sql[start + key.len()..];
+    let after_lower = &lower[start + key.len()..];
+    let trimmed = after_lower.trim_start();
+    let storage = if trimmed.starts_with("float[") {
+        VecEmbeddingStorage::Float
+    } else if trimmed.starts_with("int8[") {
+        VecEmbeddingStorage::Int8
+    } else {
+        return None;
+    };
     let bracket_open = after.find('[')?;
     let bracket_close = after.find(']')?;
     if bracket_close <= bracket_open {
         return None;
     }
-    after[bracket_open + 1..bracket_close].trim().parse().ok()
+    let dimensions = after[bracket_open + 1..bracket_close].trim().parse().ok()?;
+    Some(VecChunksSchema {
+        dimensions,
+        storage,
+    })
 }
 
 /// Ensures the `vec_chunks` virtual table exists at the requested dimension.
@@ -148,7 +182,8 @@ fn parse_dimensions_from_create_sql(sql: &str) -> Option<u32> {
 /// Returns `true` if the table was created or recreated, `false` if it
 /// already matched.
 ///
-/// When the existing table has a different dimensionality, the function
+/// When the existing table has a different dimensionality or uses the old
+/// float storage type, the function
 /// drops `vec_chunks`, clears `vector_metadata`, and marks every active
 /// chunk as `pending` so the next embed pass repopulates the index. This
 /// makes swapping embedding models a recoverable operation rather than a
@@ -165,8 +200,12 @@ pub fn ensure_vec_chunks(conn: &Connection, dimensions: u32) -> Result<bool, Tal
             message: "vec_chunks dimensions must be a positive integer".to_string(),
         });
     }
-    let current = get_vec_chunks_dimensions(conn);
-    if current == Some(dimensions) {
+    let current = get_vec_chunks_schema(conn);
+    let expected = VecChunksSchema {
+        dimensions,
+        storage: VecEmbeddingStorage::Int8,
+    };
+    if current == Some(expected) {
         return Ok(false);
     }
     if current.is_some() {
@@ -177,7 +216,7 @@ pub fn ensure_vec_chunks(conn: &Connection, dimensions: u32) -> Result<bool, Tal
     let create_sql = format!(
         "CREATE VIRTUAL TABLE vec_chunks USING vec0(
             chunk_id INTEGER PRIMARY KEY,
-            embedding float[{dimensions}] distance_metric=cosine
+            embedding int8[{dimensions}] distance_metric=cosine
          )"
     );
     conn.execute(&create_sql, [])
@@ -215,10 +254,28 @@ mod tests {
         assert_eq!(parse_dimensions_from_create_sql(sql), Some(768));
         let lowered = sql.to_lowercase();
         assert_eq!(parse_dimensions_from_create_sql(&lowered), Some(768));
-        let weird_spaces = "embedding   float[ 1024 ] distance_metric=cosine";
+        let weird_spaces = "embedding   int8[ 1024 ] distance_metric=cosine";
         assert_eq!(parse_dimensions_from_create_sql(weird_spaces), Some(1024));
         assert_eq!(parse_dimensions_from_create_sql("nothing here"), None);
         assert_eq!(parse_dimensions_from_create_sql("embedding float[]"), None);
+    }
+
+    #[test]
+    fn parse_schema_detects_storage_type() {
+        assert_eq!(
+            parse_schema_from_create_sql("embedding float[384] distance_metric=cosine"),
+            Some(VecChunksSchema {
+                dimensions: 384,
+                storage: VecEmbeddingStorage::Float,
+            })
+        );
+        assert_eq!(
+            parse_schema_from_create_sql("embedding int8[384] distance_metric=cosine"),
+            Some(VecChunksSchema {
+                dimensions: 384,
+                storage: VecEmbeddingStorage::Int8,
+            })
+        );
     }
 
     #[test]
@@ -236,8 +293,71 @@ mod tests {
         let created_first = ensure_vec_chunks(&conn, 768).unwrap();
         assert!(created_first);
         assert_eq!(get_vec_chunks_dimensions(&conn), Some(768));
+        assert_eq!(
+            get_vec_chunks_schema(&conn),
+            Some(VecChunksSchema {
+                dimensions: 768,
+                storage: VecEmbeddingStorage::Int8,
+            })
+        );
         let created_again = ensure_vec_chunks(&conn, 768).unwrap();
         assert!(!created_again);
+        drop(conn);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn ensure_vec_chunks_rebuilds_float_schema_at_same_dimension() {
+        register_sqlite_vec().unwrap();
+        let path = unique_path("float-cutover");
+        let conn = open_database(&path).unwrap();
+        conn.execute(
+            "CREATE VIRTUAL TABLE vec_chunks USING vec0(
+                chunk_id INTEGER PRIMARY KEY,
+                embedding float[384] distance_metric=cosine
+             )",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO notes (vault_path, title, tags, aliases, content, mtime_ms, size_bytes, hash, docid, active)
+             VALUES ('a.md', 'A', '[]', '[]', '', 0, 0, 'h', 'd', 1)",
+            [],
+        ).unwrap();
+        let note_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO chunks (note_id, chunk_index, text, embedding_text, heading_path, char_start, char_end, chunk_hash, token_estimate, embedding_status)
+             VALUES (?, 0, 'body', 'body', '', 0, 4, 'h', 1, 'ok')",
+            params![note_id],
+        ).unwrap();
+        let chunk_id = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO vector_metadata (chunk_id, model, dimensions, embedded_at_ms) VALUES (?, 'm', 384, 0)",
+            params![chunk_id],
+        ).unwrap();
+
+        let rebuilt = ensure_vec_chunks(&conn, 384).unwrap();
+        assert!(rebuilt);
+        assert_eq!(
+            get_vec_chunks_schema(&conn),
+            Some(VecChunksSchema {
+                dimensions: 384,
+                storage: VecEmbeddingStorage::Int8,
+            })
+        );
+        let metadata_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM vector_metadata", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(metadata_count, 0);
+        let chunk_status: String = conn
+            .query_row(
+                "SELECT embedding_status FROM chunks WHERE id = ?",
+                params![chunk_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(chunk_status, "pending");
+
         drop(conn);
         cleanup(&path);
     }

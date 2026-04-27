@@ -1,15 +1,15 @@
 //! Writes embedding vectors back to `vec_chunks` + `vector_metadata`.
 //!
-//! Ports `embed/chunks-persist.ts`. The vector is JSON-encoded inside SQL
-//! because `vec0` accepts `json('[...]')` for `INSERT`; this avoids a
-//! sqlite-vec specific binding shim.
+//! Ports `embed/chunks-persist.ts`. The sidecar returns f32 vectors; Talon
+//! stores them as normalized int8 vectors because pplx-embed is natively
+//! int8-quantized.
 
 use rusqlite::{Connection, params};
 
 use crate::TalonError;
 use crate::inference::EmbedChunkedDataItem;
 
-use super::normalize_unit;
+use super::quantize::f32_to_i8_normalized;
 
 /// Persists one chunk's embedding vector + metadata.
 ///
@@ -55,14 +55,10 @@ pub fn persist_chunk_vector(
         source,
     })?;
 
-    // Normalizing to unit length lets us use the L2-distance-from-cosine
-    // identity (`distance² = 2·(1−cos_sim)`) and keeps
-    // `COSINE_DISTANCE_MAX = 2.0` exact. sqlite-vec's cosine itself is
-    // scale-invariant, so this is for score-stability, not correctness.
-    let normalized = normalize_unit(embedding);
-    let json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".to_string());
+    let quantized = f32_to_i8_normalized(embedding);
+    let json = serde_json::to_string(&quantized).unwrap_or_else(|_| "[]".to_string());
     let _ = conn.execute(
-        "INSERT OR REPLACE INTO vec_chunks(chunk_id, embedding) VALUES (?, json(?))",
+        "INSERT OR REPLACE INTO vec_chunks(chunk_id, embedding) VALUES (?, vec_int8(?))",
         params![chunk_id, json],
     );
     Ok(())
@@ -198,9 +194,9 @@ mod tests {
     }
 
     #[test]
-    fn persist_normalizes_vector_to_unit_norm() {
+    fn persist_quantizes_vector_to_int8() {
         register_sqlite_vec().unwrap();
-        let path = unique_path("unit-norm");
+        let path = unique_path("int8");
         let conn = open_database(&path).unwrap();
         ensure_vec_chunks(&conn, 3).unwrap();
         let chunk_id = seed_chunk(&conn);
@@ -214,12 +210,8 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        let stored: Vec<f32> = serde_json::from_str(&raw).unwrap();
-        let norm: f32 = stored.iter().map(|x| x * x).sum::<f32>().sqrt();
-        assert!(
-            (norm - 1.0_f32).abs() < 1e-4,
-            "stored vector must be unit-normed, got ||v|| = {norm}"
-        );
+        let stored: Vec<i8> = serde_json::from_str(&raw).unwrap();
+        assert_eq!(stored, [76, 102, 0]);
         drop(conn);
         cleanup(&path);
     }

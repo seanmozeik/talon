@@ -12,6 +12,7 @@ use std::rc::Rc;
 
 use super::constants::COSINE_DISTANCE_MAX;
 use super::types::{RawSearchResult, SearchScores};
+use crate::embed::quantize::f32_to_i8_normalized;
 
 /// Maps a cosine distance into a `[0, 1]` score using the standard
 /// `1 - distance / max` transform clamped at zero.
@@ -49,8 +50,8 @@ pub fn search_vector(
     if norm == 0.0 {
         return Vec::new();
     }
-    let normalized = crate::embed::normalize_unit(embedding);
-    let embedding_json = serde_json::to_string(&normalized).unwrap_or_else(|_| "[]".into());
+    let quantized = f32_to_i8_normalized(embedding);
+    let embedding_json = serde_json::to_string(&quantized).unwrap_or_else(|_| "[]".into());
 
     // Fetch 5× more candidates than needed so per-note dedup has enough pool
     // to fill the requested `candidate_limit` after collapsing multi-chunk notes.
@@ -119,14 +120,20 @@ fn fetch_vector_distances(
     let sql = format!(
         "SELECT chunk_id, distance
          FROM vec_chunks
-         WHERE embedding MATCH vec_f32(?)
+         WHERE embedding MATCH vec_int8(?)
            AND k = {candidate_limit}"
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params![embedding_json], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, f64>(1)?))
     })?;
-    rows.collect()
+    let mut distances: Vec<(i64, f64)> = rows.collect::<rusqlite::Result<_>>()?;
+    distances.sort_by(|(left_id, left_distance), (right_id, right_distance)| {
+        left_distance
+            .total_cmp(right_distance)
+            .then_with(|| left_id.cmp(right_id))
+    });
+    Ok(distances)
 }
 
 struct ChunkMetadata {
