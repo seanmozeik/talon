@@ -8,10 +8,10 @@
 use std::convert::TryFrom;
 use std::time::Duration;
 
-use reqwest::blocking::Client as HttpClient;
 use reqwest::StatusCode;
+use reqwest::blocking::Client as HttpClient;
 
-use super::error::{redact, InferenceError};
+use super::error::{InferenceError, redact};
 use super::types::{
     EmbedChunkedRequest, EmbedChunkedResponse, EmbedRequest, RerankRequest, RerankResult,
 };

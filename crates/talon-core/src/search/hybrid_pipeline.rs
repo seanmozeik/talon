@@ -210,6 +210,9 @@ fn hybrid_data_to_raw(h: &HybridScoreData) -> RawSearchResult {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod hooks_tests;
+#[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod test_support;
 #[cfg(test)]
