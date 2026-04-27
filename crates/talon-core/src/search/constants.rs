@@ -131,6 +131,9 @@ pub(crate) const CANDIDATE_FLOOR_U16: u16 = 40;
 /// Mirrors `RERANK_CANDIDATE_LIMIT` from the root constants and the TS reference.
 pub const RERANK_TOP_K: u32 = 40;
 
+/// Reranker request batch size.
+pub const RERANK_BATCH_SIZE: usize = 4;
+
 /// Default LRU size for the in-process hybrid result cache.
 pub const GLOBAL_HYBRID_CACHE_SIZE: usize = 100;
 

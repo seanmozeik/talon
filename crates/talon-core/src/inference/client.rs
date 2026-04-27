@@ -5,6 +5,7 @@
 //! That means the inference client must be blocking; using `reqwest::blocking`
 //! avoids hand-rolling an `executor::block_on` bridge.
 
+use std::convert::TryFrom;
 use std::time::Duration;
 
 use reqwest::blocking::Client as HttpClient;
@@ -13,6 +14,7 @@ use super::error::{InferenceError, redact};
 use super::types::{
     EmbedChunkedRequest, EmbedChunkedResponse, EmbedRequest, RerankRequest, RerankResult,
 };
+use crate::search::constants::RERANK_BATCH_SIZE;
 
 /// Default HTTP timeout for sidecar calls.
 ///
@@ -95,6 +97,10 @@ impl InferenceClient {
 
     /// Posts to `/rerank` and returns scored candidates.
     ///
+    /// Sequence-length truncation is enforced server-side using the sidecar's
+    /// default `max_length`; Talon keeps rerank texts small enough that no
+    /// request-side `max_length` field is sent.
+    ///
     /// # Errors
     ///
     /// See [`InferenceClient::embed`].
@@ -105,12 +111,31 @@ impl InferenceClient {
         return_text: bool,
     ) -> Result<Vec<RerankResult>, InferenceError> {
         let url = format!("{}/rerank", self.base_url.trim_end_matches('/'));
-        let body = RerankRequest {
-            query: query.to_string(),
-            texts: texts.to_vec(),
-            return_text,
-        };
-        self.post_json(&url, &body)
+        let mut results = Vec::with_capacity(texts.len());
+
+        for (batch_index, batch) in texts.chunks(RERANK_BATCH_SIZE).enumerate() {
+            let body = RerankRequest {
+                query: query.to_string(),
+                texts: batch.to_vec(),
+                return_text,
+            };
+            let mut batch_results: Vec<RerankResult> = self.post_json(&url, &body)?;
+            let batch_offset = u32::try_from(batch_index * RERANK_BATCH_SIZE).map_err(|_| {
+                InferenceError::Decode {
+                    message: "rerank index overflow".to_owned(),
+                }
+            })?;
+            for result in &mut batch_results {
+                result.index = result.index.checked_add(batch_offset).ok_or_else(|| {
+                    InferenceError::Decode {
+                        message: "rerank index overflow".to_owned(),
+                    }
+                })?;
+            }
+            results.extend(batch_results);
+        }
+
+        Ok(results)
     }
 
     fn post_json<B, R>(&self, url: &str, body: &B) -> Result<R, InferenceError>
@@ -145,6 +170,16 @@ impl InferenceClient {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
+    use serde_json::json;
+    use wiremock::matchers::{body_partial_json, method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    }
 
     #[test]
     fn build_succeeds_with_default_timeout() {
@@ -166,5 +201,54 @@ mod tests {
         let b = InferenceClient::new("http://localhost:8080/").unwrap();
         assert_eq!(a.base_url.trim_end_matches('/'), "http://localhost:8080");
         assert_eq!(b.base_url.trim_end_matches('/'), "http://localhost:8080");
+    }
+
+    #[test]
+    fn rerank_batches_inputs_and_offsets_indices() {
+        let runtime = runtime();
+        let server = runtime.block_on(MockServer::start());
+        runtime.block_on(
+            Mock::given(method("POST"))
+                .and(path("/rerank"))
+                .and(body_partial_json(json!({
+                    "query": "query",
+                    "texts": ["t0", "t1", "t2", "t3"],
+                    "return_text": false
+                })))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                    {"index": 1, "score": 0.4},
+                    {"index": 0, "score": 0.9}
+                ])))
+                .mount(&server),
+        );
+        runtime.block_on(
+            Mock::given(method("POST"))
+                .and(path("/rerank"))
+                .and(body_partial_json(json!({
+                    "query": "query",
+                    "texts": ["t4", "t5"],
+                    "return_text": false
+                })))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                    {"index": 0, "score": 0.2}
+                ])))
+                .mount(&server),
+        );
+
+        let client = InferenceClient::new(server.uri()).unwrap();
+        let texts: Vec<String> = (0..6).map(|i| format!("t{i}")).collect();
+        let result = client.rerank("query", &texts, false).unwrap();
+        let got: Vec<(u32, f32)> = result.iter().map(|r| (r.index, r.score)).collect();
+        assert_eq!(got, vec![(1, 0.4), (0, 0.9), (4, 0.2)]);
+
+        let requests = runtime.block_on(server.received_requests()).unwrap();
+        assert_eq!(requests.len(), 2);
+
+        let first: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
+        let second: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
+        assert!(first.get("max_length").is_none());
+        assert!(second.get("max_length").is_none());
+        assert_eq!(first["texts"].as_array().unwrap().len(), 4);
+        assert_eq!(second["texts"].as_array().unwrap().len(), 2);
     }
 }
