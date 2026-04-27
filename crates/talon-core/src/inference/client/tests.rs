@@ -220,7 +220,7 @@ fn embed_chunked_falls_back_to_singleton_requests_after_batch_failure() {
                 let attempt = attempts.fetch_add(1, Ordering::SeqCst);
                 let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
                 let group_count = body["input"].as_array().map_or(0, Vec::len);
-                if attempt == 0 && group_count > 1 {
+                if attempt < 3 && group_count > 1 {
                     ResponseTemplate::new(503)
                 } else {
                     let first = body["input"][0].as_array().unwrap()[0]
@@ -257,5 +257,50 @@ fn embed_chunked_falls_back_to_singleton_requests_after_batch_failure() {
     assert_eq!(result.model, "test-model");
 
     let requests = runtime.block_on(server.received_requests()).unwrap();
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 5);
+}
+
+#[test]
+fn embed_chunked_retries_batch_before_fallback() {
+    let runtime = runtime();
+    let server = runtime.block_on(MockServer::start());
+    let attempts = AtomicUsize::new(0);
+    runtime.block_on(
+        Mock::given(method("POST"))
+            .and(path("/embed-chunked"))
+            .respond_with(move |request: &Request| {
+                let attempt = attempts.fetch_add(1, Ordering::SeqCst);
+                if attempt == 0 {
+                    return ResponseTemplate::new(503);
+                }
+                let body: serde_json::Value = serde_json::from_slice(&request.body).unwrap();
+                let data: Vec<_> = body["input"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .enumerate()
+                    .map(|(index, _)| {
+                        let embedding_value = u8::try_from(index).map_or(0.0, f32::from);
+                        json!({
+                            "index": index,
+                            "embeddings": [[embedding_value]]
+                        })
+                    })
+                    .collect();
+                ResponseTemplate::new(200).set_body_json(json!({
+                    "data": data,
+                    "model": "test-model"
+                }))
+            })
+            .mount(&server),
+    );
+
+    let client = test_client(server.uri());
+    let result = client
+        .embed_chunked(&[vec!["a".to_string()], vec!["b".to_string()]])
+        .unwrap();
+
+    assert_eq!(result.data.len(), 2);
+    let requests = runtime.block_on(server.received_requests()).unwrap();
+    assert_eq!(requests.len(), 2);
 }

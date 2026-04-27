@@ -76,12 +76,22 @@ pub fn rerank_candidates(
     top_k: u32,
     hooks: &SearchHooks,
 ) -> Vec<RawSearchResult> {
-    rerank_candidates_with_db_version(inference, query, candidates, top_k, hooks, 0)
+    let options = RerankOptions {
+        conn: None,
+        inference,
+        query,
+        intent: None,
+        candidates,
+        top_k,
+        hooks,
+        db_version: None,
+    };
+    rerank_candidates_inner(options)
 }
 
 /// Calls the inference sidecar with a `db_version`-scoped per-snippet cache.
 #[must_use]
-pub(crate) fn rerank_candidates_with_db_version(
+pub fn rerank_candidates_with_db_version(
     inference: &InferenceClient,
     query: &str,
     candidates: Vec<RawSearchResult>,
@@ -97,7 +107,7 @@ pub(crate) fn rerank_candidates_with_db_version(
         candidates,
         top_k,
         hooks,
-        db_version,
+        db_version: Some(db_version),
     };
     rerank_candidates_inner(options)
 }
@@ -115,7 +125,7 @@ pub(crate) fn rerank_candidates_with_intent(
         candidates: options.candidates,
         top_k: options.top_k,
         hooks: options.hooks,
-        db_version: options.db_version,
+        db_version: Some(options.db_version),
     })
 }
 
@@ -127,7 +137,7 @@ struct RerankOptions<'a> {
     candidates: Vec<RawSearchResult>,
     top_k: u32,
     hooks: &'a SearchHooks,
-    db_version: u64,
+    db_version: Option<u64>,
 }
 
 fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
@@ -161,7 +171,9 @@ fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
     let mut missing_texts = Vec::new();
 
     for (index, text) in texts.iter().enumerate() {
-        if let Some(score) = rerank_cache::lookup(text, &rerank_query, db_version) {
+        if let Some(score) =
+            db_version.and_then(|db_version| rerank_cache::lookup(text, &rerank_query, db_version))
+        {
             scores[index] = Some(score);
         } else {
             missing_indices.push(index);
@@ -184,7 +196,7 @@ fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
             if let Some(slot) = scores.get_mut(original_index) {
                 *slot = Some(score);
             }
-            if let Some(text) = texts.get(original_index) {
+            if let (Some(text), Some(db_version)) = (texts.get(original_index), db_version) {
                 rerank_cache::store(text, &rerank_query, score, db_version);
             }
         }

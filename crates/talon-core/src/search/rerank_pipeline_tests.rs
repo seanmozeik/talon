@@ -178,7 +178,7 @@ fn top_k_truncates_candidates_sent_to_reranker() {
 }
 
 #[test]
-fn repeated_rerank_uses_cache_for_same_query_and_chunk() {
+fn versioned_rerank_uses_cache_for_same_query_and_chunk() {
     let rt = runtime();
     let server = rt.block_on(MockServer::start());
     rt.block_on(
@@ -192,24 +192,60 @@ fn repeated_rerank_uses_cache_for_same_query_and_chunk() {
     let inference = start_inference(server.uri());
     let candidates = vec![make_candidate("cached.md", 0.5)];
 
-    let first = rerank_candidates(
+    let first = rerank_candidates_with_db_version(
         &inference,
         "cache query unique",
         candidates.clone(),
         10,
         &SearchHooks::default(),
+        20,
     );
-    let second = rerank_candidates(
+    let second = rerank_candidates_with_db_version(
         &inference,
         "cache query unique",
+        candidates,
+        10,
+        &SearchHooks::default(),
+        20,
+    );
+
+    let requests = rt.block_on(server.received_requests()).unwrap();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(first[0].scores.rerank, second[0].scores.rerank);
+}
+
+#[test]
+fn public_rerank_wrapper_does_not_use_versionless_cache() {
+    let rt = runtime();
+    let server = rt.block_on(MockServer::start());
+    rt.block_on(
+        Mock::given(method("POST"))
+            .and(path("/rerank"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"index": 0, "score": 0.9},
+            ])))
+            .mount(&server),
+    );
+    let inference = start_inference(server.uri());
+    let candidates = vec![make_candidate("uncached.md", 0.5)];
+
+    let _ = rerank_candidates(
+        &inference,
+        "uncached query unique",
+        candidates.clone(),
+        10,
+        &SearchHooks::default(),
+    );
+    let _ = rerank_candidates(
+        &inference,
+        "uncached query unique",
         candidates,
         10,
         &SearchHooks::default(),
     );
 
     let requests = rt.block_on(server.received_requests()).unwrap();
-    assert_eq!(requests.len(), 1);
-    assert_eq!(first[0].scores.rerank, second[0].scores.rerank);
+    assert_eq!(requests.len(), 2);
 }
 
 #[test]

@@ -102,7 +102,7 @@ impl InferenceClient {
             return self.post_json(&url, &body);
         }
 
-        self.post_json_once(&url, &body)
+        self.post_json_with_retry(&url, &body)
             .map_or_else(|_| self.embed_chunked_fallback(&url, input), Ok)
     }
 
@@ -173,14 +173,6 @@ impl InferenceClient {
             }
         }
         unreachable!("retry loop always returns or errors")
-    }
-
-    fn post_json_once<B, R>(&self, url: &str, body: &B) -> Result<R, InferenceError>
-    where
-        B: serde::Serialize,
-        R: serde::de::DeserializeOwned,
-    {
-        self.post_json_attempt(url, body).map_err(|err| err.error)
     }
 
     fn embed_chunked_fallback(
