@@ -171,11 +171,13 @@ fn snapshot_lint_orphans() -> Result<()> {
         check: LintCheck::Orphans,
         findings: vec![
             LintFinding {
+                check: LintCheck::Orphans,
                 path: make_vault_path("Graph/Orphan.md")?,
                 line: None,
                 message: "no incoming links".to_string(),
             },
             LintFinding {
+                check: LintCheck::Orphans,
                 path: make_vault_path("Lifecycle/Doomed.md")?,
                 line: None,
                 message: "no incoming links".to_string(),

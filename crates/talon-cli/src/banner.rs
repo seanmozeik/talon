@@ -17,7 +17,11 @@ const GRADIENT_STOPS: [(u8, u8, u8); 4] = [
 
 /// Prints the banner to stderr when stdout/stderr are TTYs and agent mode is off.
 pub fn eprint_fancy_prelude_for_run(args: &CliArgs) {
-    if args.agent.enabled() || !human_tty_for_cli_arts() {
+    if args.agent.enabled()
+        || args.json.enabled()
+        || args.mcp.enabled()
+        || !human_tty_for_cli_arts()
+    {
         return;
     }
     eprint_figlet_indented(LINE_INDENT);

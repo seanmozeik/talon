@@ -32,7 +32,7 @@ pub(super) fn input_schema() -> Value {
             "select": { "type": "array", "items": { "type": "string" } },
             "tagCounts": { "type": "boolean" },
             "sources": { "type": ["string", "null"] },
-            "check": { "type": "string", "enum": ["orphans", "broken-links", "dangling-refs", "unreferenced"] },
+            "check": { "type": "string", "enum": ["all", "orphans", "broken-links", "dangling-refs", "unreferenced"] },
             "message": { "type": "string", "description": "User message for recall context" },
             "priorMessages": { "type": "array", "items": { "type": "string" }, "description": "Prior conversation turns fed to expansion" },
             "budgetTokens": { "type": "integer", "minimum": 1, "description": "Token budget for the recall payload (default 2000)" },

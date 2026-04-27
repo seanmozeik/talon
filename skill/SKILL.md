@@ -27,7 +27,7 @@ All commands emit `{action, version, ok, data, meta}` JSON on success; `{action,
   - `--sources PATH` — resolve reverse-source references for a path.
   - `--since <timestamp>` — restrict to notes indexed since this time.
 - **`changes --since <timestamp>`**: Return `{added, modified, deleted}` note lists from the event log.
-- **`lint <check>`**: Surface graph health issues. Checks: `orphans`, `broken-links`, `dangling-refs`, `unreferenced`.
+- **`lint [check]`**: Surface graph health issues. Default/checks: `all`, `orphans`, `broken-links`, `dangling-refs`, `unreferenced`.
 - **`status`**: Report active note count, chunk count, vector dimensions, scope summary, and readiness state.
 
 ## Output flags
@@ -48,6 +48,7 @@ talon related notes/pkm/zettelkasten.md --depth 2 --direction both
 talon meta --where status=archived --select title --select status
 talon meta --tag-counts
 talon changes --since 2024-01-01T00:00:00Z
+talon lint
 talon lint orphans
 talon lint broken-links
 talon status --json

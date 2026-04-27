@@ -24,6 +24,16 @@ fn version_flag_exits_zero_and_prints_semver() {
 }
 
 #[test]
+fn short_version_flag_exits_zero_and_prints_semver() {
+    Command::cargo_bin(BIN)
+        .unwrap_or_else(|e| panic!("cargo_bin: {e}"))
+        .arg("-V")
+        .assert()
+        .success()
+        .stdout(predicate::str::is_match(r"^\d+\.\d+\.\d+\n$").unwrap_or_else(|e| panic!("{e}")));
+}
+
+#[test]
 fn init_creates_config_toml_in_xdg_config_home() {
     let tmp = std::env::temp_dir().join(format!("talon-init-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
@@ -113,10 +123,11 @@ fn search_without_query_exits_nonzero() {
 }
 
 #[test]
-fn lint_without_check_type_exits_nonzero() {
+fn lint_unknown_check_type_exits_nonzero() {
     Command::cargo_bin(BIN)
         .unwrap_or_else(|e| panic!("cargo_bin: {e}"))
         .arg("lint")
+        .arg("not-a-check")
         .assert()
         .failure();
 }

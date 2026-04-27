@@ -78,6 +78,9 @@ pub struct VaultRecall {
 pub struct FuzzyAnchor {
     /// Vault-relative path.
     pub vault_path: VaultPath,
+    /// Container-absolute path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// Matching snippet or alias text.
@@ -92,6 +95,9 @@ pub struct FuzzyAnchor {
 pub struct FrontmatterFact {
     /// Vault-relative path of the containing note.
     pub vault_path: VaultPath,
+    /// Container-absolute path of the containing note.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<ContainerPath>,
     /// Frontmatter key.
     pub key: String,
     /// Frontmatter value.
@@ -104,6 +110,9 @@ pub struct FrontmatterFact {
 pub struct NoteExcerpt {
     /// Vault-relative path.
     pub vault_path: VaultPath,
+    /// Container-absolute path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// Result snippet (with heading breadcrumb when available).
@@ -120,6 +129,9 @@ pub struct NoteExcerpt {
 pub struct LinkedNote {
     /// Vault-relative path.
     pub vault_path: VaultPath,
+    /// Container-absolute path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// Raw link text that created this edge.
@@ -136,6 +148,9 @@ pub struct LinkedNote {
 pub struct EditedNote {
     /// Vault-relative path.
     pub vault_path: VaultPath,
+    /// Container-absolute path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<ContainerPath>,
     /// Display title.
     pub title: String,
     /// When the note was last indexed (millis since epoch).

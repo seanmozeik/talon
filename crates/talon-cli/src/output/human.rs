@@ -104,16 +104,49 @@ pub fn format_status_human(w: &mut impl Write, resp: &talon_core::StatusResponse
 pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> {
     writeln!(
         w,
-        "Lint ({:?}): {} findings",
-        resp.check,
+        "Lint ({}): {} findings",
+        lint_label(resp.check),
         resp.findings.len()
     )?;
-    for f in resp.findings.iter().take(20) {
-        if let Some(line) = f.line {
-            writeln!(w, "  - {}:{} {}", f.path.as_str(), line, f.message)?;
-        } else {
-            writeln!(w, "  - {} {}", f.path.as_str(), f.message)?;
+    if resp.check == talon_core::LintCheck::All {
+        for check in [
+            talon_core::LintCheck::Orphans,
+            talon_core::LintCheck::BrokenLinks,
+            talon_core::LintCheck::DanglingRefs,
+            talon_core::LintCheck::Unreferenced,
+        ] {
+            let findings: Vec<_> = resp.findings.iter().filter(|f| f.check == check).collect();
+            if findings.is_empty() {
+                continue;
+            }
+            writeln!(w, "{}: {}", lint_label(check), findings.len())?;
+            for finding in findings.into_iter().take(20) {
+                write_lint_finding(w, finding)?;
+            }
         }
+    } else {
+        for finding in resp.findings.iter().take(20) {
+            write_lint_finding(w, finding)?;
+        }
+    }
+    Ok(())
+}
+
+const fn lint_label(check: talon_core::LintCheck) -> &'static str {
+    match check {
+        talon_core::LintCheck::All => "all",
+        talon_core::LintCheck::Orphans => "orphans",
+        talon_core::LintCheck::BrokenLinks => "broken-links",
+        talon_core::LintCheck::DanglingRefs => "dangling-refs",
+        talon_core::LintCheck::Unreferenced => "unreferenced",
+    }
+}
+
+fn write_lint_finding(w: &mut impl Write, f: &talon_core::LintFinding) -> Result<()> {
+    if let Some(line) = f.line {
+        writeln!(w, "  - {}:{} {}", f.path.as_str(), line, f.message)?;
+    } else {
+        writeln!(w, "  - {} {}", f.path.as_str(), f.message)?;
     }
     Ok(())
 }

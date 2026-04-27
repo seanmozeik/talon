@@ -36,7 +36,11 @@ fn json_error_envelope_search_config_missing() {
         .unwrap_or_else(|e| panic!("spawn talon: {e}"));
     assert!(!out.status.success(), "should exit nonzero");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    assert_error_envelope(&stdout, "search");
+    let v = assert_error_envelope(&stdout, "search");
+    assert!(
+        v["error"]["message"].is_string(),
+        "error.message should be a string"
+    );
 }
 
 #[test]
@@ -59,5 +63,17 @@ fn agent_error_output_wins_over_json_flag() {
         !stdout.contains('\n') || stdout.ends_with('\n') && !stdout.trim_end().contains('\n'),
         "--agent output should be compact single-line JSON, got: {stdout}"
     );
-    assert_error_envelope(&stdout, "search");
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
+    assert!(v["code"].is_string(), "agent error should include code");
+    assert!(
+        v["message"].is_string(),
+        "agent error should include message"
+    );
+    assert!(v.get("action").is_none(), "agent error should omit action");
+    assert!(
+        v.get("version").is_none(),
+        "agent error should omit version"
+    );
+    assert!(v.get("ok").is_none(), "agent error should omit ok");
 }

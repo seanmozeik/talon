@@ -6,6 +6,10 @@
 ///
 /// Returns [`crate::TalonError::InvalidSince`] if the timestamp cannot be parsed.
 pub fn parse_since(timestamp: &str) -> Result<u64, crate::TalonError> {
+    if let Some(ms) = parse_relative_duration(timestamp) {
+        return Ok(now_ms().saturating_sub(ms));
+    }
+
     // Try parsing as milliseconds since epoch (numeric string)
     if let Ok(ms) = timestamp.parse::<u64>() {
         return Ok(ms);
@@ -35,6 +39,23 @@ pub fn parse_since(timestamp: &str) -> Result<u64, crate::TalonError> {
     Err(crate::TalonError::InvalidSince {
         message: format!("unable to parse timestamp: {timestamp}"),
     })
+}
+
+fn parse_relative_duration(value: &str) -> Option<u64> {
+    let trimmed = value.trim();
+    if trimmed.len() < 2 {
+        return None;
+    }
+    let (amount, unit) = trimmed.split_at(trimmed.len() - 1);
+    let amount = amount.parse::<u64>().ok()?;
+    let multiplier = match unit {
+        "m" => 60 * 1000,
+        "h" => 60 * 60 * 1000,
+        "d" => 24 * 60 * 60 * 1000,
+        "w" => 7 * 24 * 60 * 60 * 1000,
+        _ => return None,
+    };
+    amount.checked_mul(multiplier)
 }
 
 /// Returns the current time in milliseconds since epoch.

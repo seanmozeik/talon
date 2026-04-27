@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum LintCheck {
+    /// Run every lint check.
+    All,
     /// Files with no incoming wikilinks.
     Orphans,
     /// Links whose targets don't resolve to indexed files.

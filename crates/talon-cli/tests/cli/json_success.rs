@@ -46,6 +46,57 @@ fn agent_sync_omits_envelope_metadata() {
 }
 
 #[test]
+fn agent_outputs_omit_envelope_metadata_for_query_commands() {
+    let vault = TempVault::new("agent-commands");
+    for args in [
+        vec!["status"],
+        vec!["search", "hello", "--fast"],
+        vec!["read", "notes/hello.md"],
+        vec!["related", "notes/hello.md"],
+        vec!["meta"],
+        vec!["changes", "--since", "2020-01-01T00:00:00Z"],
+        vec!["lint"],
+    ] {
+        let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
+            .args(&args)
+            .arg("--agent")
+            .arg("--config")
+            .arg(&vault.config_path)
+            .output()
+            .unwrap_or_else(|e| panic!("spawn talon {args:?}: {e}"));
+        assert!(out.status.success(), "talon {args:?} should exit 0");
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        let v: serde_json::Value =
+            serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
+        assert!(v.get("action").is_none(), "{args:?} should omit action");
+        assert!(v.get("version").is_none(), "{args:?} should omit version");
+        assert!(v.get("ok").is_none(), "{args:?} should omit ok");
+        assert!(v.get("meta").is_none(), "{args:?} should omit meta");
+    }
+}
+
+#[test]
+fn agent_lint_groups_findings_by_check() {
+    let vault = TempVault::new("agent-lint");
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
+        .args(["lint", "--agent", "--config"])
+        .arg(&vault.config_path)
+        .output()
+        .unwrap_or_else(|e| panic!("spawn talon lint: {e}"));
+    assert!(out.status.success(), "talon lint should exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let v: serde_json::Value =
+        serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
+    assert_eq!(v["total"], 2);
+    assert_eq!(v["checks"]["orphans"].as_array().map(Vec::len), Some(1));
+    assert_eq!(
+        v["checks"]["unreferenced"].as_array().map(Vec::len),
+        Some(1)
+    );
+    assert!(v.get("meta").is_none());
+}
+
+#[test]
 fn json_envelope_search_success() {
     let vault = TempVault::new("search");
     let out = vault.run(&["search", "hello", "--fast"]);
@@ -118,4 +169,14 @@ fn json_envelope_lint_success() {
     assert!(out.status.success(), "talon lint should exit 0");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_success_envelope(&stdout, "lint");
+}
+
+#[test]
+fn json_envelope_lint_defaults_to_all() {
+    let vault = TempVault::new("lint-all");
+    let out = vault.run(&["lint"]);
+    assert!(out.status.success(), "talon lint should exit 0");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let envelope = assert_success_envelope(&stdout, "lint");
+    assert_eq!(envelope["data"]["check"], "all");
 }

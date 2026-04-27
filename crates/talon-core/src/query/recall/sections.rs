@@ -36,6 +36,7 @@ pub(super) fn build_linked_context(
         .filter(|r| !excluded_set.contains(r.vault_path.as_str()))
         .map(|r| LinkedNote {
             vault_path: r.vault_path,
+            path: None,
             title: r.title,
             link_text: r.link_text,
             relation: r.relation,
@@ -65,6 +66,7 @@ pub(super) fn to_note_excerpts(pipeline_results: &[RawSearchResult]) -> Vec<Note
             let vp = VaultPath::parse(&r.path).ok()?;
             Some(NoteExcerpt {
                 vault_path: vp,
+                path: None,
                 title: r.title.clone(),
                 snippet: r.snippet.clone(),
                 score: r.score,
@@ -97,6 +99,7 @@ fn extract_frontmatter_facts(conn: &Connection, vault_path: &str) -> Vec<Frontma
                 serde_json::from_str(&val_str).unwrap_or(serde_json::Value::String(val_str));
             FrontmatterFact {
                 vault_path: vp.clone(),
+                path: None,
                 key,
                 value,
             }
@@ -157,6 +160,7 @@ pub(super) fn collect_recent_edits(
             };
             Some(EditedNote {
                 vault_path: vp,
+                path: None,
                 title,
                 indexed_at: mtime_ms,
                 days_since_modified: days,
@@ -193,6 +197,7 @@ pub(super) fn collect_fuzzy_anchors(
             };
             Some(FuzzyAnchor {
                 vault_path: vp,
+                path: None,
                 title: r.title,
                 snippet: r.snippet,
                 match_score: r.score,

@@ -124,6 +124,8 @@ pub struct StatusResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LintFinding {
+    /// Lint check that produced this finding.
+    pub check: LintCheck,
     /// Vault-relative path of the file.
     pub path: VaultPath,
     /// Description of the issue.

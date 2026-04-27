@@ -13,16 +13,17 @@ use talon_core::{
 pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     let check = if let Some(c) = rest.first() {
         match c.as_str() {
+            "all" => LintCheck::All,
             "orphans" => LintCheck::Orphans,
             "broken-links" => LintCheck::BrokenLinks,
             "dangling-refs" => LintCheck::DanglingRefs,
             "unreferenced" => LintCheck::Unreferenced,
             other => bail!(
-                "unknown lint check: {other}; try orphans, broken-links, dangling-refs, unreferenced"
+                "unknown lint check: {other}; try all, orphans, broken-links, dangling-refs, unreferenced"
             ),
         }
     } else {
-        bail!("lint requires a check type; try orphans, broken-links, dangling-refs, unreferenced");
+        LintCheck::All
     };
 
     let input = LintInput {

@@ -12,9 +12,13 @@ use std::collections::HashSet;
 use rusqlite::Connection;
 
 use crate::config::TalonConfig;
+use crate::contracts::{ContainerPath, VaultPath};
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
-use crate::query::{RecallInput, RecallResponse, VaultRecall};
+use crate::query::{
+    EditedNote, FrontmatterFact, FuzzyAnchor, LinkedNote, NoteExcerpt, RecallInput, RecallResponse,
+    VaultRecall,
+};
 
 use super::recall_scoring::{EvidenceInputs, compute_evidence_score};
 
@@ -144,23 +148,100 @@ pub fn run_recall(
         &fuzzy_anchors_mut,
     );
 
-    RecallResponse {
-        vault_recall: Some(VaultRecall {
+    build_response(
+        config,
+        RecallResponseParts {
             active_notes,
-            linked_context: linked_notes_mut,
+            linked_notes: linked_notes_mut,
             frontmatter: frontmatter_facts_mut,
             recent_edits: recent_edits_mut,
             fuzzy_anchors: fuzzy_anchors_mut,
+            evidence_score,
+            tokens_used,
+            excluded: excluded_paths,
+            excluded_by_budget,
+        },
+    )
+}
+
+// ── private helpers ───────────────────────────────────────────────────────────
+
+struct RecallResponseParts {
+    active_notes: Vec<NoteExcerpt>,
+    linked_notes: Vec<LinkedNote>,
+    frontmatter: Vec<FrontmatterFact>,
+    recent_edits: Vec<EditedNote>,
+    fuzzy_anchors: Vec<FuzzyAnchor>,
+    evidence_score: f64,
+    tokens_used: usize,
+    excluded: Vec<String>,
+    excluded_by_budget: Vec<String>,
+}
+
+fn build_response(config: Option<&TalonConfig>, parts: RecallResponseParts) -> RecallResponse {
+    let mut active_notes = parts.active_notes;
+    let mut linked_notes = parts.linked_notes;
+    let mut frontmatter = parts.frontmatter;
+    let mut recent_edits = parts.recent_edits;
+    let mut fuzzy_anchors = parts.fuzzy_anchors;
+
+    attach_absolute_paths(
+        config,
+        &mut active_notes,
+        &mut linked_notes,
+        &mut frontmatter,
+        &mut recent_edits,
+        &mut fuzzy_anchors,
+    );
+
+    RecallResponse {
+        vault_recall: Some(VaultRecall {
+            active_notes,
+            linked_context: linked_notes,
+            frontmatter,
+            recent_edits,
+            fuzzy_anchors,
         }),
-        evidence_score,
-        tokens_used: u32::try_from(tokens_used).unwrap_or(u32::MAX),
-        excluded: excluded_paths,
-        excluded_by_budget,
+        evidence_score: parts.evidence_score,
+        tokens_used: u32::try_from(parts.tokens_used).unwrap_or(u32::MAX),
+        excluded: parts.excluded,
+        excluded_by_budget: parts.excluded_by_budget,
         skipped: false,
     }
 }
 
-// ── private helpers ───────────────────────────────────────────────────────────
+fn attach_absolute_paths(
+    config: Option<&TalonConfig>,
+    active_notes: &mut [NoteExcerpt],
+    linked_notes: &mut [LinkedNote],
+    frontmatter: &mut [FrontmatterFact],
+    recent_edits: &mut [EditedNote],
+    fuzzy_anchors: &mut [FuzzyAnchor],
+) {
+    let Some(config) = config else {
+        return;
+    };
+
+    for note in active_notes {
+        note.path = absolute_path(&config.vault_path, &note.vault_path);
+    }
+    for note in linked_notes {
+        note.path = absolute_path(&config.vault_path, &note.vault_path);
+    }
+    for fact in frontmatter {
+        fact.path = absolute_path(&config.vault_path, &fact.vault_path);
+    }
+    for edit in recent_edits {
+        edit.path = absolute_path(&config.vault_path, &edit.vault_path);
+    }
+    for anchor in fuzzy_anchors {
+        anchor.path = absolute_path(&config.vault_path, &anchor.vault_path);
+    }
+}
+
+fn absolute_path(vault_root: &std::path::Path, vault_path: &VaultPath) -> Option<ContainerPath> {
+    ContainerPath::parse(vault_root.join(vault_path.as_str()).to_string_lossy()).ok()
+}
 
 const fn make_skipped(evidence_score: f64) -> RecallResponse {
     RecallResponse {

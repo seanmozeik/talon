@@ -75,5 +75,8 @@ pub(super) const fn output_mode(args: &CliArgs) -> OutputMode {
 }
 
 pub(super) fn should_spin(args: &CliArgs) -> bool {
-    !args.agent.enabled() && !args.json.enabled() && crate::platform::stderr_is_tty()
+    !args.agent.enabled()
+        && !args.json.enabled()
+        && !args.mcp.enabled()
+        && crate::platform::stderr_is_tty()
 }

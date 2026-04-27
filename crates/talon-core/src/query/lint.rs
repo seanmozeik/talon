@@ -6,6 +6,7 @@ use rusqlite::Connection;
 
 pub fn query_lint(conn: &Connection, input: &LintInput) -> LintResponse {
     let findings = match input.check {
+        LintCheck::All => find_all(conn, &input.scope_only),
         LintCheck::Orphans => find_orphans(conn, &input.scope_only),
         LintCheck::BrokenLinks => find_broken_links(conn, &input.scope_only),
         LintCheck::DanglingRefs => find_dangling_refs(conn, &input.scope_only),
@@ -15,6 +16,14 @@ pub fn query_lint(conn: &Connection, input: &LintInput) -> LintResponse {
         check: input.check,
         findings,
     }
+}
+
+fn find_all(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
+    let mut findings = find_orphans(conn, scope_only);
+    findings.extend(find_broken_links(conn, scope_only));
+    findings.extend(find_dangling_refs(conn, scope_only));
+    findings.extend(find_unreferenced(conn, scope_only));
+    findings
 }
 
 fn passes_scope_filter(path: &str, scope_only: &[String]) -> bool {
@@ -37,6 +46,7 @@ fn find_orphans(conn: &Connection, scope_only: &[String]) -> Vec<LintFinding> {
         .filter(|p| passes_scope_filter(p, scope_only))
         .filter_map(|path| {
             VaultPath::parse(&path).ok().map(|vp| LintFinding {
+                check: LintCheck::Orphans,
                 path: vp,
                 message: "no incoming links".to_string(),
                 line: None,
@@ -67,6 +77,7 @@ fn find_broken_links(conn: &Connection, scope_only: &[String]) -> Vec<LintFindin
         .filter_map(|(from, to, raw)| {
             let display = if raw.is_empty() { to.clone() } else { raw };
             VaultPath::parse(&from).ok().map(|vp| LintFinding {
+                check: LintCheck::BrokenLinks,
                 path: vp,
                 message: format!("broken link: {display} → {to} (not found)"),
                 line: None,
@@ -100,6 +111,7 @@ fn find_dangling_refs(conn: &Connection, scope_only: &[String]) -> Vec<LintFindi
         .filter(|(path, _, _)| passes_scope_filter(path, scope_only))
         .filter_map(|(path, field, value)| {
             VaultPath::parse(&path).ok().map(|vp| LintFinding {
+                check: LintCheck::DanglingRefs,
                 path: vp,
                 message: format!("dangling ref: {field}: {value} (not found)"),
                 line: None,
@@ -125,6 +137,7 @@ fn find_unreferenced(conn: &Connection, scope_only: &[String]) -> Vec<LintFindin
         .filter(|p| passes_scope_filter(p, scope_only))
         .filter_map(|path| {
             VaultPath::parse(&path).ok().map(|vp| LintFinding {
+                check: LintCheck::Unreferenced,
                 path: vp,
                 message: "no incoming or outgoing links".to_string(),
                 line: None,
@@ -192,6 +205,29 @@ mod tests {
             scope: Vec::new(),
             scope_only,
         }
+    }
+
+    #[test]
+    fn test_all_runs_every_lint_check() {
+        let conn = fresh_db();
+        insert_note(&conn, "Graph/Orphan.md");
+        insert_note(&conn, "Graph/Source.md");
+        let source_id = last_insert_id(&conn);
+        insert_note(&conn, "Graph/Target.md");
+        insert_link(&conn, "Graph/Source.md", "Graph/Target.md", "[[Target]]");
+        insert_link(&conn, "Graph/Source.md", "Graph/Missing.md", "[[Missing]]");
+        insert_fm_field(&conn, source_id, "sources", "Graph/Ghost.md");
+        let resp = query_lint(&conn, &lint_input(LintCheck::All));
+        let messages: Vec<&str> = resp.findings.iter().map(|f| f.message.as_str()).collect();
+
+        assert!(messages.iter().any(|msg| msg.contains("no incoming links")));
+        assert!(messages.iter().any(|msg| msg.contains("broken link")));
+        assert!(messages.iter().any(|msg| msg.contains("dangling ref")));
+        assert!(
+            messages
+                .iter()
+                .any(|msg| msg.contains("no incoming or outgoing links"))
+        );
     }
 
     #[test]

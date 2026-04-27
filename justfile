@@ -4,7 +4,7 @@ default:
     @just --list
 
 run *ARGS:
-    cargo run -p talon-cli -- {{ ARGS }}
+    cargo run -q -p talon-cli -- {{ ARGS }}
 
 run-release *ARGS:
     cargo run -p talon-cli --release -- {{ ARGS }}

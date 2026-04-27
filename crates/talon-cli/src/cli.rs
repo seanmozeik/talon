@@ -1,6 +1,6 @@
 //! CLI argument parsing via `bpaf`.
 
-use bpaf::{Parser, long, positional};
+use bpaf::{Parser, long, positional, short};
 use std::path::PathBuf;
 use talon_core::{Direction, SearchMode, WhereClause, WhereOperator};
 
@@ -121,40 +121,34 @@ pub fn parse_or_exit() -> CliArgs {
     cli_parser().run()
 }
 
+fn switch_flag(name: &'static str, help: &'static str) -> impl bpaf::Parser<bool> {
+    long(name).help(help).switch()
+}
+
+fn short_switch_flag(
+    short_name: char,
+    long_name: &'static str,
+    help: &'static str,
+) -> impl bpaf::Parser<bool> {
+    short(short_name).long(long_name).help(help).switch()
+}
+
 fn cli_parser() -> bpaf::OptionParser<CliArgs> {
-    let mcp = long("mcp")
-        .help("Run MCP-over-stdio mode.")
-        .switch()
-        .map(McpFlag::from);
-    let skill = long("skill")
-        .help("Print embedded SKILL.md.")
-        .switch()
-        .map(SkillFlag::from);
-    let version = long("version")
-        .help("Print the Talon CLI version.")
-        .switch()
-        .map(VersionFlag::from);
-    let agent = long("agent")
-        .help("Emit compact JSON for agents and disable human CLI art.")
-        .switch()
-        .map(AgentFlag::from);
-    let json = long("json")
-        .help("Emit JSON output.")
-        .switch()
-        .map(JsonFlag::from);
-    let raw = long("raw")
-        .help("Read raw note content.")
-        .switch()
-        .map(RawFlag::from);
-    let fast = long("fast")
-        .help("Use fast mode for search or sync.")
-        .switch()
-        .map(FastFlag::from);
-    let force = long("force")
-        .help("Force vector rebuild during sync.")
-        .switch()
-        .map(ForceFlag::from);
-    let config_file = long("config")
+    let mcp = switch_flag("mcp", "Run MCP-over-stdio mode.").map(McpFlag::from);
+    let skill = switch_flag("skill", "Print embedded SKILL.md.").map(SkillFlag::from);
+    let version =
+        short_switch_flag('V', "version", "Print the Talon CLI version.").map(VersionFlag::from);
+    let agent = switch_flag(
+        "agent",
+        "Emit compact JSON for agents and disable human CLI art.",
+    )
+    .map(AgentFlag::from);
+    let json = switch_flag("json", "Emit JSON output.").map(JsonFlag::from);
+    let raw = switch_flag("raw", "Read raw note content.").map(RawFlag::from);
+    let fast = switch_flag("fast", "Use fast mode for search or sync.").map(FastFlag::from);
+    let force = switch_flag("force", "Force vector rebuild during sync.").map(ForceFlag::from);
+    let config_file = short('c')
+        .long("config")
         .help("Read config from PATH.")
         .argument::<PathBuf>("PATH")
         .optional();
@@ -163,7 +157,8 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .argument::<String>("MODE")
         .parse(|value| parse_search_mode(&value))
         .optional();
-    let limit = long("limit")
+    let limit = short('l')
+        .long("limit")
         .help("Search result limit.")
         .argument::<u16>("N")
         .optional();
@@ -189,7 +184,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         .argument::<String>("WHERE")
         .many();
     let since = long("since")
-        .help("Filter results indexed since this timestamp (ISO 8601 or epoch ms).")
+        .help("Filter results indexed since this timestamp (ISO 8601, epoch ms, or relative like 7d/3h).")
         .argument::<String>("SINCE")
         .optional();
     let anchors = anchors_parser();
@@ -222,6 +217,7 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
     })
     .to_options()
     .descr("Talon Obsidian vault search, indexing, and MCP server.")
+    .header("Commands: init, sync, status, search, read, related, meta, changes, lint, recall.")
 }
 
 fn meta_parser() -> impl bpaf::Parser<MetaArgs> {

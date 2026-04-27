@@ -89,6 +89,7 @@ fn budget_enforcement_populates_excluded_by_budget() {
     let active = vec![
         NoteExcerpt {
             vault_path: VaultPath::parse("A.md").unwrap(),
+            path: None,
             title: "A".to_string(),
             snippet: "a".repeat(50),
             score: 1.0,
@@ -96,6 +97,7 @@ fn budget_enforcement_populates_excluded_by_budget() {
         },
         NoteExcerpt {
             vault_path: VaultPath::parse("B.md").unwrap(),
+            path: None,
             title: "B".to_string(),
             snippet: "b".repeat(50),
             score: 0.5,

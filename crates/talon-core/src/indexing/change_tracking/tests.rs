@@ -75,6 +75,17 @@ fn test_parse_since_date_only() {
 }
 
 #[test]
+fn test_parse_since_relative_duration() {
+    let before = now_ms();
+    let result = parse_since("3h").unwrap();
+    let after = now_ms();
+    let three_hours = 3 * 60 * 60 * 1000;
+
+    assert!(result <= before.saturating_sub(three_hours));
+    assert!(result >= after.saturating_sub(three_hours + 1000));
+}
+
+#[test]
 fn test_parse_since_invalid() {
     assert!(parse_since("not-a-timestamp").is_err());
 }
