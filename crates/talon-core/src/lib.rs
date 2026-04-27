@@ -53,12 +53,11 @@ pub use links::{
     compute_link_stats, find_unresolved_links, resolve_wiki_link_target, resolve_wiki_links,
 };
 pub use query::{
-    ChangeEntry, ChangesInput, ChangesResponse, EditedNote, FrontmatterFact, FuzzyAnchor,
-    LinkedNote, MetaEntry, MetaInput, MetaResponse, NoteExcerpt, ReadInput, ReadResponse,
-    ReadResult, RecallFormat, RecallInput, RecallResponse, RelatedInput, RelatedResponse,
-    RelatedResult, RelationKind, TombstoneEntry, VaultRecall, find_related, query_changes,
-    query_lint, query_meta, query_status, run_read, run_recall, run_search,
-    run_search_with_expanded_queries,
+    ChangeEntry, ChangesInput, ChangesResponse, LinkedNote, MetaEntry, MetaInput, MetaResponse,
+    NoteExcerpt, ReadInput, ReadResponse, ReadResult, RecallFormat, RecallInput, RecallResponse,
+    RelatedInput, RelatedResponse, RelatedResult, RelationKind, TombstoneEntry, VaultRecall,
+    find_related, query_changes, query_lint, query_meta, query_status, run_read, run_recall,
+    run_search, run_search_with_expanded_queries,
 };
 pub use search::{
     AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchDiagnostics,

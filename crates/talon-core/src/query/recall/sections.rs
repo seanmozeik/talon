@@ -3,15 +3,38 @@ use std::collections::HashSet;
 use rusqlite::{Connection, params};
 
 use crate::contracts::VaultPath;
-use crate::indexing::change_tracking;
 use crate::numeric::count_u32;
 use crate::query::related::find_related;
-use crate::query::{
-    EditedNote, FrontmatterFact, FuzzyAnchor, LinkedNote, NoteExcerpt, RecallInput, RelatedInput,
-};
+use crate::query::{LinkedNote, NoteExcerpt, RecallInput, RelatedInput};
 use crate::search::Direction;
-use crate::search::fuzzy_title::search_title_parts;
 use crate::search::types::RawSearchResult;
+
+fn to_headline(snippet: &str) -> String {
+    let first = snippet
+        .lines()
+        .map(str::trim)
+        .find(|l| !l.is_empty())
+        .unwrap_or("");
+    if first.len() <= 120 {
+        return first.to_owned();
+    }
+    first[..120]
+        .rfind(|c: char| c == '.' || c == '!' || c == '?')
+        .map(|i| first[..=i].to_owned())
+        .unwrap_or_else(|| format!("{}…", &first[..117]))
+}
+
+fn mtime_date(conn: &Connection, path: &str) -> String {
+    conn.query_row(
+        "SELECT strftime('%Y-%m-%d', mtime_ms / 1000, 'unixepoch') \
+         FROM notes WHERE vault_path = ?1 AND active = 1",
+        rusqlite::params![path],
+        |row| row.get::<_, Option<String>>(0),
+    )
+    .ok()
+    .flatten()
+    .unwrap_or_default()
+}
 
 pub(super) fn build_linked_context(
     conn: &Connection,
@@ -46,164 +69,22 @@ pub(super) fn build_linked_context(
     (notes, link_count)
 }
 
-pub(super) fn collect_frontmatter(
+pub(super) fn to_note_excerpts(
     conn: &Connection,
     pipeline_results: &[RawSearchResult],
-    excluded_set: &HashSet<String>,
-) -> Vec<FrontmatterFact> {
-    pipeline_results
-        .iter()
-        .filter(|r| !excluded_set.contains(&r.path))
-        .flat_map(|r| extract_frontmatter_facts(conn, &r.path))
-        .collect()
-}
-
-pub(super) fn to_note_excerpts(pipeline_results: &[RawSearchResult]) -> Vec<NoteExcerpt> {
+) -> Vec<NoteExcerpt> {
     pipeline_results
         .iter()
         .enumerate()
         .filter_map(|(i, r)| {
-            let vp = VaultPath::parse(&r.path).ok()?;
+            let vault_path = VaultPath::parse(&r.path).ok()?;
             Some(NoteExcerpt {
-                vault_path: vp,
+                vault_path,
                 title: r.title.clone(),
-                snippet: r.snippet.clone(),
+                snippet: to_headline(&r.snippet),
                 score: r.score,
-                rank: count_u32(i + 1),
-            })
-        })
-        .collect()
-}
-fn extract_frontmatter_facts(conn: &Connection, vault_path: &str) -> Vec<FrontmatterFact> {
-    let Ok(mut stmt) = conn.prepare_cached(
-        "SELECT key, value FROM note_frontmatter_fields \
-         WHERE note_id = (SELECT id FROM notes WHERE vault_path = ? AND active = 1) \
-         ORDER BY key",
-    ) else {
-        return Vec::new();
-    };
-    let Ok(rows) = stmt.query_map(params![vault_path], |row| {
-        let key: String = row.get(0)?;
-        let val_str: String = row.get(1)?;
-        Ok((key, val_str))
-    }) else {
-        return Vec::new();
-    };
-    let Ok(vp) = VaultPath::parse(vault_path) else {
-        return Vec::new();
-    };
-    let Ok(facts): rusqlite::Result<Vec<_>> = rows.collect() else {
-        return Vec::new();
-    };
-    facts
-        .into_iter()
-        .map(|(key, val_str)| {
-            let value: serde_json::Value =
-                serde_json::from_str(&val_str).unwrap_or(serde_json::Value::String(val_str));
-            FrontmatterFact {
-                vault_path: vp.clone(),
-                key,
-                value,
-            }
-        })
-        .collect()
-}
-
-/// Collects recently edited notes within the `since` window.
-///
-/// Orders by composite recency+relevance score:
-/// `0.6 * topic_relevance + 0.4 * exp(-days / half_life)`.
-pub(super) fn collect_recent_edits(
-    conn: &Connection,
-    since: &str,
-    active_paths: &[String],
-    excluded: &HashSet<String>,
-    half_life_days: u8,
-) -> Vec<EditedNote> {
-    let Ok(since_ms) = change_tracking::parse_since(since) else {
-        return Vec::new();
-    };
-    let Ok(mut stmt) = conn.prepare_cached(
-        "SELECT vault_path, title, mtime_ms FROM notes \
-         WHERE active = 1 AND mtime_ms >= ? \
-         ORDER BY mtime_ms DESC LIMIT 50",
-    ) else {
-        return Vec::new();
-    };
-    let Ok(rows) = stmt.query_map(params![since_ms], |row| {
-        let path: String = row.get(0)?;
-        let title: String = row.get::<_, Option<String>>(1)?.unwrap_or_default();
-        let mtime_ms: u64 = row.get(2)?;
-        Ok((path, title, mtime_ms))
-    }) else {
-        return Vec::new();
-    };
-
-    let now_ms = now_millis();
-    let active_set: HashSet<&str> = active_paths.iter().map(String::as_str).collect();
-    let half_life = f64::from(half_life_days);
-    let Ok(rows): rusqlite::Result<Vec<_>> = rows.collect() else {
-        return Vec::new();
-    };
-
-    let mut edits: Vec<EditedNote> = rows
-        .into_iter()
-        .filter(|(path, _, _)| !excluded.contains(path))
-        .filter_map(|(path, title, mtime_ms)| {
-            let diff_days =
-                u32::try_from(now_ms.saturating_sub(mtime_ms) / 86_400_000).unwrap_or(u32::MAX);
-            let days = f64::from(diff_days);
-            let recency = (-days / half_life).exp();
-            let topic_relevance = if active_set.contains(path.as_str()) {
-                1.0
-            } else {
-                0.3
-            };
-            let score = 0.6_f64.mul_add(topic_relevance, 0.4 * recency);
-            let Ok(vp) = VaultPath::parse(&path) else {
-                return None;
-            };
-            Some(EditedNote {
-                vault_path: vp,
-                title,
-                indexed_at: mtime_ms,
-                days_since_modified: days,
-                score,
-            })
-        })
-        .collect();
-
-    edits.sort_by(|a, b| {
-        b.score
-            .partial_cmp(&a.score)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-    edits
-}
-
-/// Returns fuzzy title/alias matches that score below `main_threshold`.
-pub(super) fn collect_fuzzy_anchors(
-    conn: &Connection,
-    query: &str,
-    main_threshold: f64,
-    excluded: &HashSet<String>,
-) -> Vec<FuzzyAnchor> {
-    let parts = search_title_parts(conn, query, 10);
-    let threshold = main_threshold.max(0.01);
-    parts
-        .exact_alias
-        .into_iter()
-        .chain(parts.fuzzy)
-        .filter(|r| r.score < threshold && !excluded.contains(&r.path))
-        .filter_map(|r| {
-            let Ok(vp) = VaultPath::parse(&r.path) else {
-                return None;
-            };
-            Some(FuzzyAnchor {
-                vault_path: vp,
-                title: r.title,
-                snippet: r.snippet,
-                match_score: r.score,
+                rank: (i + 1) as u32,
+                mtime: mtime_date(conn, &r.path),
             })
         })
         .collect()
@@ -232,11 +113,65 @@ fn now_millis() -> u64 {
         .map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX))
 }
 
-/// Returns an RFC-3339 string for 7 days ago.
-pub(super) fn default_since_7d() -> String {
-    let now = time::OffsetDateTime::now_utc();
-    let week_ago = now - time::Duration::days(7);
-    week_ago
-        .format(&time::format_description::well_known::Rfc3339)
-        .unwrap_or_else(|_| "2000-01-01T00:00:00Z".to_string())
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexing::migrations::run_migrations;
+    use rusqlite::Connection;
+
+    #[test]
+    fn headline_takes_first_nonempty_line() {
+        assert_eq!(to_headline("line one\nline two"), "line one");
+    }
+
+    #[test]
+    fn headline_skips_blank_lines() {
+        assert_eq!(to_headline("\n\n  content  \n"), "content");
+    }
+
+    #[test]
+    fn headline_truncates_long_line_at_sentence() {
+        // >120 chars, ends with a period — should cut at sentence boundary
+        let s = "A ".repeat(40) + "end.";
+        let result = to_headline(&s);
+        assert!(
+            result.ends_with('.'),
+            "should end at sentence boundary: {result:?}"
+        );
+        assert!(result.len() <= 120, "too long: {}", result.len());
+    }
+
+    #[test]
+    fn headline_hard_truncates_with_ellipsis() {
+        let s = "x".repeat(200);
+        let result = to_headline(&s);
+        assert!(
+            result.ends_with('…'),
+            "should end with ellipsis: {result:?}"
+        );
+        // 117 ascii bytes + ellipsis (3 UTF-8 bytes) = 120 bytes max
+        assert!(result.len() <= 120, "too long: {}", result.len());
+    }
+
+    #[test]
+    fn mtime_date_returns_empty_for_unknown_path() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        run_migrations(&mut conn).unwrap();
+        assert_eq!(mtime_date(&conn, "does/not/exist.md"), "");
+    }
+
+    #[test]
+    fn mtime_date_formats_unix_ms_as_yyyy_mm_dd() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        run_migrations(&mut conn).unwrap();
+        // 2026-04-15 00:00:00 UTC = 1776211200 seconds = 1776211200000 ms
+        conn.execute(
+            "INSERT INTO notes (vault_path, title, tags, aliases, content, frontmatter, \
+             mtime_ms, size_bytes, hash, docid, active) \
+             VALUES ('test.md', 'Test', '[]', '[]', '', '{}', 1776211200000, 0, 'h', 1, 1)",
+            [],
+        )
+        .unwrap();
+        assert_eq!(mtime_date(&conn, "test.md"), "2026-04-15");
+    }
 }

@@ -192,9 +192,6 @@ fn recall_success_round_trip() {
         vault_recall: Some(VaultRecall {
             active_notes: Vec::new(),
             linked_context: Vec::new(),
-            frontmatter: Vec::new(),
-            recent_edits: Vec::new(),
-            fuzzy_anchors: Vec::new(),
         }),
         evidence_score: 0.75,
         tokens_used: 120,

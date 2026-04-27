@@ -4,7 +4,7 @@ use super::budget::trim_to_budget;
 use super::*;
 use crate::contracts::VaultPath;
 use crate::indexing::migrations::run_migrations;
-use crate::query::{EditedNote, FrontmatterFact, FuzzyAnchor, LinkedNote, NoteExcerpt};
+use crate::query::{LinkedNote, NoteExcerpt};
 
 fn fresh_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -93,6 +93,7 @@ fn budget_enforcement_populates_excluded_by_budget() {
             snippet: "a".repeat(50),
             score: 1.0,
             rank: 1,
+            mtime: String::new(),
         },
         NoteExcerpt {
             vault_path: VaultPath::parse("B.md").unwrap(),
@@ -100,24 +101,14 @@ fn budget_enforcement_populates_excluded_by_budget() {
             snippet: "b".repeat(50),
             score: 0.5,
             rank: 2,
+            mtime: String::new(),
         },
     ];
     let mut active_mut = active;
     let mut linked: Vec<LinkedNote> = Vec::new();
-    let mut fm: Vec<FrontmatterFact> = Vec::new();
-    let mut edits: Vec<EditedNote> = Vec::new();
-    let mut anchors: Vec<FuzzyAnchor> = Vec::new();
     let mut dropped: Vec<String> = Vec::new();
 
-    trim_to_budget(
-        1,
-        &mut active_mut,
-        &mut linked,
-        &mut fm,
-        &mut edits,
-        &mut anchors,
-        &mut dropped,
-    );
+    trim_to_budget(1, &mut active_mut, &mut linked, &mut dropped);
 
     assert!(
         !dropped.is_empty(),
