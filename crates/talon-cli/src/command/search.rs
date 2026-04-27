@@ -21,7 +21,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     let query = rest.join(" ");
     let mode = args.mode.unwrap_or_default();
     let fast = args.fast.enabled();
-    let include_expanded_queries = args.verbose.enabled() && !args.agent.enabled();
+    let include_expanded_queries = args.verbose.enabled();
     let config = config::load_config(args.config_file.as_deref()).ok();
 
     let where_clauses: Vec<talon_core::WhereClause> = args

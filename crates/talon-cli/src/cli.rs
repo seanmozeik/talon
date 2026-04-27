@@ -157,8 +157,8 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
     let raw = switch_flag("raw", "Read raw note content.").map(RawFlag::from);
     let fast = switch_flag("fast", "Use fast mode for search or sync.").map(FastFlag::from);
     let force = switch_flag("force", "Force vector rebuild during sync.").map(ForceFlag::from);
-    let verbose =
-        switch_flag("verbose", "Include diagnostic details in output.").map(VerboseFlag::from);
+    let verbose = short_switch_flag('v', "verbose", "Include diagnostic details in output.")
+        .map(VerboseFlag::from);
     let config_file = short('c')
         .long("config")
         .help("Read config from PATH.")
@@ -240,9 +240,22 @@ fn cli_parser() -> bpaf::OptionParser<CliArgs> {
         recall,
         positionals
     })
+    .map(normalize_cli_args)
     .to_options()
     .descr("Talon Obsidian vault search, indexing, and MCP server.")
     .header("Commands: init, sync, status, search, read, related, meta, changes, lint, recall.")
+}
+
+/// Cross-flag normalization run after `bpaf` parsing.
+///
+/// `--agent` takes precedence over `--verbose`: agent mode emits compact JSON
+/// for tool-callers, so verbose diagnostics are always suppressed even if the
+/// caller passes both flags.
+const fn normalize_cli_args(mut args: CliArgs) -> CliArgs {
+    if args.agent.enabled() {
+        args.verbose = VerboseFlag::Disabled;
+    }
+    args
 }
 
 fn meta_parser() -> impl bpaf::Parser<MetaArgs> {
