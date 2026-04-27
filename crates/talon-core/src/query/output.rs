@@ -58,7 +58,7 @@ impl ReadResponse {
     }
 }
 
-/// The five recall sections bundled together.
+/// The recall sections bundled together.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct VaultRecall {
@@ -66,38 +66,6 @@ pub struct VaultRecall {
     pub active_notes: Vec<NoteExcerpt>,
     /// Notes reachable via link graph from `active_notes`.
     pub linked_context: Vec<LinkedNote>,
-    /// Frontmatter key-value facts from `active_notes`.
-    pub frontmatter: Vec<FrontmatterFact>,
-    /// Recently edited notes within the since window.
-    pub recent_edits: Vec<EditedNote>,
-    /// Fuzzy title/alias matches below the main score threshold.
-    pub fuzzy_anchors: Vec<FuzzyAnchor>,
-}
-
-/// A fuzzy title/alias match returned in `recall.fuzzy_anchors`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FuzzyAnchor {
-    /// Vault-relative path.
-    pub vault_path: VaultPath,
-    /// Display title.
-    pub title: String,
-    /// Matching snippet or alias text.
-    pub snippet: String,
-    /// Title/alias match score.
-    pub match_score: f64,
-}
-
-/// A single frontmatter key-value pair returned in `recall.frontmatter`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FrontmatterFact {
-    /// Vault-relative path of the containing note.
-    pub vault_path: VaultPath,
-    /// Frontmatter key.
-    pub key: String,
-    /// Frontmatter value.
-    pub value: serde_json::Value,
 }
 
 /// A note excerpt returned in `recall.active_notes`.
@@ -114,6 +82,8 @@ pub struct NoteExcerpt {
     pub score: f64,
     /// 1-based rank within `active_notes`.
     pub rank: u32,
+    /// Last modified date in "YYYY-MM-DD" format, empty when unavailable.
+    pub mtime: String,
 }
 
 /// A note reachable via the link graph returned in `recall.linked_context`.
@@ -130,22 +100,6 @@ pub struct LinkedNote {
     pub relation: RelationKind,
     /// Number of graph hops from the top `active_note`.
     pub hops: u8,
-}
-
-/// A recently-edited note returned in `recall.recent_edits`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EditedNote {
-    /// Vault-relative path.
-    pub vault_path: VaultPath,
-    /// Display title.
-    pub title: String,
-    /// When the note was last indexed (millis since epoch).
-    pub indexed_at: u64,
-    /// Days since last modification (fractional).
-    pub days_since_modified: f64,
-    /// Composite recency+relevance score used for ordering.
-    pub score: f64,
 }
 
 /// Vault-native context recall response.

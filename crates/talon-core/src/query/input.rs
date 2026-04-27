@@ -55,18 +55,12 @@ pub struct RecallInput {
     /// Scope names to search exclusively.
     #[serde(default)]
     pub scope_only: Vec<String>,
-    /// Filter results indexed since this timestamp (default: 7 days ago).
-    #[serde(default)]
-    pub since: Option<String>,
     /// Output format.
     #[serde(default)]
     pub format: RecallFormat,
     /// Link graph traversal depth for `linked_context` (1-3, default 1).
     #[serde(default = "default_recall_depth")]
     pub depth: u8,
-    /// Recency half-life in days for `recent_edits` scoring (default 7).
-    #[serde(default = "default_half_life")]
-    pub recency_half_life_days: u8,
     /// Minimum `evidence_score` threshold; below this, return `skipped=true` (default 0.0).
     #[serde(default)]
     pub min_confidence: f64,
@@ -83,10 +77,6 @@ const fn default_recall_depth() -> u8 {
     1
 }
 
-const fn default_half_life() -> u8 {
-    7
-}
-
 impl Default for RecallInput {
     fn default() -> Self {
         Self {
@@ -96,10 +86,8 @@ impl Default for RecallInput {
             exclude: Vec::new(),
             scope: Vec::new(),
             scope_only: Vec::new(),
-            since: None,
             format: RecallFormat::Json,
             depth: default_recall_depth(),
-            recency_half_life_days: default_half_life(),
             min_confidence: 0.0,
             fast: false,
         }
