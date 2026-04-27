@@ -219,7 +219,7 @@ Update `search/mod.rs`.
 
 ---
 
-### Task 11 — Split CLI command.rs into command/ subdir (717 lines) [ ]
+### Task 11 — Split CLI command.rs into command/ subdir (717 lines) [x]
 
 Split `crates/talon-cli/src/command.rs` into `command/` subdirectory, one file per subcommand.  
 Update `talon-cli/src/lib.rs` or wherever command is declared.  
