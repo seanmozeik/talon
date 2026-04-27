@@ -38,7 +38,7 @@
 
 ## Tasks
 
-### Task 1 — Split tool.rs into domain modules [IN PROGRESS / INCOMPLETE]
+### Task 1 — Split tool.rs into domain modules [x]
 
 **Status:** New files created but existing files not wired up. `tool.rs` still exists.
 
@@ -134,7 +134,7 @@ Note: `FrontmatterValue` and `FrontmatterValueType` stay exported from `frontmat
 
 ---
 
-### Task 2 — Create text/ module: move + split chunker.rs, frontmatter.rs, text.rs [ ]
+### Task 2 — Create text/ module: move + split chunker.rs, frontmatter.rs, text.rs [x]
 
 Create `crates/talon-core/src/text/` directory.  
 Move and split:

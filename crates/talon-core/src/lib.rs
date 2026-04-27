@@ -4,14 +4,12 @@
 //! in the library so the CLI remains a thin process boundary.
 
 pub mod change_tracking;
-pub mod chunker;
 pub mod config;
 pub mod constants;
 pub mod contracts;
 pub mod embed;
 pub mod error;
 pub mod expansion;
-pub mod frontmatter;
 pub mod indexer;
 pub mod indexing;
 pub mod inference;
@@ -23,6 +21,8 @@ pub mod store;
 pub mod sync;
 pub mod text;
 pub mod vec_ext;
+
+pub use text::{chunker, frontmatter};
 
 pub use change_tracking::{
     ChangeEntry as ChangeTrackingEntry, ChangeFeed, ChangeIndex, FileChangeState, FileState,
