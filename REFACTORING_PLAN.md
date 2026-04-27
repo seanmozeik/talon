@@ -234,7 +234,7 @@ Split `crates/talon-cli/src/output.rs` into `output/` subdirectory.
 
 ---
 
-### Task 13 — Split CLI mcp/tool.rs (649 lines) [ ]
+### Task 13 — Split CLI mcp/tool.rs (649 lines) [x]
 
 Split `crates/talon-cli/src/mcp/tool.rs` within `mcp/`.  
 Update `mcp/mod.rs`.  
