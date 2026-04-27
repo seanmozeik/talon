@@ -163,7 +163,9 @@ impl SearchInput {
     /// # Errors
     ///
     /// Returns [`TalonError::InvalidInput`] when `limit` or `candidate_limit` is zero.
-    pub fn from_cli_query(
+    // pub(crate) — wired up by US-025 (config-sourced defaults).
+    #[allow(dead_code)]
+    pub(crate) fn from_cli_query(
         query: String,
         mode: SearchMode,
         fast: bool,

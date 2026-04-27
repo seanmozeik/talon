@@ -47,6 +47,10 @@ pub struct RrfWeights {
     pub semantic: f64,
 }
 
+/// Per-signal RRF blend weights applied during hybrid fusion.
+///
+/// Exact-alias matches are boosted 2×; fuzzy title is down-weighted to 0.25×;
+/// BM25 and semantic receive equal 1.5× weight.
 // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — searcher.ts:1390-1392
 pub const RRF_WEIGHTS: RrfWeights = RrfWeights {
     bm25: 1.5,
@@ -138,3 +142,13 @@ pub const EMBED_CHUNK_OVERLAP_DEFAULT: usize = 64;
 
 /// Minimum token count below which a post-split chunk is discarded.
 pub const CHUNK_MIN_TOKENS_DEFAULT: usize = 16;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn candidate_floor_constants_in_sync() {
+        assert_eq!(CANDIDATE_FLOOR, u32::from(CANDIDATE_FLOOR_U16));
+    }
+}

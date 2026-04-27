@@ -14,14 +14,6 @@ use crate::inference::InferenceClient;
 use super::fuse::blend_rerank_candidates;
 use super::types::RawSearchResult;
 
-/// Standard logistic function. Maps unbounded rerank logits to `[0, 1]`.
-///
-/// Matches OHS `searcher.ts:1319`: `1 / (1 + Math.exp(-logit))`.
-#[cfg(test)]
-fn sigmoid(logit: f64) -> f64 {
-    1.0 / (1.0 + (-logit).exp())
-}
-
 /// Returns `(w_hybrid, w_rerank)` blend weights for a candidate at the given
 /// pre-rerank rank index (0-indexed).
 ///
@@ -93,6 +85,7 @@ pub fn rerank_candidates(
 mod tests {
     use super::*;
     use crate::inference::InferenceClient;
+    use crate::search::fuse::sigmoid;
     use crate::search::types::SearchScores;
     use serde_json::json;
     use wiremock::matchers::{method, path};

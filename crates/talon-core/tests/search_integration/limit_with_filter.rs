@@ -80,11 +80,9 @@ fn limit_with_where_filter_returns_full_limit() {
         10,
         "must return exactly 10 results when 30 active notes match and limit=10"
     );
-    assert!(
-        response.total >= u32::try_from(response.results.len()).unwrap_or(u32::MAX),
-        "total ({}) must be >= results.len() ({})",
-        response.total,
-        response.results.len()
+    assert_eq!(
+        response.total, 30,
+        "FR-5: total is post-filter, pre-truncate count"
     );
     for r in &response.results {
         let path = r.vault_path.as_str();

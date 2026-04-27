@@ -4,6 +4,8 @@
 //! to account for post-filter deduplication and scoring spread. These
 //! helpers compute per-retriever pool sizes based on the desired limit.
 
+use std::cmp::max;
+
 /// Compute the pool size for BM25 lexical retrieval.
 ///
 /// Returns `max(limit * 2, max(candidate_floor, 50))`.
@@ -41,9 +43,6 @@ pub fn fuzzy_pool(limit: u32, candidate_floor: u32) -> u32 {
 pub fn rrf_pool(limit: u32, candidate_floor: u32) -> u32 {
     max(limit, candidate_floor)
 }
-
-// Use the standard `Ord::max` for u32.
-use std::cmp::max;
 
 #[cfg(test)]
 mod tests {

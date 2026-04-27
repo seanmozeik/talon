@@ -2,8 +2,9 @@
 //!
 //! Ported from `services/talon/search/fuse.ts`. Two distinct fusion paths:
 //!
-//! - [`fuse_hybrid_result_lists`] is a per-pipeline RRF fold without per-list
-//!   weights, used to merge multi-query expansions into a single ranked list.
+//! - [`fuse_hybrid_result_lists`] folds RRF results across multiple pipelines
+//!   with optional per-list weighting (used by `hybrid_pipeline.rs` to give the
+//!   original query 2× weight relative to expansion variants).
 //! - [`blend_rerank_candidates`] mixes the post-fusion hybrid score with a
 //!   cross-encoder rerank score using a rank-tier-dependent weight.
 
@@ -77,7 +78,7 @@ struct FuseAcc {
 /// weighting.  The original-query list should receive weight 2.0 and expansion
 /// variants weight 1.0.
 ///
-/// // Algorithm ported verbatim from qmd — store.ts:4122
+/// Algorithm ported verbatim from qmd — store.ts:4122
 ///
 /// When called with one or zero non-empty lists, returns the first non-empty
 /// list as-is (no fusion needed).
