@@ -292,4 +292,51 @@ mod tests {
         drop(conn);
         cleanup(&path);
     }
+
+    #[test]
+    fn trigram_overlap_squared_shorter_title_higher_score() {
+        // "Atomic Notes" vs "atom" scores higher than "Notes on Atomic Habits"
+        // vs "atom" because the shorter title has higher BM25 frequency and both
+        // have full trigram overlap. The overlap² multiplier = 1.0 for both.
+        let path = unique_path();
+        let conn = open_database(&path).unwrap();
+        insert_note(&conn, "a.md", "Atomic Notes", "[]");
+        insert_note(&conn, "b.md", "Notes on Atomic Habits", "[]");
+
+        let parts = search_title_parts(&conn, "atom", 10);
+        let a = parts.fuzzy.iter().find(|r| r.path == "a.md").unwrap();
+        let b = parts.fuzzy.iter().find(|r| r.path == "b.md").unwrap();
+        assert!(a.score > b.score);
+        drop(conn);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn trigram_overlap_squared_penalty_with_typo() {
+        // Typo query "atomik" loses trigrams not in title, reducing overlap
+        // and multiplying score by overlap². Perfect query "atomic" has
+        // overlap=1.0, multiplier=1.0. Typo query should score lower.
+        let path = unique_path();
+        let conn = open_database(&path).unwrap();
+        insert_note(&conn, "a.md", "Atomic Notes", "[]");
+
+        let perfect_parts = search_title_parts(&conn, "atomic", 10);
+        let typo_parts = search_title_parts(&conn, "atomik", 10);
+
+        let perfect = perfect_parts
+            .fuzzy
+            .iter()
+            .find(|r| r.path == "a.md")
+            .unwrap()
+            .score;
+        let typo = typo_parts
+            .fuzzy
+            .iter()
+            .find(|r| r.path == "a.md")
+            .unwrap()
+            .score;
+        assert!(typo < perfect);
+        drop(conn);
+        cleanup(&path);
+    }
 }

@@ -7,14 +7,12 @@
 //! surrogate pair (rare in vault content) and the resulting ranking remains
 //! within the score-tolerance bounds of the parity tests.
 
+use super::constants::{LITERAL_EMPTY_FTS, TRIGRAM_LEN};
+use crate::numeric::count_u32;
+use crate::text::nfd;
+use regex::Regex;
 use std::collections::HashSet;
 use std::sync::OnceLock;
-
-use regex::Regex;
-
-use crate::numeric::count_u32;
-
-use super::constants::{LITERAL_EMPTY_FTS, TRIGRAM_LEN};
 
 /// FTS5 boolean operator joining query terms.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -36,12 +34,14 @@ impl FtsOperator {
     }
 }
 
-/// Returns the lowercase-trigram set for `text`. If `text` is shorter than
-/// [`TRIGRAM_LEN`], the lowercase string itself is the only "trigram".
+/// Returns the lowercase-trigram set for `text`, using NFD normalization.
+///
+/// Shorter text becomes a single trigram; longer text yields a sliding window.
+/// NFD normalization handles accented and composed characters uniformly.
 #[must_use]
 pub fn get_trigrams(text: &str) -> HashSet<String> {
     let mut out = HashSet::new();
-    let lower: String = text.chars().flat_map(char::to_lowercase).collect();
+    let lower = nfd::normalize(text).to_lowercase();
     let chars: Vec<char> = lower.chars().collect();
     if chars.len() < TRIGRAM_LEN {
         out.insert(lower);
