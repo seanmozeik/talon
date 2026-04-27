@@ -105,7 +105,7 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
     "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts_bm25 USING fts5(
        title, aliases, content,
        content='notes', content_rowid='id',
-       tokenize = \"unicode61 tokenchars '+#'\"
+       tokenize = 'unicode61 tokenchars ''+#'''
      )",
     "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts_fuzzy USING fts5(
        title, aliases,
