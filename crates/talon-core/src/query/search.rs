@@ -13,7 +13,7 @@ use crate::contracts::VaultPath;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::numeric::count_u32;
-use crate::search::anchor::{build_anchors, resolve_snippet_heading};
+use crate::search::anchor::{build_anchors, maybe_expand_bm25_snippet, resolve_snippet_heading};
 use crate::search::{
     MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause,
 };
@@ -89,6 +89,7 @@ pub fn run_search(
                 candidate_limit: candidate_floor,
                 fast,
                 queries: input.queries.clone(),
+                intent: input.intent.clone(),
                 hooks: crate::search::SearchHooks::default(),
             };
             run_hybrid_pipeline(conn, inference, expansion, &query, &opts)
@@ -135,7 +136,7 @@ pub fn run_search(
     let anchors_requested = input.anchors.unwrap_or(false);
     let response = SearchResponse {
         vault: None,
-        query: Some(query),
+        query: Some(query.clone()),
         mode: input.mode,
         fast,
         expanded,
@@ -144,7 +145,7 @@ pub fn run_search(
         total,
         results: scored
             .into_iter()
-            .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested))
+            .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested, &query))
             .collect(),
     };
     if use_cache {
@@ -165,6 +166,7 @@ fn raw_to_search_result(
     mode: SearchMode,
     conn: &Connection,
     anchors_requested: bool,
+    query: &str,
 ) -> Option<SearchResult> {
     let match_kind = match mode {
         SearchMode::Hybrid | SearchMode::Fulltext => MatchKind::Fulltext,
@@ -172,12 +174,29 @@ fn raw_to_search_result(
         SearchMode::Title => MatchKind::Title,
     };
 
+    let mut snippet = raw.snippet.clone();
+    if matches!(mode, SearchMode::Hybrid | SearchMode::Fulltext)
+        && raw.scores.bm25.is_some()
+        && snippet.chars().count() * 2 < DEFAULT_SNIPPET_LENGTH as usize
+        && let Some(note_id) = get_note_id_by_path(conn, &raw.path)
+        && let Some(fallback) = maybe_expand_bm25_snippet(conn, note_id, query, &snippet)
+    {
+        snippet = fallback;
+    }
+
     // Heading breadcrumb prepended unconditionally (independent of anchors flag).
-    let heading = resolve_snippet_heading(conn, raw);
-    let snippet = match heading {
-        Some(ref h) if !h.is_empty() => format!("{h}\n{}", raw.snippet),
-        _ => raw.snippet.clone(),
-    };
+    let heading = resolve_snippet_heading(conn, raw, &snippet);
+    if let Some(ref h) = heading
+        && !h.is_empty()
+    {
+        snippet = format!("{h}\n{snippet}");
+    }
+
+    // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — searcher.ts:1209.
+    let snippet = snippet
+        .chars()
+        .take(DEFAULT_SNIPPET_LENGTH as usize)
+        .collect::<String>();
 
     let preview_anchors = if anchors_requested {
         let anchors = build_anchors(conn, raw);
@@ -297,4 +316,123 @@ fn get_note_mtime(conn: &Connection, note_id: i64) -> Option<u64> {
         |row| row.get(0),
     )
     .ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::search::types::SearchScores;
+    use crate::store::open_database;
+    use rusqlite::params;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    fn unique_path() -> std::path::PathBuf {
+        static C: AtomicU64 = AtomicU64::new(0);
+        let n = C.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "talon-search-query-test-{}-{n}.sqlite",
+            std::process::id()
+        ))
+    }
+
+    fn cleanup(path: &std::path::Path) {
+        let _ = fs_err::remove_file(path);
+        let _ = fs_err::remove_file(path.with_extension("sqlite-wal"));
+        let _ = fs_err::remove_file(path.with_extension("sqlite-shm"));
+    }
+
+    fn insert_note_with_content(conn: &Connection, vault_path: &str, content: &str) -> i64 {
+        assert!(
+            conn.execute(
+            "INSERT INTO notes (vault_path, title, tags, aliases, content, mtime_ms, size_bytes, hash, docid, active) VALUES (?, ?, '[]', '[]', ?, 0, 0, 'h', 'd', 1)",
+            params![vault_path, "Title", content],
+        )
+        .is_ok(),
+            "failed to insert test note"
+        );
+        conn.last_insert_rowid()
+    }
+
+    fn raw(
+        path: &str,
+        snippet: &str,
+        bm25: bool,
+        semantic_heading: Option<&str>,
+    ) -> RawSearchResult {
+        RawSearchResult {
+            path: path.into(),
+            title: "Title".into(),
+            tags: vec![],
+            aliases: vec![],
+            snippet: snippet.into(),
+            score: 0.9,
+            scores: SearchScores {
+                bm25: if bm25 { Some(0.9) } else { None },
+                semantic: semantic_heading.map(|_| 0.8),
+                ..Default::default()
+            },
+            semantic_heading: semantic_heading.map(ToOwned::to_owned),
+            semantic_char_start: semantic_heading.map(|_| 10),
+            semantic_char_end: semantic_heading.map(|_| 20),
+        }
+    }
+
+    #[test]
+    fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
+        let path = unique_path();
+        let conn = match open_database(&path) {
+            Ok(conn) => conn,
+            Err(err) => panic!("failed to open temp db: {err}"),
+        };
+        insert_note_with_content(
+            &conn,
+            "notes/fallback.md",
+            "## Intro\n\nA longer body excerpt with alpha in the middle gives the fallback query more context than the short BM25 snippet.",
+        );
+
+        let raw = raw("notes/fallback.md", "short alpha", true, None);
+        let result = match raw_to_search_result(&raw, SearchMode::Fulltext, &conn, false, "alpha") {
+            Some(result) => result,
+            None => panic!("raw result should convert"),
+        };
+
+        assert!(
+            result.snippet.len() > raw.snippet.len(),
+            "fallback retrieval should replace the short BM25 snippet"
+        );
+        assert!(
+            result.snippet.contains("longer body excerpt"),
+            "fallback retrieval should surface body text"
+        );
+        drop(conn);
+        cleanup(&path);
+    }
+
+    #[test]
+    fn raw_to_search_result_truncates_on_char_boundaries() {
+        let path = unique_path();
+        let conn = match open_database(&path) {
+            Ok(conn) => conn,
+            Err(err) => panic!("failed to open temp db: {err}"),
+        };
+        let raw = raw(
+            "notes/emoji.md",
+            &format!("{}🙂", "a".repeat(DEFAULT_SNIPPET_LENGTH as usize)),
+            false,
+            Some("Heading"),
+        );
+
+        let result = match raw_to_search_result(&raw, SearchMode::Semantic, &conn, false, "") {
+            Some(result) => result,
+            None => panic!("raw result should convert"),
+        };
+
+        assert_eq!(
+            result.snippet.chars().count(),
+            DEFAULT_SNIPPET_LENGTH as usize
+        );
+        assert!(result.snippet.starts_with("Heading\n"));
+        drop(conn);
+        cleanup(&path);
+    }
 }

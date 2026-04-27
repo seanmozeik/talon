@@ -15,6 +15,8 @@
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 
+use crate::search::constants::{BM25_MIN_TOKENS, BM25_TOKENS_PER_CHAR_DIV, DEFAULT_SNIPPET_LENGTH};
+use crate::search::text_fts::{FtsOperator, to_fts_query};
 use crate::search::{AnchorKind, MatchAnchor};
 
 use super::match_text::build_match_text;
@@ -78,6 +80,53 @@ pub fn build_anchors(conn: &Connection, raw: &RawSearchResult) -> Vec<MatchAncho
     }
 
     anchors
+}
+
+/// Expands a short BM25 snippet with a full-body FTS lookup when the current
+/// excerpt is too short to be useful.
+///
+/// Algorithm ported verbatim from obsidian-hybrid-search (MIT) — searcher.ts:1195-1208.
+#[must_use]
+pub(crate) fn maybe_expand_bm25_snippet(
+    conn: &Connection,
+    note_id: i64,
+    query: &str,
+    snippet: &str,
+) -> Option<String> {
+    let snippet_chars = snippet.chars().count();
+    if snippet_chars * 2 >= DEFAULT_SNIPPET_LENGTH as usize {
+        return None;
+    }
+
+    if query.trim().is_empty() {
+        return None;
+    }
+
+    let fts_query = to_fts_query(query, FtsOperator::Or);
+    if fts_query.is_empty() {
+        return None;
+    }
+
+    let num_tokens = BM25_MIN_TOKENS.max(DEFAULT_SNIPPET_LENGTH.div_ceil(BM25_TOKENS_PER_CHAR_DIV));
+    let Ok(fallback) = conn.query_row(
+        "SELECT snippet(notes_fts_bm25, 2, '', '', '...', ?) AS snippet
+         FROM notes_fts_bm25
+         JOIN notes n ON n.id = notes_fts_bm25.rowid
+         WHERE n.id = ? AND n.active = 1
+           AND notes_fts_bm25 MATCH ?
+         LIMIT 1",
+        rusqlite::params![num_tokens, note_id, fts_query],
+        |row| row.get::<_, Option<String>>(0),
+    ) else {
+        return None;
+    };
+
+    let fallback = fallback?.trim().to_owned();
+    if fallback.chars().count() > snippet_chars {
+        Some(fallback)
+    } else {
+        None
+    }
 }
 
 /// Looks up the `heading_path` of the chunk whose text best contains the BM25
@@ -230,14 +279,18 @@ fn parse_heading_line(line: &str) -> Option<(usize, &str)> {
 /// For BM25/title results, uses the best-matching chunk heading or scans note
 /// content from that chunk's `char_start` when `heading_path` is missing.
 #[must_use]
-pub fn resolve_snippet_heading(conn: &Connection, raw: &RawSearchResult) -> Option<String> {
+pub fn resolve_snippet_heading(
+    conn: &Connection,
+    raw: &RawSearchResult,
+    snippet: &str,
+) -> Option<String> {
     if let Some(h) = raw.semantic_heading.as_deref().filter(|h| !h.is_empty()) {
         return Some(h.to_owned());
     }
-    if raw.snippet.is_empty() {
+    if snippet.is_empty() {
         return None;
     }
-    lookup_bm25_heading_or_scan_from_chunk(conn, &raw.path, &raw.snippet)
+    lookup_bm25_heading_or_scan_from_chunk(conn, &raw.path, snippet)
 }
 
 #[cfg(test)]

@@ -105,6 +105,33 @@ fn bm25_anchor_resolved_via_strategy1_chunk_lookup() {
 }
 
 #[test]
+fn bm25_snippet_fallback_prefers_longer_full_body_excerpt() {
+    let path = unique_path();
+    let conn = open_database(&path).unwrap();
+    let note_id = insert_note_with_content(
+        &conn,
+        "notes/fallback.md",
+        "## Intro\n\nA short snippet should be replaced by this longer body excerpt because it contains the query token alpha and much more context than the initial snippet.",
+    );
+
+    let short = "short alpha snippet";
+    let expanded = maybe_expand_bm25_snippet(&conn, note_id, "alpha", short);
+
+    assert!(
+        expanded.as_ref().is_some_and(|s| s.len() > short.len()),
+        "fallback snippet should be longer than the BM25 excerpt"
+    );
+    assert!(
+        expanded
+            .as_deref()
+            .is_some_and(|s| s.contains("longer body excerpt")),
+        "fallback snippet should come from the full body"
+    );
+    drop(conn);
+    cleanup(&path);
+}
+
+#[test]
 fn semantic_anchor_built_from_chunk_metadata() {
     let path = unique_path();
     let conn = open_database(&path).unwrap();
@@ -199,7 +226,7 @@ fn resolve_snippet_heading_scans_from_chunk_start_when_heading_path_is_null() {
         true,
         None,
     );
-    let heading = resolve_snippet_heading(&conn, &r);
+    let heading = resolve_snippet_heading(&conn, &r, &r.snippet);
 
     assert_eq!(heading.as_deref(), Some("A > B > C"));
     drop(conn);
@@ -222,7 +249,7 @@ fn resolve_snippet_heading_scans_from_chunk_start_for_short_snippet() {
     );
 
     let r = raw("notes/short-null-heading.md", "body", true, None);
-    let heading = resolve_snippet_heading(&conn, &r);
+    let heading = resolve_snippet_heading(&conn, &r, &r.snippet);
 
     assert_eq!(heading.as_deref(), Some("A > B > C"));
     drop(conn);
@@ -249,7 +276,7 @@ fn resolve_snippet_heading_returns_none_when_heading_path_and_char_start_are_nul
         true,
         None,
     );
-    let heading = resolve_snippet_heading(&conn, &r);
+    let heading = resolve_snippet_heading(&conn, &r, &r.snippet);
 
     assert_eq!(heading, None);
     drop(conn);
