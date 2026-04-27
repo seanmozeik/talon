@@ -277,7 +277,7 @@ Split `crates/talon-core/tests/eval/mod.rs` within `tests/eval/`.
 
 ---
 
-### Task 19 — Final verification [ ]
+### Task 19 — Final verification [x]
 
 ```
 just check    # fmt + cargo check + clippy + rust-line-counts — must be zero violations
