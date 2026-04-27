@@ -105,6 +105,12 @@ fn hyphenated_token_regex() -> &'static Regex {
     })
 }
 
+enum ParsedFtsTerm {
+    Quoted(String),
+    Bare(String),
+    Negative(String),
+}
+
 /// Wraps each word in `query` as a quoted FTS5 prefix term, joined by
 /// `operator`. Returns [`LITERAL_EMPTY_FTS`] for empty queries.
 ///
@@ -131,7 +137,7 @@ pub fn to_fts_query(query: &str, operator: FtsOperator) -> String {
             if i < chars.len() {
                 i += 1;
             }
-            terms.push(("quoted", c));
+            terms.push(ParsedFtsTerm::Quoted(c));
         } else {
             let mut t = String::new();
             while i < chars.len() && !chars[i].is_whitespace() && chars[i] != '"' {
@@ -139,7 +145,11 @@ pub fn to_fts_query(query: &str, operator: FtsOperator) -> String {
                 i += 1;
             }
             if !t.is_empty() {
-                terms.push(("bare", t));
+                if let Some(negative) = t.strip_prefix('-').filter(|s| !s.is_empty()) {
+                    terms.push(ParsedFtsTerm::Negative(negative.to_string()));
+                } else {
+                    terms.push(ParsedFtsTerm::Bare(t));
+                }
             }
         }
     }
@@ -148,28 +158,53 @@ pub fn to_fts_query(query: &str, operator: FtsOperator) -> String {
     }
 
     let mut formatted = Vec::new();
+    let mut negative_terms = Vec::new();
     let re = hyphenated_token_regex();
-    for (kind, content) in terms {
-        if kind == "quoted" {
-            let s = sanitize_fts_query(&content);
-            if !s.is_empty() {
-                formatted.push(format!("\"{s}\""));
+    for term in terms {
+        match term {
+            ParsedFtsTerm::Quoted(content) => {
+                let s = sanitize_fts_query(&content);
+                if !s.is_empty() {
+                    formatted.push(format!("\"{s}\""));
+                }
             }
-        } else if re.is_match(&content) {
-            let s = content.replace('-', " ");
-            formatted.push(format!("\"{s}\""));
-        } else {
-            let s = sanitize_fts_query(&content);
-            for w in s.split_whitespace() {
-                formatted.push(format!("\"{w}\"*"));
+            ParsedFtsTerm::Bare(content) => {
+                if re.is_match(&content) {
+                    let s = content.replace('-', " ");
+                    formatted.push(format!("\"{s}\""));
+                } else {
+                    let s = sanitize_fts_query(&content);
+                    for w in s.split_whitespace() {
+                        formatted.push(format!("\"{w}\"*"));
+                    }
+                }
+            }
+            ParsedFtsTerm::Negative(content) => {
+                if re.is_match(&content) {
+                    let s = content.replace('-', " ");
+                    negative_terms.push(format!("\"{s}\""));
+                } else {
+                    let s = sanitize_fts_query(&content);
+                    for w in s.split_whitespace() {
+                        negative_terms.push(format!("\"{w}\"*"));
+                    }
+                }
             }
         }
     }
     if formatted.is_empty() {
-        return LITERAL_EMPTY_FTS.to_string();
+        if negative_terms.is_empty() {
+            return LITERAL_EMPTY_FTS.to_string();
+        }
+        return String::new();
     }
     let joiner = format!(" {} ", operator.keyword());
-    formatted.join(&joiner)
+    let mut query = formatted.join(&joiner);
+    for negative in negative_terms {
+        query.push_str(" NOT ");
+        query.push_str(&negative);
+    }
+    query
 }
 
 /// Builds an FTS5 OR query of all trigrams in `text`, used against the
@@ -201,150 +236,4 @@ pub fn build_bm25_score(raw: f64) -> f64 {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::float_cmp)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn get_trigrams_returns_lowercase_string_for_short_input() {
-        let t = get_trigrams("AB");
-        assert!(t.contains("ab"));
-        assert_eq!(t.len(), 1);
-    }
-
-    #[test]
-    fn get_trigrams_slides_window_for_long_input() {
-        let t = get_trigrams("Hello");
-        // "hel", "ell", "llo"
-        assert!(t.contains("hel"));
-        assert!(t.contains("ell"));
-        assert!(t.contains("llo"));
-        assert_eq!(t.len(), 3);
-    }
-
-    #[test]
-    fn trigram_overlap_full_match_returns_one() {
-        assert_eq!(calculate_trigram_overlap("hello", "hello"), 1.0);
-    }
-
-    #[test]
-    fn trigram_overlap_no_match_returns_zero() {
-        assert_eq!(calculate_trigram_overlap("xyz", "abc"), 0.0);
-    }
-
-    #[test]
-    fn trigram_overlap_partial_match() {
-        // "hello" has 3 trigrams (hel, ell, llo); "help" has 2 (hel, elp).
-        // Overlap = matches in query trigrams (hel, ell, llo) found in title trigrams (hel, elp).
-        // Only "hel" matches → 1/3.
-        let overlap = calculate_trigram_overlap("hello", "help");
-        assert!((overlap - 1.0 / 3.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn sanitize_strips_special_chars_and_collapses_whitespace() {
-        // Special chars become spaces, then runs of whitespace collapse to one.
-        assert_eq!(sanitize_fts_query("  foo \"bar*  baz^ "), "foo bar baz");
-    }
-
-    #[test]
-    fn sanitize_empty_returns_empty_string() {
-        assert_eq!(sanitize_fts_query("   "), "");
-    }
-
-    #[test]
-    fn to_fts_query_and_default() {
-        assert_eq!(
-            to_fts_query("foo bar", FtsOperator::And),
-            "\"foo\"* AND \"bar\"*"
-        );
-    }
-
-    #[test]
-    fn to_fts_query_or() {
-        assert_eq!(
-            to_fts_query("foo bar baz", FtsOperator::Or),
-            "\"foo\"* OR \"bar\"* OR \"baz\"*"
-        );
-    }
-
-    #[test]
-    fn to_fts_query_empty_returns_literal_empty() {
-        assert_eq!(to_fts_query("", FtsOperator::And), LITERAL_EMPTY_FTS);
-        assert_eq!(to_fts_query("   ", FtsOperator::And), LITERAL_EMPTY_FTS);
-    }
-
-    #[test]
-    fn to_fts_query_strips_special_chars_before_quoting() {
-        assert_eq!(
-            to_fts_query("foo*bar", FtsOperator::And),
-            "\"foo\"* AND \"bar\"*"
-        );
-    }
-
-    #[test]
-    fn build_trigram_or_query_quotes_each_trigram() {
-        assert_eq!(
-            build_trigram_or_query("hello"),
-            "\"hel\" OR \"ell\" OR \"llo\""
-        );
-    }
-
-    #[test]
-    fn build_trigram_or_query_short_input_returns_quoted_text() {
-        assert_eq!(build_trigram_or_query("ab"), "\"ab\"");
-    }
-
-    #[test]
-    fn build_trigram_or_query_strips_inner_quotes() {
-        // `r#"a"b"# = `a"b`; with "ab" stripped of quotes inside → `"a"`,`"ab"`
-        assert!(!build_trigram_or_query("a\"bc").contains("\"a\"b\""));
-    }
-
-    #[test]
-    fn build_bm25_score_zero_returns_zero() {
-        assert_eq!(build_bm25_score(0.0), 0.0);
-    }
-
-    #[test]
-    fn build_bm25_score_negative_input_normalizes_to_unit_interval() {
-        // FTS5 returns negative scores (more negative = better match).
-        let s = build_bm25_score(-2.0);
-        assert!((s - 2.0 / 3.0).abs() < 1e-9);
-    }
-
-    #[test]
-    fn build_bm25_score_positive_input_also_works() {
-        let s = build_bm25_score(3.0);
-        assert!((s - 0.75).abs() < 1e-9);
-    }
-
-    #[test]
-    fn build_bm25_score_is_bounded_below_one() {
-        // As |raw| → ∞, score → 1 but never reaches it.
-        assert!(build_bm25_score(1000.0) < 1.0);
-        assert!(build_bm25_score(1000.0) > 0.99);
-    }
-
-    #[test]
-    fn to_fts_query_hyphenated_tokens() {
-        assert_eq!(to_fts_query("gpt-4", FtsOperator::And), "\"gpt 4\"");
-        assert_eq!(to_fts_query("a-b-c-d", FtsOperator::And), "\"a b c d\"");
-        assert_eq!(to_fts_query("DEC-0054", FtsOperator::And), "\"DEC 0054\"");
-        assert_eq!(
-            to_fts_query("gpt-4 foo", FtsOperator::And),
-            "\"gpt 4\" AND \"foo\"*"
-        );
-    }
-
-    #[test]
-    fn to_fts_query_preserves_quotes_and_hyphenated() {
-        assert_eq!(
-            to_fts_query("foo \"bar baz\"", FtsOperator::And),
-            "\"foo\"* AND \"bar baz\""
-        );
-        assert_eq!(
-            to_fts_query("gpt-4 \"bar baz\" multi-agent", FtsOperator::Or),
-            "\"gpt 4\" OR \"bar baz\" OR \"multi agent\""
-        );
-    }
-}
+mod tests;
