@@ -31,8 +31,13 @@ walkdir.workspace = true
 windows-sys = { workspace = true, features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["html_reports"] }
 tokio = { workspace = true }
 wiremock = { workspace = true }
+
+[[bench]]
+name = "bm25_with_filter"
+harness = false
 
 [lints]
 workspace = true

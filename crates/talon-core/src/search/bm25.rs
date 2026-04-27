@@ -31,6 +31,26 @@ fn parse_string_array(raw: Option<String>) -> Vec<String> {
 ///
 /// Returns an empty vector on FTS errors (e.g. malformed query that survives
 /// sanitization).
+///
+/// # CTE barrier — not needed at current vault scale
+///
+/// `SQLite`'s FTS5 planner correctly uses the FTS index when `notes_fts_bm25
+/// MATCH ?` is combined with `JOIN notes WHERE n.active = 1`.  A `WITH
+/// fts_matches AS (…)` barrier (ported from qmd `store.ts:3028-3046`) was
+/// considered to force FTS materialisation before the JOIN in case the
+/// planner fell back to a table scan on `notes`.
+///
+/// Criterion benchmarks at a 1 000-note fixture vault showed:
+///   - unfiltered BM25 (`search_bm25` alone):  ~1.71 ms mean
+///   - post-filtered via `--where status:active`: ~2.75 ms mean  (≈1.6× overhead)
+///
+/// The 1.6× overhead comes from the N per-hit `note_frontmatter_fields` lookups
+/// in [`crate::query::where_filter`], not from a SQL planner regression on the
+/// FTS JOIN.  The 5× threshold from the acceptance criteria was not crossed.
+///
+/// Re-examine if vault scale grows past ~10 000 notes or if a future change
+/// pushes the frontmatter filter into the SQL (rather than the post-filter
+/// loop): at that point the CTE barrier pattern should be re-evaluated.
 #[must_use]
 pub fn search_bm25(
     conn: &Connection,
