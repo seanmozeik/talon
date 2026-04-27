@@ -99,6 +99,17 @@ pub const HYBRID_PROBE_LEXICAL_LIMIT: u32 = 2;
 /// Strong-match probe: title result count in hybrid.
 pub const HYBRID_PROBE_TITLE_LIMIT: u32 = 1;
 
+/// Minimum candidate pool size fetched from each retriever before RRF/rerank.
+///
+/// Decouples the user's `--limit` from the internal over-fetch window so that
+/// reranking always has enough candidates even when the user asks for a small
+/// result set.
+pub const CANDIDATE_FLOOR: u32 = 40;
+
+/// [`CANDIDATE_FLOOR`] as `u16` — used where a [`PositiveCount`] is required.
+/// Must stay in sync with [`CANDIDATE_FLOOR`].
+pub(crate) const CANDIDATE_FLOOR_U16: u16 = 40;
+
 /// Maximum candidates sent to the cross-encoder reranker per call.
 ///
 /// Mirrors `RERANK_CANDIDATE_LIMIT` from the root constants and the TS reference.

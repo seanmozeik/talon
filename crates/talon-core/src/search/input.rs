@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::constants::{DEFAULT_LIMIT, RELATED_DEFAULT_DEPTH};
 use crate::contracts::PositiveCount;
 use crate::error::TalonResult;
+use crate::search::constants::CANDIDATE_FLOOR_U16;
 
 /// Search mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -93,6 +94,9 @@ pub struct SearchInput {
     /// Result limit.
     #[serde(default)]
     pub limit: PositiveCount,
+    /// Candidate pool size for RRF/rerank over-fetch.
+    #[serde(default)]
+    pub candidate_limit: PositiveCount,
     /// Optional path scope.
     #[serde(default)]
     pub path: Option<String>,
@@ -137,6 +141,7 @@ impl Default for SearchInput {
             mode: SearchMode::Hybrid,
             fast: false,
             limit: PositiveCount::from_const(DEFAULT_LIMIT),
+            candidate_limit: PositiveCount::from_const(CANDIDATE_FLOOR_U16),
             path: None,
             tag: Vec::new(),
             frontmatter: None,
@@ -157,12 +162,13 @@ impl SearchInput {
     ///
     /// # Errors
     ///
-    /// Returns [`TalonError::InvalidInput`] when `limit` is zero.
+    /// Returns [`TalonError::InvalidInput`] when `limit` or `candidate_limit` is zero.
     pub fn from_cli_query(
         query: String,
         mode: SearchMode,
         fast: bool,
         limit: Option<u16>,
+        candidate_limit: Option<u16>,
     ) -> TalonResult<Self> {
         let mut input = Self {
             query: Some(query),
@@ -172,6 +178,9 @@ impl SearchInput {
         };
         if let Some(limit) = limit {
             input.limit = PositiveCount::new(limit, "limit")?;
+        }
+        if let Some(candidate_limit) = candidate_limit {
+            input.candidate_limit = PositiveCount::new(candidate_limit, "candidate_limit")?;
         }
         Ok(input)
     }

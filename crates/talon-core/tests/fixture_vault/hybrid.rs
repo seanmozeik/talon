@@ -64,6 +64,7 @@ fn fixture_vault_hybrid_search_returns_results() {
         mode: SearchMode::Hybrid,
         fast: false,
         limit: PositiveCount::new(10, "limit").unwrap(),
+        candidate_limit: PositiveCount::new(40, "candidate_limit").unwrap(),
         path: None,
         tag: Vec::new(),
         frontmatter: None,
