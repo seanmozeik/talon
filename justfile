@@ -51,8 +51,17 @@ verify: fmt
     rtk cargo test --doc --workspace --locked
     just rust-line-counts
 
+# ── Build (into target/ directory) ────────────────────────────────
+# Each target builds independently. Run individually or all at once.
+
 build-release:
     cargo build -p talon-cli --release --locked
+
+build-release-darwin-arm64:
+    cargo build -p talon-cli --release --target aarch64-apple-darwin --locked
+
+build-release-darwin-x64:
+    PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild -p talon-cli --release --target x86_64-apple-darwin --locked
 
 build-release-linux-x64:
     PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild -p talon-cli --release --target x86_64-unknown-linux-gnu --locked
@@ -60,15 +69,26 @@ build-release-linux-x64:
 build-release-linux-arm64:
     PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild -p talon-cli --release --target aarch64-unknown-linux-gnu --locked
 
-zigbuild-target target:
-    cargo zigbuild -p talon-cli --release --target {{ target }} --locked
+build-release-win32-x64:
+    PATH="$HOME/.cargo/bin:$PATH" "$HOME/.cargo/bin/cargo" zigbuild -p talon-cli --release --target x86_64-pc-windows-gnu --locked
 
-cross-build:
-    scripts/build-platform-packages.sh
+# Build all 5 platform targets
+build-all:
+    just build-release-darwin-arm64
+    just build-release-darwin-x64
+    just build-release-linux-x64
+    just build-release-linux-arm64
+    just build-release-win32-x64
 
-cross-build-no-smoke:
-    TALON_SKIP_SMOKE=1 scripts/build-platform-packages.sh
+# ── NPM packaging (takes already-built binaries from target/) ─────
+# Run `just build-all` first, then `just pack`. No building happens here.
+pack:
+    bun scripts/npm-pack.ts --npm-org seanmozeik --outdir ./ts/npm
 
+pack-no-smoke:
+    bun scripts/npm-pack.ts --npm-org seanmozeik --outdir ./ts/npm --skip-smoke
+
+# ── Install from source (host platform only) ──────────────────────
 install:
     cargo install --path crates/talon-cli --locked
 
@@ -79,4 +99,4 @@ eval:
 # Compare two eval result JSON files and print per-metric deltas.
 # Usage: just eval-compare baseline.json latest.json
 eval-compare file_a file_b:
-    python3 scripts/eval_compare.py {{file_a}} {{file_b}}
+    python3 scripts/eval_compare.py {{ file_a }} {{ file_b }}
