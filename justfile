@@ -89,12 +89,15 @@ pack:
 pack-no-smoke:
     bun scripts/npm-pack.ts --npm-org seanmozeik --skip-smoke
 
-# Publish generated npm workspaces and the root package in one npm invocation.
+# Publish generated npm platform workspaces first, then the root package.
 publish-npm: pack-no-smoke
     @just _publish-npm
 
 publish-npm-platforms: pack-no-smoke
     @just _publish-npm-platforms
+
+publish-npm-platform platform: pack-no-smoke
+    @just _publish-npm-platform {{ platform }}
 
 publish-npm-root: pack-no-smoke
     @just _publish-npm-root
@@ -117,6 +120,23 @@ _publish-npm-platforms:
         npm publish --workspaces "${publish_flags[@]}"; \
     else \
         npm publish --workspaces; \
+    fi
+
+_publish-npm-platform platform:
+    @publish_flags=(${NPM_PUBLISH_FLAGS:-}); \
+    otp="${NPM_OTP:-}"; \
+    if [ -z "$otp" ] && [[ " ${NPM_PUBLISH_FLAGS:-} " != *" --dry-run "* ]] && [ -t 0 ]; then \
+        read -r -p "npm OTP (blank to let npm prompt): " otp; \
+    fi; \
+    if [ -n "$otp" ]; then \
+        publish_flags+=(--otp "$otp"); \
+    fi; \
+    echo "==> Publishing npm platform {{ platform }}..."; \
+    cd npm; \
+    if [ ${#publish_flags[@]} -gt 0 ]; then \
+        npm publish "{{ platform }}" "${publish_flags[@]}"; \
+    else \
+        npm publish "{{ platform }}"; \
     fi
 
 _publish-npm-root:
@@ -145,12 +165,16 @@ _publish-npm:
     if [ -n "$otp" ]; then \
         publish_flags+=(--otp "$otp"); \
     fi; \
-    echo "==> Publishing npm workspaces and root package..."; \
+    echo "==> Publishing npm platform workspaces..."; \
     cd npm; \
     if [ ${#publish_flags[@]} -gt 0 ]; then \
-        npm publish --workspaces --include-workspace-root "${publish_flags[@]}"; \
+        npm publish --workspaces "${publish_flags[@]}"; \
+        echo "==> Publishing npm root package..."; \
+        npm publish . "${publish_flags[@]}"; \
     else \
-        npm publish --workspaces --include-workspace-root; \
+        npm publish --workspaces; \
+        echo "==> Publishing npm root package..."; \
+        npm publish .; \
     fi
 
 # ── Install from source (host platform only) ──────────────────────
