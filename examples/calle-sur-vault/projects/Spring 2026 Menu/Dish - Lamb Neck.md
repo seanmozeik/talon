@@ -1,5 +1,6 @@
 ---
 title: Dish - Lamb Neck
+aliases: [Lamb Neck]
 type: dish-spec
 parent: "[[Spring 2026 Menu]]"
 tags: [dish, spring2026, protein]

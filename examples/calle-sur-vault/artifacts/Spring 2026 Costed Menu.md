@@ -10,6 +10,8 @@ sources:
   - "[[Dish - Fava and Whey]]"
   - "[[Dish - Lamb Neck]]"
   - "[[Costing Fundamentals]]"
+previous_version: archive/2025-08-Costed-Menu-Late-Summer.md
+brief: raw/Brief - Original Spring 2026 Vision.md
 tags: [artifact, menu, costing, spring2026]
 ---
 

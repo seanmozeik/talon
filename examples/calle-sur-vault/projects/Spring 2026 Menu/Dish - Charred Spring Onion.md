@@ -1,5 +1,6 @@
 ---
 title: Dish - Charred Spring Onion
+aliases: [Charred Spring Onion]
 type: dish-spec
 parent: "[[Spring 2026 Menu]]"
 tags: [dish, spring2026, vegetable]

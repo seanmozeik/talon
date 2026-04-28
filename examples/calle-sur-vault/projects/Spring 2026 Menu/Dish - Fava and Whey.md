@@ -1,5 +1,6 @@
 ---
 title: Dish - Fava and Whey
+aliases: [Fava and Whey]
 type: dish-spec
 parent: "[[Spring 2026 Menu]]"
 tags: [dish, spring2026, vegetable, ferment]
