@@ -22,7 +22,7 @@ use crate::search::constants::RERANK_BATCH_SIZE;
 /// Embedding 5k tokens on CPU can take ~10s; reranking up to 100 candidates is
 /// usually sub-second. 60s gives generous headroom without hanging forever on
 /// a wedged sidecar.
-pub const DEFAULT_INFERENCE_TIMEOUT: Duration = Duration::from_secs(60);
+pub const DEFAULT_INFERENCE_TIMEOUT: Duration = Duration::from_mins(1);
 
 /// Blocking client for the Talon inference sidecar.
 #[derive(Debug, Clone)]
