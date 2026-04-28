@@ -134,9 +134,9 @@ _publish-npm-platform platform:
     echo "==> Publishing npm platform {{ platform }}..."; \
     cd npm; \
     if [ ${#publish_flags[@]} -gt 0 ]; then \
-        npm publish "{{ platform }}" "${publish_flags[@]}"; \
+        npm publish "./{{ platform }}" "${publish_flags[@]}"; \
     else \
-        npm publish "{{ platform }}"; \
+        npm publish "./{{ platform }}"; \
     fi
 
 _publish-npm-root:
