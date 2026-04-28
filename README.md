@@ -37,12 +37,22 @@ Scopes partition the vault by role and let queries opt in or out of each partiti
 glob = "wiki/**"
 priority = "boosted"
 default = true
+lint = true
+
+[scopes.daily]
+glob = "daily/**"
+priority = "muted"
+default = true
+lint = false        # daily notes still indexed; just not reported by `talon lint`
 
 [scopes.private]
 glob = "private/**"
 priority = "buried"
-default = false
+default = false     # excluded from queries unless --scope private / --scope-all
+lint = false
 ```
+
+Scope iteration follows TOML declaration order — narrower or more sensitive scopes declared above broader ones win when their globs overlap.
 
 By default, queries (`search`, `recall`, `related`, `meta`, `changes`, `lint`) cover only scopes with `default = true`. Scopes with `default = false` are **excluded** entirely — not just down-ranked.
 
@@ -53,6 +63,29 @@ To include a `default = false` scope, opt in explicitly:
 - `--scope-all`: searches every configured scope, overriding the `default` flag.
 
 The three are mutually exclusive on a single invocation. Unknown scope names error with the list of configured names. The response's `meta.scope_set` echoes the resolved active scope names. See `examples/config.toml` for a Karpathy-style preset.
+
+### Lint exclusion
+
+Per-scope `lint = false` skips a scope's files in `talon lint` findings — useful for ephemeral journals (`daily/`), closed work (`archive/`), or sensitive material (`private/`). Excluded files are still indexed and continue to satisfy link-target resolution, so a wiki note linking to a `daily/` file isn't reported as broken.
+
+For globs that don't fit cleanly into a scope, set a global ignore list:
+
+```toml
+[lint]
+ignore = ["**/_drafts/**", "**/scratch.md"]
+```
+
+Global `lint.ignore` takes precedence over per-scope `lint = true`.
+
+## Per-result fields
+
+`search`, `related`, and `meta` results carry these fields in `--json` mode (skipped in `--agent` mode for token efficiency):
+
+- `scope`: resolved scope name. Omitted for paths that match no scope.
+- `mtime`: file modification time in the system local timezone. `"HH:MM"` (e.g. `"15:42"`) for edits within the last 24 hours, `"YYYY-MM-DD"` (e.g. `"2026-04-25"`) otherwise. Recent edits get instantly-readable wall-clock time; older edits collapse to date. For sub-day precision on indexing/deletion events, see `changes`.
+- `count` (`related` only): number of distinct link rows between source and target — a rough edge-strength signal.
+
+`changes.indexed_at` and `tombstones.deleted_at` use full RFC 3339 UTC (`"2026-04-25T10:23:00Z"`) since `--since` consumers compare exact timestamps.
 
 ## Chunking
 

@@ -21,6 +21,13 @@ pub fn query_lint(
         LintCheck::DanglingRefs => find_dangling_refs(conn, filter.as_ref()),
         LintCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
     };
+    let findings = match config {
+        Some(cfg) => findings
+            .into_iter()
+            .filter(|f| !cfg.lint_excluded(std::path::Path::new(f.path.as_str())))
+            .collect(),
+        None => findings,
+    };
     LintResponse {
         vault: None,
         check: input.check,

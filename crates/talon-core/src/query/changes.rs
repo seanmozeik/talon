@@ -122,7 +122,7 @@ fn classify(
         };
         let entry = ChangeEntry {
             path: vault_path,
-            indexed_at: ts_ms,
+            indexed_at: super::mtime::format_iso8601(ts_ms).unwrap_or_default(),
         };
         if indexed_before.contains(&path) {
             modified.push(entry);
@@ -138,14 +138,15 @@ fn classify(
                 .ok()
                 .map(|vault_path| TombstoneEntry {
                     path: vault_path,
-                    deleted_at: *ts_ms,
+                    deleted_at: super::mtime::format_iso8601(*ts_ms).unwrap_or_default(),
                 })
         })
         .collect();
 
-    added.sort_by_key(|e| e.indexed_at);
-    modified.sort_by_key(|e| e.indexed_at);
-    deleted.sort_by_key(|e| e.deleted_at);
+    // ISO 8601 strings sort lexicographically the same as their epoch-ms source.
+    added.sort_by(|a, b| a.indexed_at.cmp(&b.indexed_at));
+    modified.sort_by(|a, b| a.indexed_at.cmp(&b.indexed_at));
+    deleted.sort_by(|a, b| a.deleted_at.cmp(&b.deleted_at));
 
     let mut remaining = limit;
     added.truncate(remaining);

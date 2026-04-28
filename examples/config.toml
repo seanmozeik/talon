@@ -25,7 +25,7 @@ chunk_min_tokens = 16
 # Inference endpoint. Anything TEI-compatible (text-embeddings-inference,
 # Infinity, ultraclaw's local sidecar) works. Adjust base_url to taste.
 [inference]
-base_url = "http://127.0.0.1:8000"
+base_url = "http://host.docker.internal:8000"
 
 [inference.models]
 query_embedding = "embed"
@@ -36,7 +36,7 @@ reranker = "rerank"
 # Query-expansion endpoint. OpenAI-compatible chat completions.
 [expansion]
 provider = "openai-compatible"
-base_url = "http://127.0.0.1:8000/v1"
+base_url = "http://host.docker.internal:8000/v1"
 model = "bonsai"
 # Optional total completion cap. Leave unset for thinking models.
 # max_tokens = 768
@@ -53,48 +53,68 @@ model = "bonsai"
 #   private/   sensitive — never auto-searched, only via explicit --scope private
 #   _meta/     vault infrastructure — only via --scope meta
 #
-# Talon has 5 priority tiers (boosted=3.0, elevated=1.5, normal=1.0,
-# muted=0.3, buried=0.05). daily/+raw/ both collapse to muted;
-# archive/+private/+_meta/ all collapse to buried — the user-visible
-# distinction is `default`, which controls whether a scope is auto-included
-# in default search.
+# Three knobs per scope:
+#   priority   ranking multiplier — boosted=3.0, elevated=1.5, normal=1.0,
+#              muted=0.3, buried=0.05
+#   default    if false, the scope is excluded from default queries entirely
+#              (not just down-ranked); re-include via --scope NAME or --scope-all
+#   lint       if false, files in this scope don't appear in `talon lint`
+#              findings — but stay indexed and continue to satisfy link-target
+#              resolution. Useful for ephemeral/closed/sensitive areas.
+#
+# Iteration follows TOML declaration order — narrower or more sensitive
+# scopes declared above broader ones win when their globs overlap.
 
 [scopes.wiki]
 glob = ["wiki/**"]
 priority = "boosted"
 default = true
+lint = true
 
 [scopes.projects]
 glob = ["projects/**"]
 priority = "elevated"
 default = true
+lint = true
 
 [scopes.artifacts]
 glob = ["artifacts/**"]
 priority = "normal"
 default = true
+lint = true
 
 [scopes.daily]
 glob = ["daily/**"]
 priority = "muted"
 default = false
+lint = false        # daily notes are written-from, not written-to
 
 [scopes.raw]
 glob = ["raw/**"]
 priority = "muted"
 default = false
+lint = true         # raw clips can have broken links worth catching
 
 [scopes.archive]
 glob = ["archive/**"]
 priority = "buried"
 default = false
+lint = false        # closed projects don't need ongoing curation
 
 [scopes.private]
 glob = ["private/**"]
 priority = "buried"
 default = false
+lint = false
 
 [scopes.meta]
 glob = ["_meta/**"]
 priority = "buried"
 default = false
+lint = false
+
+# ── Lint global ignore ─────────────────────────────────────────────────────
+# Globs of paths to skip when reporting lint findings. Takes precedence over
+# per-scope `lint = true`. Excluded paths remain indexed and link-resolvable.
+[lint]
+ignore = ["**/_drafts/**", "**/scratch.md"]

@@ -137,7 +137,9 @@ fn run_search_inner(
         total,
         results: scored
             .into_iter()
-            .filter_map(|r| raw_to_search_result(&r, input.mode, conn, anchors_requested, &query))
+            .filter_map(|r| {
+                raw_to_search_result(&r, input.mode, conn, anchors_requested, &query, config)
+            })
             .collect(),
         diagnostics,
     };
@@ -160,6 +162,7 @@ fn raw_to_search_result(
     conn: &Connection,
     anchors_requested: bool,
     query: &str,
+    config: Option<&TalonConfig>,
 ) -> Option<SearchResult> {
     let match_kind = match mode {
         SearchMode::Hybrid => infer_hybrid_match_kind(&raw.scores),
@@ -203,6 +206,11 @@ fn raw_to_search_result(
         None
     };
 
+    let scope = config
+        .and_then(|cfg| cfg.resolve_scope_name(std::path::Path::new(&raw.path)))
+        .map(str::to_string);
+    let mtime = super::mtime::local_mtime_for_path(conn, &raw.path);
+
     Some(SearchResult {
         vault_path: VaultPath::parse(&raw.path).ok()?,
         title: raw.title.clone(),
@@ -210,7 +218,8 @@ fn raw_to_search_result(
         score: raw.score,
         raw_score: Some(raw.score),
         match_kind,
-        scope: None,
+        scope,
+        mtime,
         preview_anchors,
     })
 }

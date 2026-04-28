@@ -26,8 +26,8 @@ All commands emit `{action, version, ok, data, meta}` JSON on success; `{action,
   - `--tag-counts` — emit a `{tag, count}` aggregation from `note_tags`.
   - `--sources PATH` — resolve reverse-source references for a path.
   - `--since <timestamp>` — restrict to notes indexed since this time.
-- **`changes --since <timestamp>`**: Return `{added, modified, deleted}` note lists from the event log.
-- **`lint [check]`**: Surface graph health issues. Default/checks: `all`, `orphans`, `broken-links`, `dangling-refs`, `unreferenced`.
+- **`changes --since <timestamp>`**: Return `{added, modified, deleted}` note lists. `indexed_at` and `deleted_at` are ISO 8601 UTC.
+- **`lint [check]`**: Surface graph health issues. Default/checks: `all`, `orphans`, `broken-links`, `dangling-refs`, `unreferenced`. Scopes with `lint = false` and paths matching `[lint].ignore` globs are excluded from findings; they remain available as link targets.
 - **`status`**: Report active note count, chunk count, vector dimensions, scope summary, and readiness state.
 
 ## Scope flags
@@ -41,10 +41,18 @@ All commands emit `{action, version, ok, data, meta}` JSON on success; `{action,
 
 The three forms are mutually exclusive on a single invocation. Unknown scope names error with the configured-name list. Each response's `meta.scope_set` reports the resolved active scope names so the caller can verify what was searched.
 
+## Per-result fields
+
+`search`, `related`, and `meta` results carry these fields in `--json` mode (omitted in `--agent` mode for token efficiency):
+
+- `scope` — the resolved scope name for the result's path. Omitted when the path doesn't match any configured scope.
+- `mtime` — file modification time in the system local timezone. `"HH:MM"` (e.g. `"15:42"`) when the edit was within the last 24 hours, `"YYYY-MM-DD"` (e.g. `"2026-04-25"`) otherwise. Recent edits get instantly-readable wall-clock time; older edits collapse to date.
+- `count` (related only) — number of distinct link rows connecting source and target. A note linked from three different aliases scores 3 — proxy for edge strength.
+
 ## Output flags
 
-- `--json`: Pretty-printed JSON envelope.
-- `--agent`: Compact JSON for token-efficient agent consumption.
+- `--json`: Pretty-printed JSON envelope, including the per-result fields above.
+- `--agent`: Compact JSON for token-efficient agent consumption. Omits `scope`, `mtime`, and other freshness/provenance fields per result. Use `meta.scope_set` to know which scopes a query covered.
 
 ## Examples
 

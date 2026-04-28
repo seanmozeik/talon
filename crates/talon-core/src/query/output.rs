@@ -131,6 +131,12 @@ pub struct MetaEntry {
     pub path: VaultPath,
     /// Frontmatter key-value pairs.
     pub frontmatter: BTreeMap<String, serde_json::Value>,
+    /// Resolved scope name, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// File modification time as RFC 3339 / ISO 8601.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<String>,
 }
 
 /// Frontmatter query response.
@@ -153,8 +159,8 @@ pub struct MetaResponse {
 pub struct ChangeEntry {
     /// Vault-relative path.
     pub path: VaultPath,
-    /// When this file was last indexed (millis since epoch).
-    pub indexed_at: u64,
+    /// When this file was last indexed (RFC 3339 / ISO 8601).
+    pub indexed_at: String,
 }
 
 /// A tombstone entry (deleted file).
@@ -163,8 +169,8 @@ pub struct ChangeEntry {
 pub struct TombstoneEntry {
     /// Vault-relative path.
     pub path: VaultPath,
-    /// When the file was detected as deleted (millis since epoch).
-    pub deleted_at: u64,
+    /// When the file was detected as deleted (RFC 3339 / ISO 8601).
+    pub deleted_at: String,
 }
 
 /// Change feed response.

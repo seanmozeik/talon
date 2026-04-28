@@ -60,7 +60,16 @@ pub fn query_meta(
 
     let entries = notes
         .into_iter()
-        .filter_map(|n| build_meta_entry(&n.vault_path, &n.frontmatter_json, &input.select))
+        .filter_map(|n| {
+            build_meta_entry(
+                conn,
+                &n.vault_path,
+                &n.frontmatter_json,
+                n.mtime_ms,
+                &input.select,
+                config,
+            )
+        })
         .collect();
 
     MetaResponse {
@@ -129,9 +138,12 @@ fn query_notes_by_sources(conn: &Connection, target: &str) -> Vec<NoteRow> {
 }
 
 fn build_meta_entry(
+    conn: &Connection,
     vault_path: &str,
     frontmatter_json: &str,
+    mtime_ms: i64,
     select: &[String],
+    config: Option<&TalonConfig>,
 ) -> Option<MetaEntry> {
     let path = VaultPath::parse(vault_path).ok()?;
 
@@ -147,7 +159,17 @@ fn build_meta_entry(
         .map(|(k, v)| (k, fm_value_to_json(v)))
         .collect();
 
-    Some(MetaEntry { path, frontmatter })
+    let scope = config
+        .and_then(|cfg| cfg.resolve_scope_name(std::path::Path::new(vault_path)))
+        .map(str::to_string);
+    let mtime = super::mtime::format_local_mtime(conn, mtime_ms);
+
+    Some(MetaEntry {
+        path,
+        frontmatter,
+        scope,
+        mtime,
+    })
 }
 
 fn fm_value_to_json(v: FrontmatterValue) -> serde_json::Value {

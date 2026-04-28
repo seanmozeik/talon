@@ -75,6 +75,7 @@ fn snapshot_search_results() -> Result<()> {
                 raw_score: None,
                 match_kind: MatchKind::Fulltext,
                 scope: None,
+                mtime: None,
                 preview_anchors: None,
             },
             SearchResult {
@@ -85,6 +86,7 @@ fn snapshot_search_results() -> Result<()> {
                 raw_score: None,
                 match_kind: MatchKind::Semantic,
                 scope: Some("research".to_string()),
+                mtime: None,
                 preview_anchors: None,
             },
         ],
@@ -116,6 +118,7 @@ fn snapshot_search_verbose_diagnostics() -> Result<()> {
             raw_score: None,
             match_kind: MatchKind::Fulltext,
             scope: None,
+            mtime: None,
             preview_anchors: None,
         }],
         diagnostics: Some(SearchDiagnostics {

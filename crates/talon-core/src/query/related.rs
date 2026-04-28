@@ -60,6 +60,16 @@ pub struct RelatedResult {
     pub link_text: String,
     /// Direction: outgoing or backlink.
     pub relation: RelationKind,
+    /// Number of distinct link rows connecting source and target. A note
+    /// linked once and a note linked from three different aliases score
+    /// 1 vs 3 — a rough proxy for edge strength.
+    pub count: u32,
+    /// Resolved scope name, if applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
+    /// File modification time as RFC 3339 / ISO 8601.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<String>,
 }
 
 /// Relation kind (outgoing vs backlink).
@@ -120,7 +130,7 @@ pub fn find_related(
 
         let neighbors = collect_neighbors(conn, &current_path, direction);
 
-        for (neighbor_path, link_text, relation) in neighbors {
+        for (neighbor_path, link_text, relation, count) in neighbors {
             if visited.contains(&neighbor_path) {
                 continue;
             }
@@ -138,11 +148,19 @@ pub fn find_related(
                 continue;
             };
 
+            let scope = config
+                .and_then(|cfg| cfg.resolve_scope_name(std::path::Path::new(&neighbor_path)))
+                .map(str::to_string);
+            let mtime = super::mtime::local_mtime_for_path(conn, &neighbor_path);
+
             results.push(RelatedResult {
                 vault_path,
                 title,
                 link_text,
                 relation,
+                count,
+                scope,
+                mtime,
             });
 
             queue.push_back((neighbor_path, current_depth + 1));
@@ -157,12 +175,12 @@ pub fn find_related(
     }
 }
 
-/// Returns `(neighbor_path, link_text, relation)` tuples for a given path.
+/// Returns `(neighbor_path, link_text, relation, count)` tuples for a given path.
 fn collect_neighbors(
     conn: &Connection,
     path: &str,
     direction: Direction,
-) -> Vec<(String, String, RelationKind)> {
+) -> Vec<(String, String, RelationKind, u32)> {
     let mut neighbors = Vec::new();
     if direction == Direction::Outgoing || direction == Direction::Both {
         neighbors.extend(query_outgoing(conn, path));
@@ -173,39 +191,50 @@ fn collect_neighbors(
     neighbors
 }
 
-fn query_outgoing(conn: &Connection, path: &str) -> Vec<(String, String, RelationKind)> {
+fn query_outgoing(conn: &Connection, path: &str) -> Vec<(String, String, RelationKind, u32)> {
     let Ok(mut stmt) = conn.prepare(
-        "SELECT DISTINCT to_path, COALESCE(alias, raw_target, to_path) \
-         FROM links WHERE from_path = ? ORDER BY to_path",
+        "SELECT to_path, MIN(COALESCE(alias, raw_target, to_path)), COUNT(*) \
+         FROM links WHERE from_path = ? GROUP BY to_path ORDER BY to_path",
     ) else {
         return Vec::new();
     };
     stmt.query_map(params![path], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, u32>(2)?,
+        ))
     })
     .and_then(Iterator::collect)
-    .map(|rows: Vec<(String, String)>| {
+    .map(|rows: Vec<(String, String, u32)>| {
         rows.into_iter()
-            .map(|(p, t)| (p, t, RelationKind::Outgoing))
+            .map(|(p, t, c)| (p, t, RelationKind::Outgoing, c))
             .collect()
     })
     .unwrap_or_default()
 }
 
-fn query_backlinks_neighbors(conn: &Connection, path: &str) -> Vec<(String, String, RelationKind)> {
+fn query_backlinks_neighbors(
+    conn: &Connection,
+    path: &str,
+) -> Vec<(String, String, RelationKind, u32)> {
     let Ok(mut stmt) = conn.prepare(
-        "SELECT DISTINCT from_path, COALESCE(alias, raw_target, from_path) \
-         FROM links WHERE to_path = ? ORDER BY from_path",
+        "SELECT from_path, MIN(COALESCE(alias, raw_target, from_path)), COUNT(*) \
+         FROM links WHERE to_path = ? GROUP BY from_path ORDER BY from_path",
     ) else {
         return Vec::new();
     };
     stmt.query_map(params![path], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, u32>(2)?,
+        ))
     })
     .and_then(Iterator::collect)
-    .map(|rows: Vec<(String, String)>| {
+    .map(|rows: Vec<(String, String, u32)>| {
         rows.into_iter()
-            .map(|(p, t)| (p, t, RelationKind::Backlink))
+            .map(|(p, t, c)| (p, t, RelationKind::Backlink, c))
             .collect()
     })
     .unwrap_or_default()

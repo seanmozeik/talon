@@ -111,7 +111,6 @@ mod tests {
     use crate::config::{ExpansionConfig, InferenceConfig, InferenceModels, ScopesConfig};
     use crate::indexing::migrations::run_migrations;
     use rusqlite::Connection;
-    use std::collections::BTreeMap;
     use std::path::PathBuf;
 
     fn fresh_db() -> Connection {
@@ -144,6 +143,7 @@ mod tests {
             },
             scopes: ScopesConfig::new(),
             search: crate::config::SearchConfig::default(),
+            lint: crate::config::LintConfig::default(),
             chunker: crate::config::ChunkerConfig::default(),
         }
     }
@@ -214,13 +214,14 @@ mod tests {
         insert_note(&conn, "Atlas/Home.md");
         insert_note(&conn, "Other/Misc.md");
 
-        let mut scopes = BTreeMap::new();
+        let mut scopes = ScopesConfig::new();
         scopes.insert(
             "atlas".to_string(),
             Scope {
                 glob: ScopeGlob::Single("Atlas/**".to_string()),
                 priority: ScopePriority::Normal,
                 default: true,
+                lint: true,
             },
         );
 
@@ -247,6 +248,7 @@ mod tests {
             },
             scopes,
             search: crate::config::SearchConfig::default(),
+            lint: crate::config::LintConfig::default(),
             chunker: crate::config::ChunkerConfig::default(),
         };
 

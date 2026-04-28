@@ -19,6 +19,14 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
         .map(|s| parse_where_clause(s).map_err(|e| eyre::eyre!("invalid --where: {s}: {e}")))
         .collect::<Result<Vec<_>>>()?;
 
+    // When --tag-counts is set, the per-path entries list is incidental to the
+    // global tag dictionary. Default to a much higher cap so the agent isn't
+    // silently handed a 10-of-N slice; explicit --limit still wins.
+    let limit_default = if args.meta.tag_counts {
+        u16::MAX
+    } else {
+        talon_core::constants::DEFAULT_LIMIT
+    };
     let input = MetaInput {
         where_: where_clauses,
         since: args.since.clone(),
@@ -28,10 +36,7 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
         select: args.meta.select.clone(),
         tag_counts: args.meta.tag_counts,
         sources: args.meta.sources.clone(),
-        limit: PositiveCount::new(
-            args.limit.unwrap_or(talon_core::constants::DEFAULT_LIMIT),
-            "limit",
-        )?,
+        limit: PositiveCount::new(args.limit.unwrap_or(limit_default), "limit")?,
     };
 
     let config = config::load_config(args.config_file.as_deref())?;

@@ -1,15 +1,14 @@
 use super::*;
 use crate::config::{
     ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, Scope, ScopeGlob,
-    ScopePriority, SearchConfig, TalonConfig,
+    ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
 };
 use crate::indexing::migrations::run_migrations;
 use rusqlite::{Connection, params};
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
-    let mut map = BTreeMap::new();
+    let mut map = ScopesConfig::new();
     for (name, glob) in scopes {
         map.insert(
             name.to_string(),
@@ -17,6 +16,7 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
                 glob: ScopeGlob::Single(glob.to_string()),
                 priority: ScopePriority::Normal,
                 default: true,
+                lint: true,
             },
         );
     }
@@ -43,6 +43,7 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
         },
         scopes: map,
         search: SearchConfig::default(),
+        lint: crate::config::LintConfig::default(),
         chunker: ChunkerConfig::default(),
     }
 }

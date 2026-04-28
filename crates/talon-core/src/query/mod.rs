@@ -7,6 +7,7 @@ pub mod changes;
 pub mod input;
 pub mod lint;
 pub mod meta;
+pub mod mtime;
 pub mod output;
 pub mod read;
 pub mod recall;

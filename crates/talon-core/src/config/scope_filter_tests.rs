@@ -1,10 +1,9 @@
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use super::ScopeFilter;
 use crate::config::{
     ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, Scope, ScopeGlob,
-    ScopePriority, SearchConfig, TalonConfig,
+    ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
 };
 use crate::error::TalonError;
 
@@ -13,11 +12,12 @@ fn scope(glob: &str, priority: ScopePriority, default: bool) -> Scope {
         glob: ScopeGlob::Single(glob.to_string()),
         priority,
         default,
+        lint: true,
     }
 }
 
 fn config_with(scopes: Vec<(&str, Scope)>) -> TalonConfig {
-    let mut map = BTreeMap::new();
+    let mut map = ScopesConfig::new();
     for (name, s) in scopes {
         map.insert(name.to_string(), s);
     }
@@ -44,6 +44,7 @@ fn config_with(scopes: Vec<(&str, Scope)>) -> TalonConfig {
         },
         scopes: map,
         search: SearchConfig::default(),
+        lint: crate::config::LintConfig::default(),
         chunker: ChunkerConfig::default(),
     }
 }

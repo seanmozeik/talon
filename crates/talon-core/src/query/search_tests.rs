@@ -65,7 +65,7 @@ fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
     );
 
     let raw = raw("notes/fallback.md", "short alpha", true, None);
-    let result = raw_to_search_result(&raw, SearchMode::Fulltext, &conn, false, "alpha")
+    let result = raw_to_search_result(&raw, SearchMode::Fulltext, &conn, false, "alpha", None)
         .unwrap_or_else(|| panic!("raw result should convert"));
 
     assert!(
@@ -180,7 +180,7 @@ fn raw_to_search_result_truncates_on_char_boundaries() {
         Some("Heading"),
     );
 
-    let result = raw_to_search_result(&raw, SearchMode::Semantic, &conn, false, "")
+    let result = raw_to_search_result(&raw, SearchMode::Semantic, &conn, false, "", None)
         .unwrap_or_else(|| panic!("raw result should convert"));
 
     assert_eq!(

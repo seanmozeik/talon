@@ -3,13 +3,17 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+mod chunker;
 mod defaults;
+mod endpoints;
 mod scope_filter;
 use defaults::{
     default_candidate_limit, default_limit, default_rerank_batch_size, default_rerank_cache_size,
     default_rerank_max_tokens, default_search_cache_size,
 };
 
+pub use chunker::ChunkerConfig;
+pub use endpoints::{ExpansionConfig, InferenceConfig, InferenceModels};
 pub use scope_filter::ScopeFilter;
 
 /// Priority tier for scope-based ranking.
@@ -85,7 +89,11 @@ impl ScopeGlob {
 }
 
 /// Scope name keyed map.
-pub type ScopesConfig = std::collections::BTreeMap<String, Scope>;
+///
+/// Uses `IndexMap` so iteration follows TOML declaration order — narrower or
+/// more sensitive scopes declared above broader ones win when their globs
+/// overlap (per spec §6.3).
+pub type ScopesConfig = indexmap::IndexMap<String, Scope>;
 
 /// A single scope definition.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,6 +105,18 @@ pub struct Scope {
     pub priority: ScopePriority,
     /// Whether this scope is included in the default search set.
     pub default: bool,
+    /// Whether `talon lint` reports findings for files in this scope.
+    ///
+    /// Files in `lint = false` scopes are still indexed and used for link
+    /// resolution (so a wikilink target in `daily/` still satisfies a wiki
+    /// note's link), but no findings are emitted with `from_path` in this
+    /// scope. Defaults to true.
+    #[serde(default = "default_true")]
+    pub lint: bool,
+}
+
+const fn default_true() -> bool {
+    true
 }
 
 /// Full Talon runtime configuration.
@@ -126,6 +146,9 @@ pub struct TalonConfig {
     /// Search defaults and cache/client tunables.
     #[serde(default)]
     pub search: SearchConfig,
+    /// Lint settings (global ignore globs, etc.).
+    #[serde(default)]
+    pub lint: LintConfig,
     /// Chunker settings from the `[indexer]` table.
     #[serde(default, rename = "indexer")]
     pub chunker: ChunkerConfig,
@@ -174,6 +197,32 @@ impl TalonConfig {
         None
     }
 
+    /// Returns true when `path` should be excluded from `lint` findings.
+    ///
+    /// Excludes paths that are either (1) in a scope with `lint = false`, or
+    /// (2) matched by any glob in `[lint].ignore`. The global ignore list takes
+    /// precedence — even paths in `lint = true` scopes are excluded if they
+    /// match an ignore glob. Excluded paths remain in the index and continue
+    /// to satisfy link-target resolution.
+    #[must_use]
+    pub fn lint_excluded(&self, path: &Path) -> bool {
+        let path_str = path.to_string_lossy();
+        let ignored = self
+            .lint
+            .ignore
+            .iter()
+            .any(|glob| glob::Pattern::new(glob).is_ok_and(|p| p.matches(&path_str)));
+        if ignored {
+            return true;
+        }
+        for scope in self.scopes.values() {
+            if matches_path_glob(path, &scope.glob) {
+                return !scope.lint;
+            }
+        }
+        false
+    }
+
     /// Returns the set of scope names that are in the default search set.
     #[must_use]
     pub fn default_scope_names(&self) -> Vec<&String> {
@@ -207,6 +256,17 @@ fn matches_path_glob(path: &Path, glob: &ScopeGlob) -> bool {
             .iter()
             .any(|g| glob::Pattern::new(g).is_ok_and(|p| p.matches(&path_str))),
     }
+}
+
+/// Lint settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LintConfig {
+    /// Glob-style patterns of file paths to skip when reporting lint findings.
+    /// Takes precedence over per-scope `lint = true`. Files matching these
+    /// globs are still indexed for link resolution.
+    #[serde(default)]
+    pub ignore: Vec<String>,
 }
 
 /// Search defaults and process-level cache/client tunables.
@@ -244,102 +304,4 @@ impl Default for SearchConfig {
             rerank_max_tokens: default_rerank_max_tokens(),
         }
     }
-}
-
-/// TEI-compatible inference endpoint configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InferenceConfig {
-    /// Base URL for TEI-compatible routes.
-    pub base_url: String,
-    /// Model names used by the endpoint.
-    pub models: InferenceModels,
-}
-
-/// Inference model names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InferenceModels {
-    /// Query embedding model.
-    pub query_embedding: String,
-    /// Document embedding model.
-    pub document_embedding: String,
-    /// Chunk embedding model.
-    pub chunk_embedding: String,
-    /// Reranker model.
-    pub reranker: String,
-}
-
-/// Chunker knobs for the `[indexer]` section of `talon.toml`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ChunkerConfig {
-    /// Target chunk size in tokens (default 512).
-    #[serde(default = "ChunkerConfig::default_chunk_tokens")]
-    pub chunk_tokens: usize,
-    /// Overlap in tokens between adjacent chunks (default 64, must be < `chunk_tokens`).
-    #[serde(default = "ChunkerConfig::default_chunk_overlap")]
-    pub chunk_overlap: usize,
-    /// Minimum token count; chunks below this are discarded after splitting (default 16).
-    #[serde(default = "ChunkerConfig::default_chunk_min_tokens")]
-    pub chunk_min_tokens: usize,
-}
-
-impl ChunkerConfig {
-    /// Validates chunker invariants from user configuration.
-    ///
-    /// # Errors
-    ///
-    /// Returns a message when `chunk_tokens` is zero or `chunk_overlap` is not
-    /// smaller than `chunk_tokens`.
-    pub fn validate(&self) -> Result<(), String> {
-        if self.chunk_tokens == 0 {
-            return Err("indexer.chunk_tokens must be greater than 0".to_string());
-        }
-        if self.chunk_overlap >= self.chunk_tokens {
-            return Err("indexer.chunk_overlap must be less than indexer.chunk_tokens".to_string());
-        }
-        Ok(())
-    }
-
-    #[must_use]
-    const fn default_chunk_tokens() -> usize {
-        crate::search::constants::EMBED_CHUNK_TOKENS_DEFAULT
-    }
-    #[must_use]
-    const fn default_chunk_overlap() -> usize {
-        crate::search::constants::EMBED_CHUNK_OVERLAP_DEFAULT
-    }
-    #[must_use]
-    const fn default_chunk_min_tokens() -> usize {
-        crate::search::constants::CHUNK_MIN_TOKENS_DEFAULT
-    }
-}
-
-impl Default for ChunkerConfig {
-    fn default() -> Self {
-        Self {
-            chunk_tokens: Self::default_chunk_tokens(),
-            chunk_overlap: Self::default_chunk_overlap(),
-            chunk_min_tokens: Self::default_chunk_min_tokens(),
-        }
-    }
-}
-
-/// OpenAI-compatible query expansion configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ExpansionConfig {
-    /// Provider label, such as `openai-compatible`.
-    pub provider: String,
-    /// Chat-completions-compatible base URL.
-    pub base_url: String,
-    /// Expansion model name.
-    pub model: String,
-    /// Optional total completion token cap.
-    ///
-    /// Leave unset for thinking models because many OpenAI-compatible local
-    /// servers count hidden reasoning tokens against this budget.
-    #[serde(default)]
-    pub max_tokens: Option<u32>,
 }

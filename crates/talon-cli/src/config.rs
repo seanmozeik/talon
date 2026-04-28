@@ -203,6 +203,7 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
         },
         scopes: default_karpathy_scopes(),
         search: talon_core::SearchConfig::default(),
+        lint: talon_core::LintConfig::default(),
         chunker: talon_core::ChunkerConfig::default(),
     }
 }
@@ -264,9 +265,9 @@ fn expand_tilde(path: PathBuf) -> PathBuf {
 }
 
 /// Builds the Karpathy-shaped preset scopes.
-fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
+fn default_karpathy_scopes() -> talon_core::ScopesConfig {
     use talon_core::ScopeGlob;
-    let mut scopes = std::collections::BTreeMap::new();
+    let mut scopes = talon_core::ScopesConfig::new();
 
     scopes.insert(
         "wiki".to_string(),
@@ -274,6 +275,7 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
             glob: ScopeGlob::Multiple(vec!["wiki/**".to_string(), "concepts/**".to_string()]),
             priority: ScopePriority::Boosted,
             default: true,
+            lint: true,
         },
     );
     scopes.insert(
@@ -282,6 +284,7 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
             glob: ScopeGlob::Single("projects/**".to_string()),
             priority: ScopePriority::Elevated,
             default: true,
+            lint: true,
         },
     );
     scopes.insert(
@@ -290,6 +293,7 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
             glob: ScopeGlob::Single("artifacts/**".to_string()),
             priority: ScopePriority::Normal,
             default: true,
+            lint: true,
         },
     );
     scopes.insert(
@@ -298,6 +302,7 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
             glob: ScopeGlob::Single("raw/**".to_string()),
             priority: ScopePriority::Muted,
             default: true,
+            lint: true,
         },
     );
     scopes.insert(
@@ -306,6 +311,7 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
             glob: ScopeGlob::Single("daily/**".to_string()),
             priority: ScopePriority::Muted,
             default: true,
+            lint: false,
         },
     );
     scopes.insert(
@@ -314,6 +320,7 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
             glob: ScopeGlob::Single("archive/**".to_string()),
             priority: ScopePriority::Buried,
             default: true,
+            lint: false,
         },
     );
     scopes.insert(
@@ -322,6 +329,7 @@ fn default_karpathy_scopes() -> std::collections::BTreeMap<String, Scope> {
             glob: ScopeGlob::Single("private/**".to_string()),
             priority: ScopePriority::Normal,
             default: false,
+            lint: false,
         },
     );
 

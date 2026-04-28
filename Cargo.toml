@@ -23,6 +23,7 @@ dirs = "6.0.0"
 eyre = "0.6.12"
 fs-err = "3.3.0"
 glob = "0.3.3"
+indexmap = { version = "2.13.0", features = ["serde"] }
 indicatif = "0.18.4"
 lru = "0.18.0"
 rattles = "0.3.1"

@@ -1063,6 +1063,8 @@ checksum = "d466e9454f08e4a911e14806c24e16fba1b4c121d1ea474396f396069cf949d9"
 dependencies = [
  "equivalent",
  "hashbrown 0.17.0",
+ "serde",
+ "serde_core",
 ]
 
 [[package]]
@@ -1823,6 +1825,7 @@ dependencies = [
  "criterion",
  "fs-err",
  "glob",
+ "indexmap",
  "lru",
  "regex",
  "reqwest",

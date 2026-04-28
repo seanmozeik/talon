@@ -73,6 +73,9 @@ pub struct SearchResult {
     /// Resolved scope name, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
+    /// File modification time as RFC 3339 / ISO 8601 (`"2026-04-25T10:23:00Z"`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtime: Option<String>,
     /// Per-result match anchors (populated when `SearchInput.anchors == true`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_anchors: Option<Vec<MatchAnchor>>,
