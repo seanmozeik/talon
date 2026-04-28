@@ -107,7 +107,11 @@ _publish-npm:
     fi; \
     echo "==> Publishing npm workspaces and root package..."; \
     cd npm; \
-    npm publish --workspaces --include-workspace-root "${publish_flags[@]}"
+    if [ ${#publish_flags[@]} -gt 0 ]; then \
+        npm publish --workspaces --include-workspace-root "${publish_flags[@]}"; \
+    else \
+        npm publish --workspaces --include-workspace-root; \
+    fi
 
 # ── Install from source (host platform only) ──────────────────────
 install:
