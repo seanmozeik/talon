@@ -93,8 +93,48 @@ pack-no-smoke:
 publish-npm: pack-no-smoke
     @just _publish-npm
 
+publish-npm-platforms: pack-no-smoke
+    @just _publish-npm-platforms
+
+publish-npm-root: pack-no-smoke
+    @just _publish-npm-root
+
 publish-npm-dry-run: pack-no-smoke
     @NPM_PUBLISH_FLAGS="--dry-run" just _publish-npm
+
+_publish-npm-platforms:
+    @publish_flags=(${NPM_PUBLISH_FLAGS:-}); \
+    otp="${NPM_OTP:-}"; \
+    if [ -z "$otp" ] && [[ " ${NPM_PUBLISH_FLAGS:-} " != *" --dry-run "* ]] && [ -t 0 ]; then \
+        read -r -p "npm OTP (blank to let npm prompt): " otp; \
+    fi; \
+    if [ -n "$otp" ]; then \
+        publish_flags+=(--otp "$otp"); \
+    fi; \
+    echo "==> Publishing npm platform workspaces..."; \
+    cd npm; \
+    if [ ${#publish_flags[@]} -gt 0 ]; then \
+        npm publish --workspaces "${publish_flags[@]}"; \
+    else \
+        npm publish --workspaces; \
+    fi
+
+_publish-npm-root:
+    @publish_flags=(${NPM_PUBLISH_FLAGS:-}); \
+    otp="${NPM_OTP:-}"; \
+    if [ -z "$otp" ] && [[ " ${NPM_PUBLISH_FLAGS:-} " != *" --dry-run "* ]] && [ -t 0 ]; then \
+        read -r -p "npm OTP (blank to let npm prompt): " otp; \
+    fi; \
+    if [ -n "$otp" ]; then \
+        publish_flags+=(--otp "$otp"); \
+    fi; \
+    echo "==> Publishing npm root package..."; \
+    cd npm; \
+    if [ ${#publish_flags[@]} -gt 0 ]; then \
+        npm publish . "${publish_flags[@]}"; \
+    else \
+        npm publish .; \
+    fi
 
 _publish-npm:
     @publish_flags=(${NPM_PUBLISH_FLAGS:-}); \

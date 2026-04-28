@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const { createRequire } = require("node:module");
+import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 
 const PLATFORMS = {{PLATFORMS}};
