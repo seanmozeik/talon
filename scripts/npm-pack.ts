@@ -56,9 +56,7 @@ function hostOs(): string {
 
 function hostArch(): string {
   const a = process.arch as string;
-  return a === "arm64" ? "arm64"
-       : a === "x64"  ? "x64"
-       : "unknown";
+  return a === "arm64" ? "arm64" : (a === "x64" ? "x64" : "unknown");
 }
 
 // ── CLI arg parsing ────────────────────────────────────────────────────────────
@@ -67,7 +65,7 @@ const args: Record<string, string | undefined> = {};
 const argv = process.argv.slice(2);
 for (let i = 0; i < argv.length; i++) {
   const arg = argv[i];
-  if (!arg || !arg.startsWith("--")) continue;
+  if (!arg || !arg.startsWith("--")) {continue;}
   const key = arg.replace(/^--/, "");
   const next = argv[i + 1];
   if (next && !next.startsWith("-")) {
@@ -87,10 +85,9 @@ function scopedName(base: string): string {
 }
 
 function npmRepositoryUrl(): string {
-  const source = cargoMeta.repository
-    ?? (npmOrg
-      ? `https://github.com/${npmOrg}/${packageName}`
-      : `https://github.com/${packageName}`);
+  const source =
+    cargoMeta.repository ??
+    (npmOrg ? `https://github.com/${npmOrg}/${packageName}` : `https://github.com/${packageName}`);
   const gitUrl = source.startsWith("git+") ? source : `git+${source}`;
   return gitUrl.endsWith(".git") ? gitUrl : `${gitUrl}.git`;
 }
@@ -119,7 +116,7 @@ async function loadCargoMetadata(): Promise<CargoPackage> {
       process.exit(1);
     }
   } else {
-    const binCrates = meta.packages.filter((p: { targets: Array<{kind: string[]}> }) =>
+    const binCrates = meta.packages.filter((p: { targets: { kind: string[] }[] }) =>
       p.targets.some((t: { kind: string[] }) => t.kind.includes("bin")),
     );
     if (binCrates.length === 0) {
@@ -145,13 +142,15 @@ async function loadCargoMetadata(): Promise<CargoPackage> {
 }
 
 function deriveBinaryName(cargoPkgName: string): string {
-  if (args.binary) {return args.binary;}
+  if (args.binary) {
+    return args.binary;
+  }
   return cargoPkgName.replace(/[-_.]?(?:cli|bin)$/, "");
 }
 
 const cargoMeta = await loadCargoMetadata();
 const packageName = cargoMeta.name;
-const {version} = cargoMeta;
+const { version } = cargoMeta;
 const binaryName = deriveBinaryName(packageName);
 const repository = { type: "git", url: npmRepositoryUrl() };
 const skipSmoke = args["skip-smoke"] === "true" || process.env.TALON_SKIP_SMOKE === "1";
@@ -171,9 +170,15 @@ async function main() {
   ).target_directory;
 
   console.log(`version=${version} package=${packageName} binary=${binaryName}`);
-  if (cargoMeta.description) {console.log(`description=${cargoMeta.description}`);}
-  if (cargoMeta.license) {console.log(`license=${cargoMeta.license}`);}
-  if (cargoMeta.repository) {console.log(`repository=${cargoMeta.repository}`);}
+  if (cargoMeta.description) {
+    console.log(`description=${cargoMeta.description}`);
+  }
+  if (cargoMeta.license) {
+    console.log(`license=${cargoMeta.license}`);
+  }
+  if (cargoMeta.repository) {
+    console.log(`repository=${cargoMeta.repository}`);
+  }
   console.log(`targetDir=${targetDir}`);
 
   // ── Package each platform ──────────────────────────────────────────────
@@ -186,8 +191,20 @@ async function main() {
     const altBinary = `${targetDir}/${t.triple}/release/${binaryName}`;
 
     let found: string | null = null;
-    try { await fs.access(buildBinary); found = buildBinary; } catch { /* not found */ }
-    if (!found) { try { await fs.access(altBinary); found = altBinary; } catch { /* not found */ } }
+    try {
+      await fs.access(buildBinary);
+      found = buildBinary;
+    } catch {
+      /* Not found */
+    }
+    if (!found) {
+      try {
+        await fs.access(altBinary);
+        found = altBinary;
+      } catch {
+        /* Not found */
+      }
+    }
 
     if (!found) {
       console.error(`error: binary not found for ${t.label}:`);
@@ -204,7 +221,7 @@ async function main() {
     await Bun.write(`${pkgDir}/bin/${outBinaryName}`, await Bun.file(found).arrayBuffer());
     await $`chmod 0755 ${pkgDir}/bin/${outBinaryName}`;
 
-    const {size} = (await Bun.file(`${pkgDir}/bin/${outBinaryName}`).stat());
+    const { size } = await Bun.file(`${pkgDir}/bin/${outBinaryName}`).stat();
     if (size > maxBytes) {
       console.error(`${t.label}: ${size} bytes exceeds limit ${maxBytes}`);
       process.exit(1);
@@ -223,8 +240,8 @@ async function main() {
       os: [t.npmOs],
       private: false,
       publishConfig: { access },
-      type: "module",
       repository,
+      type: "module",
       version,
     };
     await Bun.write(`${pkgDir}/package.json`, `${JSON.stringify(pkgJson, null, 2)}\n`);
@@ -273,18 +290,18 @@ async function main() {
   // ── Write main package.json ────────────────────────────────────────────
 
   const mainPkgJson: Record<string, unknown> = {
-    name: scopedName(binaryName),
-    version,
-    private: false,
-    type: "module",
-    workspaces: targets.map((t) => t.label),
     bin: { [binaryName]: "binary.js" },
     files: ["binary.js"],
-    publishConfig: { access },
-    repository,
+    name: scopedName(binaryName),
     optionalDependencies: Object.fromEntries(
       targets.map((t) => [scopedName(`${binaryName}-${t.label}`), version]),
     ),
+    private: false,
+    publishConfig: { access },
+    repository,
+    type: "module",
+    version,
+    workspaces: targets.map((t) => t.label),
   };
   await Bun.write(`npm/package.json`, `${JSON.stringify(mainPkgJson, null, 2)}\n`);
   console.log(`\n==> written npm/package.json`);
@@ -292,10 +309,7 @@ async function main() {
   // ── Write binary.js resolver ───────────────────────────────────────────
 
   const platformMap = Object.fromEntries(
-    targets.map((t) => [
-      `${t.npmOs}:${t.npmCpu}`,
-      scopedName(`${binaryName}-${t.label}`),
-    ]),
+    targets.map((t) => [`${t.npmOs}:${t.npmCpu}`, scopedName(`${binaryName}-${t.label}`)]),
   );
 
   const binaryJs = binaryTemplate
