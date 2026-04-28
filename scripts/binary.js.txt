@@ -1,0 +1,24 @@
+#!/usr/bin/env node
+const { createRequire } = require("node:module");
+const require = createRequire(import.meta.url);
+
+const PLATFORMS = {{PLATFORMS}};
+
+const platform = process.platform;
+const arch = process.arch === "arm64" ? "arm64" : "x64";
+const key = `${platform}:${arch}`;
+const pkg = PLATFORMS[key];
+if (!pkg) {
+  console.error("unsupported platform:", process.platform, process.arch);
+  process.exit(1);
+}
+
+try {
+  const suffix = platform === "win32" ? ".exe" : "";
+  const binary = require.resolve(`${pkg}/bin/{{BINARY}}{{SUFFIX}}`);
+  process.execPath = binary;
+  require("child_process").execFileSync(binary, process.argv.slice(2), { stdio: "inherit" });
+} catch (err) {
+  console.error("could not resolve", pkg, ":", err.message);
+  process.exit(1);
+}

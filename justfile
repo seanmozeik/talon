@@ -82,11 +82,12 @@ build-all:
 
 # ── NPM packaging (takes already-built binaries from target/) ─────
 # Run `just build-all` first, then `just pack`. No building happens here.
+# Generates npm/package.json, npm/binary.js, and npm/<label>/ for each platform.
 pack:
-    bun scripts/npm-pack.ts --npm-org seanmozeik --outdir ./ts/npm
+    bun scripts/npm-pack.ts --npm-org seanmozeik
 
 pack-no-smoke:
-    bun scripts/npm-pack.ts --npm-org seanmozeik --outdir ./ts/npm --skip-smoke
+    bun scripts/npm-pack.ts --npm-org seanmozeik --skip-smoke
 
 # ── Install from source (host platform only) ──────────────────────
 install:

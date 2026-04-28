@@ -4,7 +4,7 @@
  * Rust → npm platform-package packager.
  *
  * Takes already-built binaries from cargo's target directory and packages
- * them into npm platform subpackages (ts/npm/<label>/).
+ * them into npm/<label>/. Generates all npm files from Cargo.toml metadata.
  *
  * Does NOT build. Does NOT publish. Just packages.
  *
@@ -18,8 +18,6 @@
  *   --package <name>        Cargo package name (auto-detected if one bin crate)
  *   --binary <name>         Binary name in platform packages (default: strip -cli suffix)
  *   --targets <json>        Override target triples JSON array
- *   --outdir <path>         Output directory (default: ./ts/npm)
- *   --main-outdir <path>    Main package output dir (default: ./ts)
  *   --skip-smoke            Skip smoke tests
  *   --require-smoke         Fail if can't smoke-test cross-platform builds
  *   --max-bytes <n>         Reject binaries larger than this (default: 30MB)
@@ -27,6 +25,7 @@
 
 import { $ } from "bun";
 import fs from "node:fs/promises";
+import binaryTemplate from "./binary.js.txt";
 
 // ── Defaults ───────────────────────────────────────────────────────────────────
 
@@ -146,8 +145,6 @@ const cargoMeta = await loadCargoMetadata();
 const packageName = cargoMeta.name;
 const {version} = cargoMeta;
 const binaryName = deriveBinaryName(packageName);
-const outdir = args.outdir ?? "./ts/npm";
-const mainOutdir = args["main-outdir"] ?? "./ts";
 const skipSmoke = args["skip-smoke"] === "true" || process.env.TALON_SKIP_SMOKE === "1";
 const requireSmoke =
   args["require-smoke"] === "true" || process.env.TALON_REQUIRE_TARGET_SMOKE === "1";
@@ -190,7 +187,7 @@ async function main() {
       process.exit(1);
     }
 
-    const pkgDir = `${outdir}/${t.label}`;
+    const pkgDir = `npm/${t.label}`;
     await fs.rm(pkgDir, { force: true, recursive: true });
     await fs.mkdir(`${pkgDir}/bin`, { recursive: true });
 
@@ -220,7 +217,7 @@ async function main() {
         : { type: "git", url: `https://github.com/${npmOrg}/${packageName}` },
       version,
     };
-    await Bun.write(`${pkgDir}/package.json`, `${JSON.stringify(pkgJson, null, 2)  }\n`);
+    await Bun.write(`${pkgDir}/package.json`, `${JSON.stringify(pkgJson, null, 2)}\n`);
 
     // Smoke test
     if (skipSmoke) {
@@ -266,35 +263,37 @@ async function main() {
   // ── Write main package.json ────────────────────────────────────────────
 
   const mainPkgJson: Record<string, unknown> = {
-    description: cargoMeta.description || undefined,
-    devDependencies: {
-      "@types/node": "24.10.1",
-      typescript: "5.9.3",
-      vitest: "4.0.14",
-    },
-    exports: {
-      ".": {
-        default: "./src/index.ts",
-        types: "./src/index.ts",
-      },
-    },
-    files: ["src"],
-    homepage: cargoMeta.homepage || undefined,
-    license: cargoMeta.license || undefined,
     name: `@${npmOrg}/${binaryName}`,
+    version,
+    private: false,
+    type: "module",
+    bin: { [binaryName]: "./binary.js" },
     optionalDependencies: Object.fromEntries(
       targets.map((t) => [`@${npmOrg}/${binaryName}-${t.label}`, version]),
     ),
-    private: false,
-    repository: cargoMeta.repository
-      ? { type: "git", url: cargoMeta.repository }
-      : { type: "git", url: `https://github.com/${npmOrg}/${packageName}` },
-    type: "module",
-    version,
   };
-  await Bun.write(`${mainOutdir}/package.json`, `${JSON.stringify(mainPkgJson, null, 2)  }\n`);
-  console.log(`\n==> main package.json written to ${mainOutdir}/package.json`);
-  console.log("\n==> done — platform packages in", outdir);
+  await Bun.write(`npm/package.json`, `${JSON.stringify(mainPkgJson, null, 2)}\n`);
+  console.log(`\n==> written npm/package.json`);
+
+  // ── Write binary.js resolver ───────────────────────────────────────────
+
+  const platformMap = Object.fromEntries(
+    targets.map((t) => [
+      `${t.npmOs}:${t.npmCpu}`,
+      `@${npmOrg}/${binaryName}-${t.label}`,
+    ]),
+  );
+
+  const binaryJs = binaryTemplate
+    .replace("{{PLATFORMS}}", JSON.stringify(platformMap, null, 2))
+    .replace("{{BINARY}}", binaryName)
+    .replace("{{SUFFIX}}", targets.find((t) => t.npmOs === "win32") ? ".exe" : "");
+
+  await Bun.write(`npm/binary.js`, binaryJs);
+  await $`chmod 0755 npm/binary.js`;
+  console.log(`==> written npm/binary.js`);
+
+  console.log("\n==> done — all files in npm/");
 }
 
 main().catch((error) => {
