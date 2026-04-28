@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { createRequire } from "node:module";
+import { spawnSync } from "node:child_process";
 const require = createRequire(import.meta.url);
 
 const PLATFORMS = {{PLATFORMS}};
@@ -13,12 +14,21 @@ if (!pkg) {
   process.exit(1);
 }
 
+const suffix = platform === "win32" ? ".exe" : "";
+let binary;
 try {
-  const suffix = platform === "win32" ? ".exe" : "";
-  const binary = require.resolve(`${pkg}/bin/{{BINARY}}${suffix}`);
-  process.execPath = binary;
-  require("child_process").execFileSync(binary, process.argv.slice(2), { stdio: "inherit" });
+  binary = require.resolve(`${pkg}/bin/{{BINARY}}${suffix}`);
 } catch (err) {
   console.error("could not resolve", pkg, ":", err.message);
   process.exit(1);
 }
+
+const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+if (result.error) {
+  console.error("could not run", binary, ":", result.error.message);
+  process.exit(1);
+}
+if (result.signal) {
+  process.kill(process.pid, result.signal);
+}
+process.exit(result.status ?? 1);

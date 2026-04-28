@@ -3,9 +3,9 @@ members = ["crates/talon-cli", "crates/talon-core"]
 resolver = "3"
 
 [workspace.package]
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
-rust-version = "1.88"
+rust-version = "1.95"
 license = "MIT"
 repository = "https://github.com/seanmozeik/talon"
 homepage = "https://github.com/seanmozeik/talon"
@@ -29,7 +29,10 @@ lru = "0.18.0"
 predicates = "3.1.3"
 rattles = "0.3.1"
 regex = "1.12.3"
-reqwest = { version = "0.13.2", default-features = false, features = ["json", "blocking"] }
+reqwest = { version = "0.13.2", default-features = false, features = [
+  "json",
+  "blocking",
+] }
 rusqlite = { version = "0.32.1", features = ["bundled", "load_extension"] }
 rustix = { version = "1.1.4", features = ["process"] }
 serde = { version = "1.0.228", features = ["derive"] }
@@ -41,9 +44,20 @@ talon-core = { path = "crates/talon-core", version = "0.1.0" }
 terminal_size = "0.4.1"
 text-splitter = { version = "0.30.1", features = ["markdown"] }
 thiserror = "2.0.17"
-time = { version = "0.3.44", features = ["formatting", "parsing", "macros", "serde"] }
+time = { version = "0.3.44", features = [
+  "formatting",
+  "parsing",
+  "macros",
+  "serde",
+] }
 tokenx-rs = "0.1.0"
-tokio = { version = "1.48.0", features = ["macros", "rt-multi-thread", "signal", "sync", "time"] }
+tokio = { version = "1.48.0", features = [
+  "macros",
+  "rt-multi-thread",
+  "signal",
+  "sync",
+  "time",
+] }
 tokio-util = { version = "0.7.17", features = ["rt"] }
 toml = "0.9.8"
 tracing = "0.1.41"
