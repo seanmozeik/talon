@@ -278,7 +278,7 @@ async function main() {
     private: false,
     type: "module",
     workspaces: targets.map((t) => t.label),
-    bin: { [binaryName]: "./binary.js" },
+    bin: { [binaryName]: "binary.js" },
     files: ["binary.js"],
     publishConfig: { access },
     repository,
