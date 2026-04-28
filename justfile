@@ -89,26 +89,16 @@ pack:
 pack-no-smoke:
     bun scripts/npm-pack.ts --npm-org seanmozeik --skip-smoke
 
-# Publish all platform packages then main package. Single 2FA prompt.
+# Publish all platform packages then main. Single 2FA — access read from each package.json.
 publish-npm: pack-no-smoke
 	@echo "==> Publishing platform packages..."
 	@for dir in npm/*/; do \
 		pkg=$$(basename "$$dir"); \
 		echo "  $$pkg"; \
-		(cd "$$dir" && npm publish --access public); \
+		(cd "$$dir" && npm publish); \
 	done
 	@echo "==> Publishing main package..."
-	(cd npm && npm publish --access public)
-
-publish-npm-restricted: pack-no-smoke
-	@echo "==> Publishing platform packages (restricted)..."
-	@for dir in npm/*/; do \
-		pkg=$$(basename "$$dir"); \
-		echo "  $$pkg"; \
-		(cd "$$dir" && npm publish --access restricted); \
-	done
-	@echo "==> Publishing main package (restricted)..."
-	(cd npm && npm publish --access restricted)
+	(cd npm && npm publish)
 
 # ── Install from source (host platform only) ──────────────────────
 install:
