@@ -89,16 +89,25 @@ pack:
 pack-no-smoke:
     bun scripts/npm-pack.ts --npm-org seanmozeik --skip-smoke
 
-# Publish all platform packages then main. Single 2FA — access read from each package.json.
+# Publish generated npm workspaces and the root package in one npm invocation.
 publish-npm: pack-no-smoke
-	@echo "==> Publishing platform packages..."
-	@for dir in npm/*/; do \
-		pkg=$$(basename "$$dir"); \
-		echo "  $$pkg"; \
-		(cd "$$dir" && npm publish); \
-	done
-	@echo "==> Publishing main package..."
-	(cd npm && npm publish)
+    @just _publish-npm
+
+publish-npm-dry-run: pack-no-smoke
+    @NPM_PUBLISH_FLAGS="--dry-run" just _publish-npm
+
+_publish-npm:
+    @publish_flags=(${NPM_PUBLISH_FLAGS:-}); \
+    otp="${NPM_OTP:-}"; \
+    if [ -z "$otp" ] && [[ " ${NPM_PUBLISH_FLAGS:-} " != *" --dry-run "* ]] && [ -t 0 ]; then \
+        read -r -p "npm OTP (blank to let npm prompt): " otp; \
+    fi; \
+    if [ -n "$otp" ]; then \
+        publish_flags+=(--otp "$otp"); \
+    fi; \
+    echo "==> Publishing npm workspaces and root package..."; \
+    cd npm; \
+    npm publish --workspaces --include-workspace-root "${publish_flags[@]}"
 
 # ── Install from source (host platform only) ──────────────────────
 install:

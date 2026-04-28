@@ -271,6 +271,7 @@ async function main() {
     version,
     private: false,
     type: "module",
+    workspaces: targets.map((t) => t.label),
     bin: { [binaryName]: "./binary.js" },
     files: ["binary.js"],
     publishConfig: { access },
@@ -292,8 +293,7 @@ async function main() {
 
   const binaryJs = binaryTemplate
     .replace("{{PLATFORMS}}", JSON.stringify(platformMap, null, 2))
-    .replace("{{BINARY}}", binaryName)
-    .replace("{{SUFFIX}}", targets.find((t) => t.npmOs === "win32") ? ".exe" : "");
+    .replace("{{BINARY}}", binaryName);
 
   await Bun.write(`npm/binary.js`, binaryJs);
   await $`chmod 0755 npm/binary.js`;

@@ -15,7 +15,7 @@ if (!pkg) {
 
 try {
   const suffix = platform === "win32" ? ".exe" : "";
-  const binary = require.resolve(`${pkg}/bin/{{BINARY}}{{SUFFIX}}`);
+  const binary = require.resolve(`${pkg}/bin/{{BINARY}}${suffix}`);
   process.execPath = binary;
   require("child_process").execFileSync(binary, process.argv.slice(2), { stdio: "inherit" });
 } catch (err) {
