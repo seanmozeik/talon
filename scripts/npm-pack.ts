@@ -9,18 +9,18 @@
  * Does NOT build. Does NOT publish. Just packages.
  *
  * Usage:
- *   bun scripts/npm-pack.ts --npm-org <org> [options]
- *
- * Required:
- *   --npm-org <org>         NPM org prefix (e.g. "seanmozeik")
+ *   bun scripts/npm-pack.ts [options]
  *
  * Options:
+ *   --npm-org <org>         NPM org prefix (e.g. "seanmozeik"). Omit for unscoped packages.
  *   --package <name>        Cargo package name (auto-detected if one bin crate)
  *   --binary <name>         Binary name in platform packages (default: strip -cli suffix)
  *   --targets <json>        Override target triples JSON array
  *   --skip-smoke            Skip smoke tests
  *   --require-smoke         Fail if can't smoke-test cross-platform builds
  *   --max-bytes <n>         Reject binaries larger than this (default: 30MB)
+ *   --access <public|restricted>
+ *                           publishConfig.access for scoped packages (default: public)
  */
 
 import { $ } from "bun";
@@ -77,12 +77,13 @@ for (let i = 0; i < argv.length; i++) {
   }
 }
 
-// ── Required config ────────────────────────────────────────────────────────────
+// ── Config ─────────────────────────────────────────────────────────────────────
 
-const npmOrg = args["npm-org"] ?? process.env.NPM_ORG;
-if (!npmOrg) {
-  console.error("error: --npm-org is required (or set NPM_ORG env var)");
-  process.exit(1);
+const npmOrg = (args["npm-org"] ?? process.env.NPM_ORG) || null;
+const access = (args["access"] ?? "public") as "public" | "restricted";
+
+function scopedName(base: string): string {
+  return npmOrg ? `@${npmOrg}/${base}` : base;
 }
 
 // ── Resolve Cargo metadata ─────────────────────────────────────────────────────
@@ -138,8 +139,6 @@ function deriveBinaryName(cargoPkgName: string): string {
   if (args.binary) {return args.binary;}
   return cargoPkgName.replace(/[-_.]?(?:cli|bin)$/, "");
 }
-
-// ── Config ─────────────────────────────────────────────────────────────────────
 
 const cargoMeta = await loadCargoMetadata();
 const packageName = cargoMeta.name;
@@ -203,18 +202,23 @@ async function main() {
     console.log(`  packaged ${t.label} (${size} bytes)`);
 
     // Write platform package.json
+    const platformPkgName = scopedName(`${binaryName}-${t.label}`);
     const pkgJson: Record<string, unknown> = {
       bin: { [binaryName]: `bin/${outBinaryName}` },
       cpu: [t.npmCpu],
       description: "Prebuilt binary.",
       files: [`bin/${outBinaryName}`],
       license: cargoMeta.license || "MIT OR Apache-2.0",
-      name: `@${npmOrg}/${binaryName}-${t.label}`,
+      name: platformPkgName,
       os: [t.npmOs],
       private: false,
+      publishConfig: { access },
+      type: "module",
       repository: cargoMeta.repository
         ? { type: "git", url: cargoMeta.repository }
-        : { type: "git", url: `https://github.com/${npmOrg}/${packageName}` },
+        : npmOrg
+          ? { type: "git", url: `https://github.com/${npmOrg}/${packageName}` }
+          : { type: "git", url: `https://github.com/${packageName}` },
       version,
     };
     await Bun.write(`${pkgDir}/package.json`, `${JSON.stringify(pkgJson, null, 2)}\n`);
@@ -263,13 +267,15 @@ async function main() {
   // ── Write main package.json ────────────────────────────────────────────
 
   const mainPkgJson: Record<string, unknown> = {
-    name: `@${npmOrg}/${binaryName}`,
+    name: scopedName(binaryName),
     version,
     private: false,
     type: "module",
     bin: { [binaryName]: "./binary.js" },
+    files: ["binary.js"],
+    publishConfig: { access },
     optionalDependencies: Object.fromEntries(
-      targets.map((t) => [`@${npmOrg}/${binaryName}-${t.label}`, version]),
+      targets.map((t) => [scopedName(`${binaryName}-${t.label}`), version]),
     ),
   };
   await Bun.write(`npm/package.json`, `${JSON.stringify(mainPkgJson, null, 2)}\n`);
@@ -280,7 +286,7 @@ async function main() {
   const platformMap = Object.fromEntries(
     targets.map((t) => [
       `${t.npmOs}:${t.npmCpu}`,
-      `@${npmOrg}/${binaryName}-${t.label}`,
+      scopedName(`${binaryName}-${t.label}`),
     ]),
   );
 
