@@ -28,6 +28,7 @@ pub mod intent;
 pub mod match_text;
 pub mod output;
 pub mod pool;
+pub mod pre_filter;
 pub mod rerank_pipeline;
 pub mod rrf;
 pub mod text_fts;

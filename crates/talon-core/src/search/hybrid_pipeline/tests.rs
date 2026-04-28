@@ -2,11 +2,24 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use super::super::pre_filter::PreFilter;
 use super::test_support::{cleanup, dummy_embed_response, insert_note, runtime, unique_db_path};
 use super::*;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::store::open_database;
+
+fn test_opts(fast: bool, queries: Vec<String>, intent: Option<String>) -> HybridPipelineOptions {
+    HybridPipelineOptions {
+        limit: 10,
+        candidate_limit: 40,
+        fast,
+        queries,
+        intent,
+        hooks: SearchHooks::default(),
+        pre_filter: PreFilter::none(),
+    }
+}
 
 #[test]
 fn full_pipeline_calls_embed_expand_and_rerank() {
@@ -67,14 +80,7 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
     let inference = InferenceClient::new(server.uri()).unwrap();
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
-    let opts = HybridPipelineOptions {
-        limit: 10,
-        candidate_limit: 40,
-        fast: false,
-        queries: vec![],
-        intent: None,
-        hooks: SearchHooks::default(),
-    };
+    let opts = test_opts(false, vec![], None);
 
     let output = run_hybrid_pipeline_with_metadata(
         &conn,
@@ -138,14 +144,7 @@ fn strong_signal_probe_skips_expansion_and_rerank() {
     let inference = InferenceClient::new(server.uri()).unwrap();
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
-    let opts = HybridPipelineOptions {
-        limit: 10,
-        candidate_limit: 40,
-        fast: false,
-        queries: vec![],
-        intent: None,
-        hooks: SearchHooks::default(),
-    };
+    let opts = test_opts(false, vec![], None);
 
     let results = run_hybrid_pipeline(
         &conn,
@@ -210,14 +209,7 @@ fn fast_flag_skips_expansion_and_rerank() {
     let inference = InferenceClient::new(server.uri()).unwrap();
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
-    let opts = HybridPipelineOptions {
-        limit: 10,
-        candidate_limit: 40,
-        fast: true,
-        queries: vec![],
-        intent: None,
-        hooks: SearchHooks::default(),
-    };
+    let opts = test_opts(true, vec![], None);
 
     let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "fast", &opts);
 
@@ -265,14 +257,7 @@ fn no_expansion_client_returns_results() {
 
     let inference = InferenceClient::new(server.uri()).unwrap();
 
-    let opts = HybridPipelineOptions {
-        limit: 10,
-        candidate_limit: 40,
-        fast: false,
-        queries: vec![],
-        intent: None,
-        hooks: SearchHooks::default(),
-    };
+    let opts = test_opts(false, vec![], None);
 
     // expansion=None: pipeline must degrade gracefully (no LLM call).
     let results = run_hybrid_pipeline(&conn, &inference, None, "knowledge management", &opts);
@@ -323,14 +308,7 @@ fn pre_supplied_queries_bypass_llm_expansion() {
     let inference = InferenceClient::new(server.uri()).unwrap();
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
-    let opts = HybridPipelineOptions {
-        limit: 10,
-        candidate_limit: 40,
-        fast: false,
-        queries: vec!["anki flashcards".to_owned()],
-        intent: None,
-        hooks: SearchHooks::default(),
-    };
+    let opts = test_opts(false, vec!["anki flashcards".to_owned()], None);
 
     let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "memory systems", &opts);
 

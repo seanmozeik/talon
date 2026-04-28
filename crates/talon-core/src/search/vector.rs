@@ -6,11 +6,12 @@
 //! pipeline lands). The pure helper [`distance_to_score`] is independent of
 //! the extension and is used by callers to interpret returned distances.
 
-use rusqlite::{Connection, params, types::Value};
+use rusqlite::{Connection, params, params_from_iter, types::Value};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::constants::COSINE_DISTANCE_MAX;
+use super::pre_filter::PreFilter;
 use super::types::{RawSearchResult, SearchScores};
 use crate::embed::quantize::f32_to_i8_normalized;
 
@@ -48,7 +49,11 @@ pub fn search_vector(
     conn: &Connection,
     embedding: &[f32],
     candidate_limit: u32,
+    pre_filter: &PreFilter,
 ) -> Vec<RawSearchResult> {
+    if pre_filter.is_impossible() {
+        return Vec::new();
+    }
     if embedding.is_empty() {
         return Vec::new();
     }
@@ -70,7 +75,7 @@ pub fn search_vector(
         return Vec::new();
     }
     let chunk_ids: Vec<i64> = chunk_ids_distances.iter().map(|(id, _)| *id).collect();
-    let Ok(chunks) = fetch_chunk_metadata(conn, &chunk_ids) else {
+    let Ok(chunks) = fetch_chunk_metadata(conn, &chunk_ids, pre_filter) else {
         return Vec::new();
     };
 
@@ -158,6 +163,7 @@ struct ChunkMetadata {
 fn fetch_chunk_metadata(
     conn: &Connection,
     chunk_ids: &[i64],
+    pre_filter: &PreFilter,
 ) -> rusqlite::Result<Vec<ChunkMetadata>> {
     if chunk_ids.is_empty() {
         return Ok(Vec::new());
@@ -165,18 +171,19 @@ fn fetch_chunk_metadata(
     let placeholders = std::iter::repeat_n("?", chunk_ids.len())
         .collect::<Vec<_>>()
         .join(",");
+    let (filter_sql, filter_params) = pre_filter.sql_fragment();
     let sql = format!(
         "SELECT c.id, c.note_id, c.text, n.vault_path, n.title, n.tags, n.aliases,
                 c.heading_path, c.char_start, c.char_end
          FROM chunks c
          JOIN notes n ON n.id = c.note_id
-         WHERE c.id IN ({placeholders}) AND n.active = 1"
+         WHERE c.id IN ({placeholders}) AND n.active = 1{filter_sql}"
     );
     let mut stmt = conn.prepare(&sql)?;
-    // rusqlite's varargs API needs an iterator of values.
-    let values: Vec<Value> = chunk_ids.iter().copied().map(Value::Integer).collect();
+    let mut values: Vec<Value> = chunk_ids.iter().copied().map(Value::Integer).collect();
+    values.extend(filter_params);
     let params_array = Rc::new(values);
-    let rows = stmt.query_map(rusqlite::params_from_iter(params_array.iter()), |row| {
+    let rows = stmt.query_map(params_from_iter(params_array.iter()), |row| {
         Ok(ChunkMetadata {
             id: row.get(0)?,
             note_id: row.get(1)?,

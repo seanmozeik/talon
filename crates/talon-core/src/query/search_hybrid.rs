@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline_with_metadata};
+use crate::search::pre_filter::PreFilter;
 use crate::search::types::{RawSearchResult, SearchScores};
 use crate::search::{MatchKind, SearchDiagnostics, SearchInput, SearchMode, SearchResponse};
 
@@ -29,6 +30,7 @@ pub(super) struct HybridArgs<'a> {
     pub(super) candidate_floor: u32,
     pub(super) fast: bool,
     pub(super) include_expanded_queries: bool,
+    pub(super) pre_filter: PreFilter,
 }
 
 pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
@@ -42,6 +44,7 @@ pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
         queries: args.input.queries.clone(),
         intent: args.input.intent.clone(),
         hooks: crate::search::SearchHooks::default(),
+        pre_filter: args.pre_filter.clone(),
     };
     let output =
         run_hybrid_pipeline_with_metadata(args.conn, inference, args.expansion, args.query, &opts);

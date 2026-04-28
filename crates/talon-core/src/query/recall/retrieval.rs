@@ -9,6 +9,7 @@ use crate::search::constants::{CANDIDATE_FLOOR, DEFAULT_SNIPPET_LENGTH};
 use crate::search::fuse::fuse_hybrid_result_lists;
 use crate::search::fuzzy_title::search_title_parts;
 use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
+use crate::search::pre_filter::PreFilter;
 use crate::search::types::RawSearchResult;
 
 pub(super) fn build_query(input: &RecallInput) -> String {
@@ -36,6 +37,7 @@ pub(super) fn retrieve_pipeline_results(
         queries: Vec::new(),
         intent: None,
         hooks: crate::search::SearchHooks::default(),
+        pre_filter: PreFilter::none(),
     };
     inference.map_or_else(
         || run_fast_bm25_title(conn, query, limit),
@@ -60,8 +62,14 @@ pub(super) fn apply_scope_priority(
         .collect()
 }
 fn run_fast_bm25_title(conn: &Connection, query: &str, limit: u32) -> Vec<RawSearchResult> {
-    let bm25 = search_bm25(conn, query, limit, DEFAULT_SNIPPET_LENGTH);
-    let title_parts = search_title_parts(conn, query, limit);
+    let bm25 = search_bm25(
+        conn,
+        query,
+        limit,
+        DEFAULT_SNIPPET_LENGTH,
+        &PreFilter::none(),
+    );
+    let title_parts = search_title_parts(conn, query, limit, &PreFilter::none());
     let mut all_title = title_parts.exact_alias;
     all_title.extend(title_parts.fuzzy);
     fuse_hybrid_result_lists(

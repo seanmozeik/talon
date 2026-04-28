@@ -10,6 +10,7 @@ use super::bm25::search_bm25;
 use super::constants::DEFAULT_SNIPPET_LENGTH;
 use super::fuzzy_title::{TitleSearchParts, search_title_parts};
 use super::pool;
+use super::pre_filter::PreFilter;
 use super::types::RawSearchResult;
 use super::vector::search_vector;
 
@@ -40,17 +41,30 @@ pub fn run_hybrid_single(
     embedding: Option<&[f32]>,
     limit: u32,
     candidate_floor: u32,
+    pre_filter: &PreFilter,
 ) -> HybridSingleResult {
     let bm25 = search_bm25(
         conn,
         query,
         pool::bm25_pool(limit, candidate_floor),
         DEFAULT_SNIPPET_LENGTH,
+        pre_filter,
     );
-    let fuzzy_title_parts =
-        search_title_parts(conn, query, pool::fuzzy_pool(limit, candidate_floor));
+    let fuzzy_title_parts = search_title_parts(
+        conn,
+        query,
+        pool::fuzzy_pool(limit, candidate_floor),
+        pre_filter,
+    );
     let vector = embedding
-        .map(|emb| search_vector(conn, emb, pool::vector_pool(limit, candidate_floor)))
+        .map(|emb| {
+            search_vector(
+                conn,
+                emb,
+                pool::vector_pool(limit, candidate_floor),
+                pre_filter,
+            )
+        })
         .unwrap_or_default();
 
     HybridSingleResult {
@@ -115,7 +129,7 @@ mod tests {
         );
         insert_note(&conn, "b.md", "Unrelated", "completely different text here");
 
-        let result = run_hybrid_single(&conn, "atomic notes", None, 10, 40);
+        let result = run_hybrid_single(&conn, "atomic notes", None, 10, 40, &PreFilter::none());
         assert!(!result.bm25.is_empty(), "bm25 should find content match");
         assert!(result.bm25.iter().any(|r| r.path == "a.md"));
         assert!(result.bm25[0].scores.bm25.is_some());
@@ -130,7 +144,7 @@ mod tests {
         let id = insert_note(&conn, "a.md", "Zettelkasten Method", "body text");
         insert_alias(&conn, id, "Zettelkasten");
 
-        let result = run_hybrid_single(&conn, "zettelkasten", None, 10, 40);
+        let result = run_hybrid_single(&conn, "zettelkasten", None, 10, 40, &PreFilter::none());
 
         // exact_alias must fire because we inserted the alias
         assert!(
@@ -148,7 +162,7 @@ mod tests {
         let conn = open_database(&path).unwrap();
         insert_note(&conn, "a.md", "Any Note", "any content");
 
-        let result = run_hybrid_single(&conn, "any", None, 10, 40);
+        let result = run_hybrid_single(&conn, "any", None, 10, 40, &PreFilter::none());
         assert!(
             result.vector.is_empty(),
             "vector bucket must be empty when embedding is None"
@@ -167,7 +181,7 @@ mod tests {
         insert_note(&conn, "a.md", "Note", "content");
 
         let emb = vec![0.1_f32; 768];
-        let result = run_hybrid_single(&conn, "note", Some(&emb), 10, 40);
+        let result = run_hybrid_single(&conn, "note", Some(&emb), 10, 40, &PreFilter::none());
         // vec_chunks is empty — vector bucket is empty, no panic.
         assert!(
             result.vector.is_empty(),
@@ -199,7 +213,14 @@ mod tests {
         );
         insert_alias(&conn, id, "Photosynthesis");
 
-        let bm25_result = run_hybrid_single(&conn, "quantum entanglement", None, 10, 40);
+        let bm25_result = run_hybrid_single(
+            &conn,
+            "quantum entanglement",
+            None,
+            10,
+            40,
+            &PreFilter::none(),
+        );
         assert!(bm25_result.bm25.iter().any(|r| r.path == "bm25_only.md"));
         assert!(
             bm25_result
@@ -209,7 +230,8 @@ mod tests {
                 .all(|r| r.path != "bm25_only.md")
         );
 
-        let fuzzy_result = run_hybrid_single(&conn, "photosynthesis", None, 10, 40);
+        let fuzzy_result =
+            run_hybrid_single(&conn, "photosynthesis", None, 10, 40, &PreFilter::none());
         assert!(
             !fuzzy_result.fuzzy_title_parts.exact_alias.is_empty(),
             "fuzzy_only note should appear in exact_alias bucket"

@@ -1,7 +1,8 @@
 //! Real search handler for the Talon CLI.
 //!
 //! Implements all four search modes (hybrid, semantic, fulltext, title),
-//! post-filters (--where, --since), and scope priority multiplication.
+//! pre-filters (--where, --since, --scope) applied at retrieval time, and
+//! scope priority multiplication.
 //!
 //! Ports the search command from `services/talon/search/command.ts`.
 
@@ -14,9 +15,8 @@ use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::numeric::count_u32;
 use crate::search::anchor::{build_anchors, maybe_expand_bm25_snippet, resolve_snippet_heading};
-use crate::search::{
-    MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause,
-};
+use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
+use crate::search::{MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult};
 
 use super::search_hybrid::{empty_hybrid_response, infer_hybrid_match_kind};
 use super::search_retrieval::{RetrievalOutcome, retrieve_raw_results};
@@ -31,8 +31,9 @@ use crate::search::types::RawSearchResult;
 /// - **fulltext**: BM25 lexical search only.
 /// - **title**: fuzzy title/alias search only.
 ///
-/// Post-filters (`--where`, `--since`) and scope priority multiplication are
-/// applied after retrieval.
+/// `--where`, `--since`, and scope filters are pre-computed into a
+/// [`PreFilter`] and pushed into retrieval SQL. Scope priority multiplication
+/// is applied post-retrieval as a score modifier.
 #[allow(clippy::missing_errors_doc)]
 pub fn run_search(
     conn: &Connection,
@@ -77,10 +78,28 @@ fn run_search_inner(
     let candidate_floor = u32::from(input.candidate_limit.get());
     let fast = input.fast;
 
-    // Step 1: retrieve wide pool.
+    // Build pre-filter: resolve --since, scope, and --where into SQL constraints
+    // pushed into every retrieval query so the candidate pool is already scoped.
+    let since_ms = input
+        .since
+        .as_deref()
+        .and_then(|s| crate::indexing::change_tracking::parse_since(s).ok());
+    let accepted_note_ids = config.and_then(|cfg| {
+        let filter = ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .unwrap_or_else(|_| ScopeFilter::default_for(cfg));
+        scope_to_note_ids(conn, &filter)
+    });
+    let pre_filter = PreFilter {
+        since_ms,
+        accepted_note_ids,
+        where_clauses: input.where_.clone(),
+    };
+
+    // Step 1: retrieve wide pool with pre-filters applied at SQL level.
     let (raw_results, expanded_queries, diagnostics) = match retrieve_raw_results(
         conn,
         input,
+        &pre_filter,
         inference,
         expansion,
         &query,
@@ -98,20 +117,8 @@ fn run_search_inner(
         } => (results, expanded_queries, diagnostics),
     };
 
-    // Step 2: apply --where filter (no truncation).
-    let filtered = apply_where_filter(raw_results, &input.where_, conn);
-    // Step 3: apply --since filter (no truncation).
-    let filtered = apply_since_filter(filtered, input.since.as_deref(), conn);
-    // Step 4: apply scope filter (default = false scopes excluded unless opted in).
-    let filtered = apply_scope_filter(
-        filtered,
-        config,
-        &input.scope,
-        &input.scope_only,
-        input.scope_all,
-    );
-    // Step 5: scope priority multiplication.
-    let scored = apply_scope_priority(filtered, config);
+    // Step 2: scope priority multiplication (score modifier, not filter).
+    let scored = apply_scope_priority(raw_results, config);
 
     // Step 6: total is post-filter, pre-truncate.
     let total = count_u32(scored.len());
@@ -224,84 +231,6 @@ fn raw_to_search_result(
     })
 }
 
-/// Applies `--where` frontmatter filters to the result list.
-///
-/// For each result, queries `note_frontmatter_fields` to check if the
-/// specified field matches the operator/value. All clauses are AND-composed.
-fn apply_where_filter(
-    results: Vec<RawSearchResult>,
-    clauses: &[WhereClause],
-    conn: &Connection,
-) -> Vec<RawSearchResult> {
-    if clauses.is_empty() {
-        return results;
-    }
-
-    results
-        .into_iter()
-        .filter(|r| {
-            let note_id = get_note_id_by_path(conn, &r.path);
-            let Some(note_id) = note_id else {
-                return false;
-            };
-            super::where_filter::passes_where_clauses(conn, note_id, clauses)
-        })
-        .collect()
-}
-
-/// Applies `--since` timestamp filter.
-///
-/// Returns only results whose note `mtime_ms` >= the parsed timestamp.
-fn apply_since_filter(
-    results: Vec<RawSearchResult>,
-    since: Option<&str>,
-    conn: &Connection,
-) -> Vec<RawSearchResult> {
-    let Some(since_str) = since else {
-        return results;
-    };
-
-    // Invalid timestamp: pass results through unchanged.
-    let Ok(timestamp) = crate::indexing::change_tracking::parse_since(since_str) else {
-        return results;
-    };
-
-    results
-        .into_iter()
-        .filter(|r| {
-            let note_id = get_note_id_by_path(conn, &r.path);
-            let Some(note_id) = note_id else {
-                return false;
-            };
-            get_note_mtime(conn, note_id).is_some_and(|mtime| mtime >= timestamp)
-        })
-        .collect()
-}
-
-/// Filters results by scope membership.
-///
-/// With no config, all results pass through unchanged. Otherwise, builds a
-/// [`ScopeFilter`] from the input flags and keeps only the paths it accepts.
-/// Invalid scope arguments would have been rejected at the CLI/MCP boundary,
-/// so any error here falls back to the default filter.
-fn apply_scope_filter(
-    results: Vec<RawSearchResult>,
-    config: Option<&TalonConfig>,
-    scope: &[String],
-    scope_only: &[String],
-    scope_all: bool,
-) -> Vec<RawSearchResult> {
-    let Some(cfg) = config else {
-        return results;
-    };
-    let filter = ScopeFilter::from_args(cfg, scope, scope_only, scope_all)
-        .unwrap_or_else(|_| ScopeFilter::default_for(cfg));
-    results
-        .into_iter()
-        .filter(|r| filter.accepts(&r.path))
-        .collect()
-}
-
 /// Multiplies each result's score by the scope priority multiplier.
 ///
 /// Uses the `TalonConfig` to resolve the scope for each vault path.
@@ -330,16 +259,6 @@ fn get_note_id_by_path(conn: &Connection, vault_path: &str) -> Option<i64> {
     conn.query_row(
         "SELECT id FROM notes WHERE vault_path = ? AND active = 1",
         [vault_path],
-        |row| row.get(0),
-    )
-    .ok()
-}
-
-/// Looks up a note's `mtime_ms` by rowid.
-fn get_note_mtime(conn: &Connection, note_id: i64) -> Option<u64> {
-    conn.query_row(
-        "SELECT mtime_ms FROM notes WHERE id = ? AND active = 1",
-        [note_id],
         |row| row.get(0),
     )
     .ok()

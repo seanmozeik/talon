@@ -2,6 +2,7 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use super::super::pre_filter::PreFilter;
 use super::test_support::{cleanup, dummy_embed_response, insert_note, runtime, unique_db_path};
 use super::*;
 use crate::expansion::client::ExpansionClient;
@@ -66,6 +67,7 @@ fn intent_disables_strong_signal_probe_short_circuit() {
         queries: vec![],
         intent: Some("web page load".to_owned()),
         hooks: SearchHooks::default(),
+        pre_filter: PreFilter::none(),
     };
 
     let _ = run_hybrid_pipeline(

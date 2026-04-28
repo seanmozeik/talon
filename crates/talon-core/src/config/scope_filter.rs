@@ -81,6 +81,13 @@ impl<'a> ScopeFilter<'a> {
         Ok(Self { config, mode })
     }
 
+    /// Returns `true` when the filter accepts every note regardless of scope
+    /// (i.e. `--scope-all` was passed). Used to skip expensive pre-computation.
+    #[must_use]
+    pub const fn accepts_all(&self) -> bool {
+        matches!(self.mode, ScopeFilterMode::All)
+    }
+
     /// Builds the default filter (no flags passed): default-true scopes only.
     #[must_use]
     pub const fn default_for(config: &'a TalonConfig) -> Self {

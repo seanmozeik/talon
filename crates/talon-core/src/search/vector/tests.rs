@@ -24,14 +24,14 @@ fn distance_to_score_midpoint_is_half() {
 fn search_vector_empty_embedding_returns_empty() {
     // No DB needed; the empty-input guard short-circuits.
     let conn = rusqlite::Connection::open_in_memory().unwrap();
-    assert!(search_vector(&conn, &[], 10).is_empty());
+    assert!(search_vector(&conn, &[], 10, &PreFilter::none()).is_empty());
 }
 
 #[test]
 fn search_vector_zero_norm_embedding_returns_empty() {
     // No DB needed; the zero-norm guard short-circuits.
     let conn = rusqlite::Connection::open_in_memory().unwrap();
-    assert!(search_vector(&conn, &[0.0, 0.0, 0.0], 10).is_empty());
+    assert!(search_vector(&conn, &[0.0, 0.0, 0.0], 10, &PreFilter::none()).is_empty());
 }
 
 #[test]
@@ -39,7 +39,7 @@ fn search_vector_without_extension_returns_empty() {
     // Without sqlite-vec loaded, the prepare will fail. The function should
     // swallow that and return an empty result rather than panicking.
     let conn = rusqlite::Connection::open_in_memory().unwrap();
-    assert!(search_vector(&conn, &[0.1, 0.2, 0.3], 10).is_empty());
+    assert!(search_vector(&conn, &[0.1, 0.2, 0.3], 10, &PreFilter::none()).is_empty());
 }
 
 #[test]
@@ -69,7 +69,7 @@ fn search_vector_per_note_dedup_returns_one_result_per_note() {
         crate::embed::persist_chunk_vector(&conn, cid, "m", 2, 1, &[1.0, 0.0]).unwrap();
     }
 
-    let results = search_vector(&conn, &[1.0, 0.0], 10);
+    let results = search_vector(&conn, &[1.0, 0.0], 10, &PreFilter::none());
     assert_eq!(
         results.len(),
         1,
@@ -89,7 +89,7 @@ fn search_vector_normalizes_query_embedding_before_search() {
     let chunk_id = seed_note_chunk(&conn, "unit.md", "Unit");
     crate::embed::persist_chunk_vector(&conn, chunk_id, "m", 3, 1, &[3.0, 4.0, 0.0]).unwrap();
 
-    let results = search_vector(&conn, &[6.0, 8.0, 0.0], 10);
+    let results = search_vector(&conn, &[6.0, 8.0, 0.0], 10, &PreFilter::none());
 
     assert!(
         (results[0].score - 1.0).abs() < 1e-6,
@@ -134,7 +134,7 @@ fn search_vector_candidate_pool_does_not_exceed_limit() {
         crate::embed::persist_chunk_vector(&conn, cid, "m", 2, 1, &v).unwrap();
     }
 
-    let results = search_vector(&conn, &[1.0, 0.0], 2);
+    let results = search_vector(&conn, &[1.0, 0.0], 2, &PreFilter::none());
     assert!(
         results.len() <= 2,
         "result count should not exceed limit=2, got {}",

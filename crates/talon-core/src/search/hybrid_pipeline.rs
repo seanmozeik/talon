@@ -25,6 +25,7 @@ use super::fuzzy_title::search_title_parts;
 use super::hooks::SearchHooks;
 use super::hybrid_single::{HybridSingleResult, run_hybrid_single};
 use super::pool;
+use super::pre_filter::PreFilter;
 use super::rerank_pipeline::{IntentRerankOptions, rerank_candidates_with_intent};
 use super::rrf::{RrfInputs, RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
 use super::types::{HybridScoreData, RawSearchResult, SearchScores};
@@ -47,6 +48,8 @@ pub struct HybridPipelineOptions {
     pub intent: Option<String>,
     /// Optional stage instrumentation callbacks.
     pub hooks: SearchHooks,
+    /// Pre-computed filters pushed into every retrieval SQL query.
+    pub pre_filter: PreFilter,
 }
 
 /// Results plus query-expansion metadata from the hybrid pipeline.
@@ -107,8 +110,10 @@ pub fn run_hybrid_pipeline_with_metadata(
         query,
         HYBRID_PROBE_LEXICAL_LIMIT,
         DEFAULT_SNIPPET_LENGTH,
+        &options.pre_filter,
     );
-    let title_probe = search_title_parts(conn, query, HYBRID_PROBE_TITLE_LIMIT);
+    let title_probe =
+        search_title_parts(conn, query, HYBRID_PROBE_TITLE_LIMIT, &options.pre_filter);
 
     let has_supplied = !options.queries.is_empty();
     let has_exact_alias = !title_probe.exact_alias.is_empty();
@@ -181,6 +186,7 @@ pub fn run_hybrid_pipeline_with_metadata(
                 embedding.as_deref(),
                 options.limit,
                 options.candidate_limit,
+                &options.pre_filter,
             );
             single_to_raw_list(&single, rrf_size as usize)
         })

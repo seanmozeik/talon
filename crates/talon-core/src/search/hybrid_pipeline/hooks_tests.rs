@@ -4,6 +4,7 @@ use std::time::Instant;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
+use super::super::pre_filter::PreFilter;
 use super::test_support::{cleanup, dummy_embed_response, insert_note, runtime, unique_db_path};
 use super::*;
 use crate::expansion::client::ExpansionClient;
@@ -130,6 +131,7 @@ fn hooks_record_expand_before_rerank() {
         queries: vec![],
         intent: None,
         hooks,
+        pre_filter: PreFilter::none(),
     };
 
     let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "atomic notes", &opts);

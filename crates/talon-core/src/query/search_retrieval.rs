@@ -11,6 +11,7 @@ use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::fuzzy_title::search_fuzzy_title;
 use crate::search::pool;
+use crate::search::pre_filter::PreFilter;
 use crate::search::types::RawSearchResult;
 use crate::search::vector::search_vector;
 use crate::search::{SearchInput, SearchMode};
@@ -35,6 +36,7 @@ pub(super) enum RetrievalOutcome {
 pub(super) fn retrieve_raw_results(
     conn: &Connection,
     input: &SearchInput,
+    pre_filter: &PreFilter,
     inference: Option<&InferenceClient>,
     expansion: Option<&ExpansionClient>,
     query: &str,
@@ -49,6 +51,7 @@ pub(super) fn retrieve_raw_results(
             query,
             pool::bm25_pool(limit, candidate_floor),
             DEFAULT_SNIPPET_LENGTH,
+            pre_filter,
         ),
         SearchMode::Hybrid => {
             return match run_hybrid_mode(&HybridArgs {
@@ -61,6 +64,7 @@ pub(super) fn retrieve_raw_results(
                 candidate_floor,
                 fast,
                 include_expanded_queries,
+                pre_filter: pre_filter.clone(),
             }) {
                 HybridOutcome::NoInference => RetrievalOutcome::EmptyHybrid,
                 HybridOutcome::Ok {
@@ -82,17 +86,26 @@ pub(super) fn retrieve_raw_results(
                 return RetrievalOutcome::Empty;
             };
             let embedding = embeddings.first().map_or(&[] as &[f32], Vec::as_slice);
-            search_vector(conn, embedding, pool::vector_pool(limit, candidate_floor))
+            search_vector(
+                conn,
+                embedding,
+                pool::vector_pool(limit, candidate_floor),
+                pre_filter,
+            )
         }
         SearchMode::Fulltext => search_bm25(
             conn,
             query,
             pool::bm25_pool(limit, candidate_floor),
             DEFAULT_SNIPPET_LENGTH,
+            pre_filter,
         ),
-        SearchMode::Title => {
-            search_fuzzy_title(conn, query, pool::fuzzy_pool(limit, candidate_floor))
-        }
+        SearchMode::Title => search_fuzzy_title(
+            conn,
+            query,
+            pool::fuzzy_pool(limit, candidate_floor),
+            pre_filter,
+        ),
     };
     RetrievalOutcome::Ok {
         results: raw,

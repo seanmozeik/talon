@@ -14,14 +14,15 @@ pub const CONFIG_DIR_NAME: &str = "talon";
 /// Default config path: `~/.config/talon/config.toml`.
 #[must_use]
 pub fn default_config_path() -> PathBuf {
-    let mut path = dirs::config_dir().unwrap_or_else(|| {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join(".config")
-    });
-    path.push(CONFIG_DIR_NAME);
-    path.push(CONFIG_FILE_NAME);
-    path
+    let base = std::env::var_os("XDG_CONFIG_HOME").map_or_else(
+        || {
+            dirs::home_dir()
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join(".config")
+        },
+        PathBuf::from,
+    );
+    base.join(CONFIG_DIR_NAME).join(CONFIG_FILE_NAME)
 }
 
 /// Default `SQLite` index path.
