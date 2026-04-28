@@ -29,10 +29,11 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let conn = open_database(&config.db_path)
+    let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let mode = input.mode;
     let fast = input.fast;
+    crate::config::refresh_index_if_needed(&config, &mut conn, fast)?;
     let (inference, expansion) =
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
             (None, None)
@@ -102,8 +103,9 @@ fn dispatch_read(input: &ReadInput) -> Result<TalonEnvelope> {
 fn dispatch_related(input: &RelatedInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
-    let conn = open_database(&config.db_path)
+    let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
+    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
     let response = find_related(&conn, input, Some(&config));
     let result_count = count_u32(response.results.len());
     let meta = ResponseMeta {
@@ -123,8 +125,9 @@ fn dispatch_related(input: &RelatedInput) -> Result<TalonEnvelope> {
 fn dispatch_meta(input: &MetaInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
-    let conn = open_database(&config.db_path)
+    let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
+    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
     let since = input.since.clone();
     let response = query_meta(&conn, input, Some(&config));
     let result_count = count_u32(response.entries.len());
@@ -145,8 +148,9 @@ fn dispatch_meta(input: &MetaInput) -> Result<TalonEnvelope> {
 fn dispatch_changes(input: &ChangesInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
-    let conn = open_database(&config.db_path)
+    let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
+    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
     let since = input.since.clone();
     let response = query_changes(&conn, input, Some(&config));
     let result_count =
@@ -168,8 +172,12 @@ fn dispatch_changes(input: &ChangesInput) -> Result<TalonEnvelope> {
 fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
-    let conn = open_database(&config.db_path)
+    register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
+    let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
+    // Lint always refreshes — findings must reflect current vault state.
+    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
+
     let response = query_lint(&conn, input, Some(&config));
     let result_count = count_u32(response.findings.len());
     let meta = ResponseMeta {

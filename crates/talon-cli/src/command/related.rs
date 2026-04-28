@@ -37,10 +37,12 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
             .resolved_set(),
     );
 
+    let fast = args.fast.enabled();
     let started = Instant::now();
     let work = async move {
-        let conn = open_database(&db_path)
+        let mut conn = open_database(&db_path)
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+        crate::config::refresh_index_if_needed(&config, &mut conn, fast)?;
 
         let mut response = find_related(&conn, &input, Some(&config));
         response.vault = vault;

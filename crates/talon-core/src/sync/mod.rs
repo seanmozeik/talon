@@ -7,6 +7,7 @@
 //! scan + reconcile + tombstone-prune pipeline.
 
 pub mod lock;
+mod relink;
 
 use std::path::Path;
 
@@ -23,6 +24,33 @@ use crate::indexing::change_tracking::TOMBSTONE_RETENTION_MS;
 use crate::inference::InferenceClient;
 
 pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process};
+pub use relink::relink_unresolved;
+
+/// No-embed sync used by query surfaces to keep the index in step with
+/// on-disk state without paying the embedding round-trip.
+///
+/// Equivalent to [`run_sync_with_chunker`] called with `embed_config = None`
+/// and `inference = None` — runs the full scan, reconciles deletions, and
+/// re-resolves links, then returns. Recently-edited files are searchable
+/// via BM25 immediately; their semantic embeddings catch up on the next
+/// explicit `talon sync`.
+///
+/// # Errors
+///
+/// Same as [`run_sync_with_chunker`]. Errors loudly on lock contention
+/// (`SyncError::LockBusy`) — query commands should propagate this rather
+/// than silently fall back to stale state.
+pub fn refresh_index(
+    conn: &mut Connection,
+    vault_root: &Path,
+    lock_path: &Path,
+    config: &IndexerConfig,
+    chunker: &ChunkerConfig,
+) -> Result<IndexerStats, SyncError> {
+    let (stats, _embed) =
+        run_sync_with_chunker(conn, vault_root, lock_path, config, None, None, chunker)?;
+    Ok(stats)
+}
 
 /// One-shot sync over a vault.
 ///
@@ -79,6 +107,14 @@ pub fn run_sync_with_chunker(
         .map_err(SyncError::Indexer)?;
     let deleted = reconcile_deletions(conn, vault_root).map_err(SyncError::Indexer)?;
     stats.deleted = stats.deleted.saturating_add(deleted);
+
+    // Closes the link-staleness window: incremental indexing only refreshes
+    // a source file's resolved links when that source file is touched, so an
+    // alias added to a target leaves prior links to it unresolved until the
+    // sources change. This pass re-resolves any link still pointing at a
+    // missing `to_path` and lets the new aliases / new target files satisfy
+    // existing references.
+    relink_unresolved(conn).map_err(SyncError::Indexer)?;
 
     // Tombstone state currently lives in the in-memory `ChangeIndex` (see
     // `crate::indexing::change_tracking`); the persistent change-feed table will land in

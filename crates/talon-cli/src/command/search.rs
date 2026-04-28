@@ -89,8 +89,11 @@ fn execute_search(
         .map_or_else(crate::config::default_db_path, |c| c.db_path.clone());
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let conn = open_database(&db_path)
+    let mut conn = open_database(&db_path)
         .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+    if let Some(cfg) = config {
+        crate::config::refresh_index_if_needed(cfg, &mut conn, fast)?;
+    }
 
     let (inference, expansion) =
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {

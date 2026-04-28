@@ -107,35 +107,69 @@ pub fn format_status_human(w: &mut impl Write, resp: &talon_core::StatusResponse
 
 /// Formats a lint response for human reading.
 ///
+/// Mirrors `format_search_human`'s card style: a styled headline summarising
+/// the run, then per-check sections with numbered findings (rank + path on
+/// one line, indented detail beneath).
+///
 /// # Errors
 ///
 /// Returns an error if writing to `w` fails.
 pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> {
+    use anstyle::{AnsiColor, Effects, Style};
+    use talon_core::LintCheck;
+
+    let opts = super::RenderOptions::for_terminal();
+    let heading = super::style::cs(
+        opts.colors,
+        Style::new().bold().fg_color(Some(AnsiColor::Cyan.into())),
+    );
+    let bold = super::style::cs(opts.colors, Style::new().effects(Effects::BOLD));
+    let dim = super::style::cs(opts.colors, Style::new().effects(Effects::DIMMED));
+
+    let total = resp.findings.len();
+    let finding_word = if total == 1 { "finding" } else { "findings" };
     writeln!(
         w,
-        "Lint ({}): {} findings",
-        lint_label(resp.check),
-        resp.findings.len()
+        "{heading}Lint{heading:#}  ·  {bold}{}{bold:#}  ·  {dim}{total} {finding_word}{dim:#}",
+        lint_label(resp.check)
     )?;
-    if resp.check == talon_core::LintCheck::All {
+
+    if total == 0 {
+        writeln!(w)?;
+        writeln!(w, "  {dim}No issues found.{dim:#}")?;
+        return Ok(());
+    }
+
+    writeln!(w)?;
+    if resp.check == LintCheck::All {
+        let mut first_section = true;
         for check in [
-            talon_core::LintCheck::Orphans,
-            talon_core::LintCheck::BrokenLinks,
-            talon_core::LintCheck::DanglingRefs,
-            talon_core::LintCheck::Unreferenced,
+            LintCheck::Orphans,
+            LintCheck::BrokenLinks,
+            LintCheck::DanglingRefs,
+            LintCheck::Unreferenced,
         ] {
             let findings: Vec<_> = resp.findings.iter().filter(|f| f.check == check).collect();
             if findings.is_empty() {
                 continue;
             }
-            writeln!(w, "{}: {}", lint_label(check), findings.len())?;
-            for finding in findings.into_iter().take(20) {
-                write_lint_finding(w, finding)?;
+            if !first_section {
+                writeln!(w)?;
+            }
+            first_section = false;
+            writeln!(
+                w,
+                "{bold}{}{bold:#}  ·  {dim}{}{dim:#}",
+                lint_label(check),
+                findings.len()
+            )?;
+            for (i, f) in findings.iter().take(20).enumerate() {
+                format_lint_card(w, i + 1, f, &bold, &dim)?;
             }
         }
     } else {
-        for finding in resp.findings.iter().take(20) {
-            write_lint_finding(w, finding)?;
+        for (i, f) in resp.findings.iter().take(20).enumerate() {
+            format_lint_card(w, i + 1, f, &bold, &dim)?;
         }
     }
     Ok(())
@@ -151,13 +185,37 @@ const fn lint_label(check: talon_core::LintCheck) -> &'static str {
     }
 }
 
-fn write_lint_finding(w: &mut impl Write, f: &talon_core::LintFinding) -> Result<()> {
+fn format_lint_card(
+    w: &mut impl Write,
+    rank: usize,
+    f: &talon_core::LintFinding,
+    bold: &anstyle::Style,
+    dim: &anstyle::Style,
+) -> Result<()> {
+    let path = f.path.as_str();
     if let Some(line) = f.line {
-        writeln!(w, "  - {}:{} {}", f.path.as_str(), line, f.message)?;
+        writeln!(
+            w,
+            " {bold}{rank:>2}{bold:#}  {bold}{path}{bold:#}{dim}:{line}{dim:#}"
+        )?;
     } else {
-        writeln!(w, "  - {} {}", f.path.as_str(), f.message)?;
+        writeln!(w, " {bold}{rank:>2}{bold:#}  {bold}{path}{bold:#}")?;
     }
+    let detail = strip_redundant_prefix(f.check, &f.message);
+    writeln!(w, "     {dim}{detail}{dim:#}")?;
     Ok(())
+}
+
+/// Drops the leading `"<check>: "` prefix from a finding message when the
+/// section header already conveys it. Keeps the prefix for `--all` callers
+/// who consume the message without the section context.
+fn strip_redundant_prefix(check: talon_core::LintCheck, msg: &str) -> &str {
+    let prefix = match check {
+        talon_core::LintCheck::BrokenLinks => "broken link: ",
+        talon_core::LintCheck::DanglingRefs => "dangling ref: ",
+        _ => return msg,
+    };
+    msg.strip_prefix(prefix).unwrap_or(msg)
 }
 
 fn emit_read(resp: &ReadResponse) -> Result<()> {

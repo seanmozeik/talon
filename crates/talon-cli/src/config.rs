@@ -3,9 +3,7 @@
 use eyre::{Result, WrapErr as _, bail};
 use fs_err as fs;
 use std::path::{Component, Path, PathBuf};
-use talon_core::{
-    ContainerPath, InferenceConfig, InferenceModels, Scope, ScopePriority, TalonConfig,
-};
+use talon_core::{ContainerPath, InferenceConfig, InferenceModels, TalonConfig};
 
 /// Default config filename.
 pub const CONFIG_FILE_NAME: &str = "config.toml";
@@ -264,83 +262,57 @@ fn expand_tilde(path: PathBuf) -> PathBuf {
     }
 }
 
-/// Builds the Karpathy-shaped preset scopes.
-fn default_karpathy_scopes() -> talon_core::ScopesConfig {
-    use talon_core::ScopeGlob;
-    let mut scopes = talon_core::ScopesConfig::new();
-
-    scopes.insert(
-        "wiki".to_string(),
-        Scope {
-            glob: ScopeGlob::Multiple(vec!["wiki/**".to_string(), "concepts/**".to_string()]),
-            priority: ScopePriority::Boosted,
-            default: true,
-            lint: true,
-        },
-    );
-    scopes.insert(
-        "projects".to_string(),
-        Scope {
-            glob: ScopeGlob::Single("projects/**".to_string()),
-            priority: ScopePriority::Elevated,
-            default: true,
-            lint: true,
-        },
-    );
-    scopes.insert(
-        "artifacts".to_string(),
-        Scope {
-            glob: ScopeGlob::Single("artifacts/**".to_string()),
-            priority: ScopePriority::Normal,
-            default: true,
-            lint: true,
-        },
-    );
-    scopes.insert(
-        "raw".to_string(),
-        Scope {
-            glob: ScopeGlob::Single("raw/**".to_string()),
-            priority: ScopePriority::Muted,
-            default: true,
-            lint: true,
-        },
-    );
-    scopes.insert(
-        "daily".to_string(),
-        Scope {
-            glob: ScopeGlob::Single("daily/**".to_string()),
-            priority: ScopePriority::Muted,
-            default: true,
-            lint: false,
-        },
-    );
-    scopes.insert(
-        "archive".to_string(),
-        Scope {
-            glob: ScopeGlob::Single("archive/**".to_string()),
-            priority: ScopePriority::Buried,
-            default: true,
-            lint: false,
-        },
-    );
-    scopes.insert(
-        "private".to_string(),
-        Scope {
-            glob: ScopeGlob::Single("private/**".to_string()),
-            priority: ScopePriority::Normal,
-            default: false,
-            lint: false,
-        },
-    );
-
-    scopes
-}
+mod karpathy;
+use karpathy::default_karpathy_scopes;
 
 /// Converts the configured vault path to a [`ContainerPath`], or `None` when
 /// config is absent (e.g. when running without a config file).
 #[must_use]
 pub fn vault_container_path(config: Option<&TalonConfig>) -> Option<ContainerPath> {
     config.and_then(|c| ContainerPath::parse(c.vault_path.to_string_lossy().as_ref()).ok())
+}
+
+/// Auto-refresh the index against on-disk state before running a query.
+///
+/// Mirrors `talon sync` minus the embed pass — recently-edited files become
+/// searchable via BM25 immediately; their semantic embeddings catch up on
+/// the next explicit `talon sync`. Errors loudly on lock contention rather
+/// than silently returning stale results.
+///
+/// Skipped when `--fast` is set (the user opted into "skip the slow stuff",
+/// which includes the small refresh cost).
+///
+/// # Errors
+///
+/// Returns an error if the underlying [`talon_core::refresh_index`] fails —
+/// notably [`talon_core::SyncError::LockBusy`] when another sync holds the
+/// advisory lock. The query commands propagate this rather than silently
+/// returning stale state.
+pub fn refresh_index_if_needed(
+    config: &TalonConfig,
+    conn: &mut talon_core::Connection,
+    fast: bool,
+) -> eyre::Result<()> {
+    if fast {
+        return Ok(());
+    }
+    let lock_path: PathBuf = config
+        .db_path
+        .parent()
+        .map_or_else(|| PathBuf::from("sync.lock"), |p| p.join("sync.lock"));
+    let indexer_config = talon_core::IndexerConfig {
+        include_patterns: config.include_patterns.clone(),
+        ignore_patterns: config.ignore_patterns.clone(),
+    };
+    talon_core::refresh_index(
+        conn,
+        &config.vault_path,
+        &lock_path,
+        &indexer_config,
+        &config.chunker,
+    )
+    .map_err(|e| eyre::eyre!("auto-refresh failed: {e}"))?;
+    Ok(())
 }
 
 #[cfg(test)]

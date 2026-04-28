@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::CliArgs;
-use crate::config::{self, vault_container_path};
+use crate::config::{self, refresh_index_if_needed, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     LintCheck, LintInput, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData,
-    open_database, query_lint,
+    open_database, query_lint, vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
@@ -46,8 +46,13 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
 
     let started = Instant::now();
     let work = async move {
-        let conn = open_database(&db_path)
+        register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
+        let mut conn = open_database(&db_path)
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+        // Lint always refreshes — findings must reflect current vault state.
+        // `false` for `fast`: lint never opts out of refresh.
+        refresh_index_if_needed(&config, &mut conn, false)?;
+
         let mut response = query_lint(&conn, &input, Some(&config));
         response.vault = vault;
         let result_count = count_u32(response.findings.len());

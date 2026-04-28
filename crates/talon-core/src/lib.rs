@@ -60,13 +60,15 @@ pub use query::{
     find_related, query_changes, query_lint, query_meta, query_status, run_read, run_recall,
     run_search, run_search_with_expanded_queries,
 };
+pub use rusqlite::Connection;
 pub use search::{
     AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchDiagnostics,
     SearchHooks, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause, WhereOperator,
 };
 pub use store::open_database;
 pub use sync::{
-    SyncError, SyncLock, SyncLockError, acquire_sync_lock, run_sync, run_sync_with_chunker,
+    SyncError, SyncLock, SyncLockError, acquire_sync_lock, refresh_index, relink_unresolved,
+    run_sync, run_sync_with_chunker,
 };
 pub use text::chunker::{
     NoteChunk, build_embedding_text, build_heading_path, chunk_markdown, make_chunk_hash,

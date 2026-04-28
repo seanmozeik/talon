@@ -3,6 +3,7 @@
 use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::indexing::{LintCheck, LintFinding, LintInput, LintResponse};
+use crate::sync::relink_unresolved;
 use rusqlite::Connection;
 
 pub fn query_lint(
@@ -10,6 +11,13 @@ pub fn query_lint(
     input: &LintInput,
     config: Option<&TalonConfig>,
 ) -> LintResponse {
+    // Re-resolve any stale links before reporting. Sync also does this, but
+    // running it here too means lint output is fresh regardless of whether
+    // sync was the last operation. Cost: one SELECT plus an UPDATE per
+    // newly-resolvable link — bounded by current broken-link count, so
+    // O(0) on healthy vaults and small even on broken ones.
+    let _ = relink_unresolved(conn);
+
     let filter = config.map(|cfg| {
         ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
             .unwrap_or_else(|_| ScopeFilter::default_for(cfg))
@@ -96,11 +104,18 @@ fn find_broken_links(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec
         .into_iter()
         .filter(|(from, _, _)| filter.is_none_or(|f| f.accepts(from)))
         .filter_map(|(from, to, raw)| {
-            let display = if raw.is_empty() { to.clone() } else { raw };
+            // For bare `[[X]]` wikilinks (raw == to), the arrow form duplicates
+            // information. Only show the resolution arrow when raw differs —
+            // i.e. when the user wrote `[[Y|X]]` or some alias-style form.
+            let message = if raw.is_empty() || raw == to {
+                format!("broken link: [[{to}]] (not found)")
+            } else {
+                format!("broken link: [[{raw}]] → {to} (not found)")
+            };
             VaultPath::parse(&from).ok().map(|vp| LintFinding {
                 check: LintCheck::BrokenLinks,
                 path: vp,
-                message: format!("broken link: {display} → {to} (not found)"),
+                message,
                 line: None,
             })
         })
