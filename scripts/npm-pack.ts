@@ -86,6 +86,15 @@ function scopedName(base: string): string {
   return npmOrg ? `@${npmOrg}/${base}` : base;
 }
 
+function npmRepositoryUrl(): string {
+  const source = cargoMeta.repository
+    ?? (npmOrg
+      ? `https://github.com/${npmOrg}/${packageName}`
+      : `https://github.com/${packageName}`);
+  const gitUrl = source.startsWith("git+") ? source : `git+${source}`;
+  return gitUrl.endsWith(".git") ? gitUrl : `${gitUrl}.git`;
+}
+
 // ── Resolve Cargo metadata ─────────────────────────────────────────────────────
 
 interface CargoPackage {
@@ -144,6 +153,7 @@ const cargoMeta = await loadCargoMetadata();
 const packageName = cargoMeta.name;
 const {version} = cargoMeta;
 const binaryName = deriveBinaryName(packageName);
+const repository = { type: "git", url: npmRepositoryUrl() };
 const skipSmoke = args["skip-smoke"] === "true" || process.env.TALON_SKIP_SMOKE === "1";
 const requireSmoke =
   args["require-smoke"] === "true" || process.env.TALON_REQUIRE_TARGET_SMOKE === "1";
@@ -214,11 +224,7 @@ async function main() {
       private: false,
       publishConfig: { access },
       type: "module",
-      repository: cargoMeta.repository
-        ? { type: "git", url: cargoMeta.repository }
-        : npmOrg
-          ? { type: "git", url: `https://github.com/${npmOrg}/${packageName}` }
-          : { type: "git", url: `https://github.com/${packageName}` },
+      repository,
       version,
     };
     await Bun.write(`${pkgDir}/package.json`, `${JSON.stringify(pkgJson, null, 2)}\n`);
@@ -275,6 +281,7 @@ async function main() {
     bin: { [binaryName]: "./binary.js" },
     files: ["binary.js"],
     publishConfig: { access },
+    repository,
     optionalDependencies: Object.fromEntries(
       targets.map((t) => [scopedName(`${binaryName}-${t.label}`), version]),
     ),
