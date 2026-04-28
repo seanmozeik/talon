@@ -3,3 +3,7 @@ node_modules/
 .talon/
 /target
 npm/
+__pycache__/
+*.py[cod]
+.venv/
+dist/

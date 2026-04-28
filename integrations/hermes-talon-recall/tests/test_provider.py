@@ -20,8 +20,10 @@ import pytest
 # Stub the agent.memory_provider module so tests run without a Hermes install.
 # ---------------------------------------------------------------------------
 import abc
+import importlib.util
 
 _stub_module = types.ModuleType("agent.memory_provider")
+
 
 class _MemoryProviderStub(abc.ABC):
     pass
@@ -285,6 +287,78 @@ def test_vault_path_sets_talon_vault_env(monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# Hermes subprocess HOME injection
+# ---------------------------------------------------------------------------
+
+
+def test_profile_home_is_used_when_available(monkeypatch, tmp_path):
+    """Provider subprocesses follow Hermes' per-profile HOME convention."""
+    hermes_home = tmp_path / "hermes"
+    profile_home = hermes_home / "home"
+    profile_home.mkdir(parents=True)
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    p = _make_provider(monkeypatch)
+
+    captured_envs: list[dict] = []
+
+    def fake_run(cmd, *, env=None, **_kwargs):
+        captured_envs.append(env or {})
+        return CompletedProcess(args=[], returncode=0, stdout=GOOD_XML, stderr="")
+
+    with patch("hermes_talon_recall.provider.subprocess.run", fake_run):
+        p.prefetch("vault query")
+
+    assert captured_envs[0].get("HOME") == str(profile_home)
+    assert captured_envs[0].get("TALON_CONFIG_FILE") == str(
+        profile_home / ".config" / "talon" / "config.toml"
+    )
+
+
+def test_home_is_preserved_when_profile_home_is_absent(monkeypatch, tmp_path):
+    """Standalone installs without $HERMES_HOME/home keep the caller HOME."""
+    hermes_home = tmp_path / "hermes"
+    hermes_home.mkdir()
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setenv("HOME", "/caller/home")
+    p = _make_provider(monkeypatch)
+
+    captured_envs: list[dict] = []
+
+    def fake_run(cmd, *, env=None, **_kwargs):
+        captured_envs.append(env or {})
+        return CompletedProcess(args=[], returncode=0, stdout=GOOD_XML, stderr="")
+
+    with patch("hermes_talon_recall.provider.subprocess.run", fake_run):
+        p.prefetch("vault query")
+
+    assert captured_envs[0].get("HOME") == "/caller/home"
+    assert "TALON_CONFIG_FILE" not in captured_envs[0]
+
+
+def test_existing_talon_config_file_env_is_preserved(monkeypatch, tmp_path):
+    """Explicit Talon config overrides win over the profile default."""
+    hermes_home = tmp_path / "hermes"
+    profile_home = hermes_home / "home"
+    profile_home.mkdir(parents=True)
+    explicit_config = tmp_path / "custom-talon.toml"
+    monkeypatch.setenv("HERMES_HOME", str(hermes_home))
+    monkeypatch.setenv("TALON_CONFIG_FILE", str(explicit_config))
+    p = _make_provider(monkeypatch)
+
+    captured_envs: list[dict] = []
+
+    def fake_run(cmd, *, env=None, **_kwargs):
+        captured_envs.append(env or {})
+        return CompletedProcess(args=[], returncode=0, stdout=GOOD_XML, stderr="")
+
+    with patch("hermes_talon_recall.provider.subprocess.run", fake_run):
+        p.prefetch("vault query")
+
+    assert captured_envs[0].get("HOME") == str(profile_home)
+    assert captured_envs[0].get("TALON_CONFIG_FILE") == str(explicit_config)
+
+
+# ---------------------------------------------------------------------------
 # get_tool_schemas
 # ---------------------------------------------------------------------------
 
@@ -293,6 +367,72 @@ def test_get_tool_schemas_returns_empty_list():
     """Talon is recall-only; the provider never exposes agent tools."""
     p = TalonRecallProvider()
     assert p.get_tool_schemas() == []
+
+
+def test_hermes_memory_shim_exports_provider():
+    """Hermes memory discovery loads the shim, not a general plugin entry point."""
+    root = Path(__file__).resolve().parents[1]
+    shim = root / "hermes-memory" / "talon-recall" / "__init__.py"
+
+    spec = importlib.util.spec_from_file_location(
+        "_talon_recall_memory_shim",
+        shim,
+        submodule_search_locations=[str(shim.parent)],
+    )
+    assert spec is not None
+    assert spec.loader is not None
+
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    assert module.TalonRecallProvider is TalonRecallProvider
+    assert module.__all__ == ["TalonRecallProvider", "register"]
+
+
+def test_register_ignores_general_plugin_context():
+    """Accidental general plugin discovery must not require memory APIs."""
+
+    class GeneralPluginContext:
+        pass
+
+    import hermes_talon_recall
+
+    hermes_talon_recall.register(GeneralPluginContext())
+
+
+def test_register_uses_memory_provider_context():
+    """Memory-aware contexts receive the Talon provider."""
+
+    class MemoryPluginContext:
+        def __init__(self) -> None:
+            self.providers = []
+
+        def register_memory_provider(self, provider) -> None:
+            self.providers.append(provider)
+
+    import hermes_talon_recall
+
+    ctx = MemoryPluginContext()
+    hermes_talon_recall.register(ctx)
+
+    assert len(ctx.providers) == 1
+    assert isinstance(ctx.providers[0], TalonRecallProvider)
+
+
+def test_pyproject_has_no_general_hermes_plugin_entry_point():
+    """Memory providers must avoid Hermes' general PluginContext loader."""
+    root = Path(__file__).resolve().parents[1]
+    pyproject = (root / "pyproject.toml").read_text()
+
+    assert '[project.entry-points."hermes_agent.plugins"]' not in pyproject
+
+
+def test_pyproject_packages_hermes_memory_shim():
+    """Published artifacts must carry the Hermes memory-discovery shim."""
+    root = Path(__file__).resolve().parents[1]
+    pyproject = (root / "pyproject.toml").read_text()
+
+    assert '"hermes-memory" = "hermes-memory"' in pyproject
 
 
 # ---------------------------------------------------------------------------

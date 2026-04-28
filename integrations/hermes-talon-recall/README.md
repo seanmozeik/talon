@@ -8,22 +8,33 @@ Talon is **recall-only** and stateless per call. The plugin implements `prefetch
 
 ## Installation
 
-**Drop-in:**
-```
-cp -r integrations/hermes-talon-recall ~/.hermes/plugins/talon-recall
-```
+Hermes loads memory providers from `plugins/memory/<name>/` in the Hermes install
+or `$HERMES_HOME/plugins/<name>/` for user-installed providers. The
+`hermes-memory/talon-recall` directory is the small discovery shim Hermes loads;
+the Python package contains the actual provider implementation.
 
-**Dev install (editable):**
+**Drop-in for a Hermes profile:**
 ```
 pip install -e integrations/hermes-talon-recall
+cp -r integrations/hermes-talon-recall/hermes-memory/talon-recall ~/.hermes/plugins/talon-recall
+```
+
+**Image or system install:**
+```
+pip install -e integrations/hermes-talon-recall
+cp -r integrations/hermes-talon-recall/hermes-memory/talon-recall /opt/hermes/plugins/memory/talon-recall
 ```
 
 **PyPI (once published):**
 ```
 pip install hermes-talon-recall
 ```
+After installing from PyPI, still install the `hermes-memory/talon-recall` shim
+into the Hermes memory-provider directory used by your deployment.
 
-The talon binary must be on `PATH` or pointed to via `TALON_BIN`.
+The talon binary must be on `PATH` or pointed to via `TALON_BIN`. Talon reads
+`~/.config/talon/config.toml` under the subprocess `HOME`. In Hermes profiles,
+the plugin follows Hermes' convention and runs Talon with `HOME=$HERMES_HOME/home`.
 
 ---
 
@@ -53,6 +64,10 @@ Or create `~/.hermes/talon-recall.json` manually:
 | `fast` | `false` | Skip LLM expansion + reranking (faster, lower quality) |
 | `prior_message_count` | `2` | Last N user turns fed to talon to widen the query |
 
+This file configures only the Hermes memory wrapper. Talon's vault, database,
+scope, and inference settings live in `~/.config/talon/config.toml` under the
+subprocess `HOME`.
+
 ---
 
 ## How it works
@@ -81,6 +96,11 @@ Or set `TALON_BIN=/absolute/path/to/talon`.
 **Vault path missing → set vault_path or TALON_VAULT:**
 ```
 export TALON_VAULT=/path/to/obsidian
+```
+
+**Wrong Talon config → check the subprocess HOME:**
+```
+echo "$HERMES_HOME/home/.config/talon/config.toml"
 ```
 
 **Agent gets no context → check min_confidence threshold:**

@@ -201,10 +201,20 @@ class TalonRecallProvider(MemoryProvider):
 
     def _build_env(self) -> dict[str, str]:
         env = os.environ.copy()
+        if hermes_home := os.environ.get("HERMES_HOME"):
+            profile_home = Path(hermes_home) / "home"
+            if profile_home.is_dir():
+                env["HOME"] = str(profile_home)
+                env.setdefault(
+                    "TALON_CONFIG_FILE",
+                    str(profile_home / ".config" / "talon" / "config.toml"),
+                )
         if self._vault_path:
             env["TALON_VAULT"] = self._vault_path
         return env
 
 
 def register(ctx) -> None:
-    ctx.register_memory_provider(TalonRecallProvider())
+    register_memory_provider = getattr(ctx, "register_memory_provider", None)
+    if register_memory_provider is not None:
+        register_memory_provider(TalonRecallProvider())

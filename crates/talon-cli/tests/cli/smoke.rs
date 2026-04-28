@@ -105,6 +105,117 @@ fn init_does_not_overwrite_existing_config() {
 }
 
 #[test]
+fn status_ignores_empty_talon_config_file_env() {
+    let tmp = std::env::temp_dir().join(format!("talon-empty-config-env-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let config_dir = tmp.join("config").join("talon");
+    let vault_path = tmp.join("vault");
+    let db_path = tmp.join("index.sqlite");
+    std::fs::create_dir_all(&config_dir).unwrap_or_else(|e| panic!("create config dir: {e}"));
+    std::fs::create_dir_all(&vault_path).unwrap_or_else(|e| panic!("create vault dir: {e}"));
+    let config_path = config_dir.join("config.toml");
+    std::fs::write(
+        &config_path,
+        format!(
+            r#"vault_path = "{vault}"
+db_path = "{db}"
+
+[inference]
+base_url = "http://localhost:8080"
+
+[inference.models]
+query_embedding = "embed"
+document_embedding = "embed"
+chunk_embedding = "embed_chunked"
+reranker = "rerank"
+
+[expansion]
+provider = "openai-compatible"
+base_url = "http://localhost:1234/v1"
+model = "gemma-smol"
+"#,
+            vault = vault_path.display(),
+            db = db_path.display(),
+        ),
+    )
+    .unwrap_or_else(|e| panic!("write config: {e}"));
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
+        .arg("--agent")
+        .arg("status")
+        .env("HOME", &tmp)
+        .env("XDG_CONFIG_HOME", tmp.join("config"))
+        .env("TALON_CONFIG_FILE", "")
+        .output()
+        .unwrap_or_else(|e| panic!("spawn talon status: {e}"));
+    assert!(out.status.success(), "talon status should exit 0");
+    let stdout = String::from_utf8(out.stdout).unwrap_or_else(|e| panic!("utf8 stdout: {e}"));
+    assert!(
+        stdout.contains(&format!(r#""configPath":"{}""#, config_path.display())),
+        "status should load the default config path when TALON_CONFIG_FILE is empty; got:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("config not found at "),
+        "empty TALON_CONFIG_FILE must not be treated as an explicit empty path; got:\n{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
+fn status_ignores_empty_talon_vault_env() {
+    let tmp = std::env::temp_dir().join(format!("talon-empty-vault-env-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let config_dir = tmp.join("config").join("talon");
+    let vault_path = tmp.join("vault");
+    let db_path = tmp.join("index.sqlite");
+    std::fs::create_dir_all(&config_dir).unwrap_or_else(|e| panic!("create config dir: {e}"));
+    std::fs::create_dir_all(&vault_path).unwrap_or_else(|e| panic!("create vault dir: {e}"));
+    std::fs::write(
+        config_dir.join("config.toml"),
+        format!(
+            r#"vault_path = "{vault}"
+db_path = "{db}"
+
+[inference]
+base_url = "http://localhost:8080"
+
+[inference.models]
+query_embedding = "embed"
+document_embedding = "embed"
+chunk_embedding = "embed_chunked"
+reranker = "rerank"
+
+[expansion]
+provider = "openai-compatible"
+base_url = "http://localhost:1234/v1"
+model = "gemma-smol"
+"#,
+            vault = vault_path.display(),
+            db = db_path.display(),
+        ),
+    )
+    .unwrap_or_else(|e| panic!("write config: {e}"));
+
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
+        .arg("--agent")
+        .arg("status")
+        .env("HOME", &tmp)
+        .env("XDG_CONFIG_HOME", tmp.join("config"))
+        .env("TALON_VAULT", "")
+        .output()
+        .unwrap_or_else(|e| panic!("spawn talon status: {e}"));
+    assert!(out.status.success(), "talon status should exit 0");
+    let stdout = String::from_utf8(out.stdout).unwrap_or_else(|e| panic!("utf8 stdout: {e}"));
+    assert!(
+        stdout.contains(&format!(r#""vaultPath":"{}""#, vault_path.display())),
+        "empty TALON_VAULT should not override the configured vault path; got:\n{stdout}"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn unknown_command_exits_nonzero() {
     Command::cargo_bin(BIN)
         .unwrap_or_else(|e| panic!("cargo_bin: {e}"))

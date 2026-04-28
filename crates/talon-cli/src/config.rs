@@ -14,7 +14,7 @@ pub const CONFIG_DIR_NAME: &str = "talon";
 /// Default config path: `~/.config/talon/config.toml`.
 #[must_use]
 pub fn default_config_path() -> PathBuf {
-    let base = std::env::var_os("XDG_CONFIG_HOME").map_or_else(
+    let base = non_empty_env_os("XDG_CONFIG_HOME").map_or_else(
         || {
             dirs::home_dir()
                 .unwrap_or_else(|| PathBuf::from("."))
@@ -119,7 +119,7 @@ pub fn load_config_file(path: &Path) -> Result<TalonConfig> {
 pub fn load_config(explicit_path: Option<&Path>) -> Result<TalonConfig> {
     let path = explicit_path
         .map(std::path::Path::to_path_buf)
-        .or_else(|| std::env::var("TALON_CONFIG_FILE").ok().map(PathBuf::from))
+        .or_else(|| non_empty_env_path("TALON_CONFIG_FILE"))
         .unwrap_or_else(default_config_path);
 
     if !path.exists() {
@@ -134,12 +134,25 @@ pub fn load_config(explicit_path: Option<&Path>) -> Result<TalonConfig> {
 
     // TALON_VAULT overrides vault_path so callers (e.g. Hermes plugin) can
     // target a specific vault without modifying the config file.
-    if let Ok(vault_override) = std::env::var("TALON_VAULT") {
-        config.vault_path =
-            absolutize_path(PathBuf::from(vault_override), &std::env::current_dir()?);
+    if let Some(vault_override) = non_empty_env_path("TALON_VAULT") {
+        config.vault_path = absolutize_path(vault_override, &std::env::current_dir()?);
     }
 
     Ok(config)
+}
+
+fn non_empty_env_os(key: &str) -> Option<std::ffi::OsString> {
+    std::env::var_os(key).filter(|value| !value.is_empty())
+}
+
+fn non_empty_env_path(key: &str) -> Option<PathBuf> {
+    std::env::var(key).ok().and_then(|value| {
+        if value.trim().is_empty() {
+            None
+        } else {
+            Some(PathBuf::from(value))
+        }
+    })
 }
 
 /// Initializes the config file at the default path.

@@ -13,8 +13,26 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
 
+[dependency-groups]
+dev = ["pytest>=9.0.3"]
+
 [project.urls]
 Homepage = "https://github.com/seanmozeik/talon"
+
+[tool.hatch.build.targets.sdist]
+include = [
+  "README.md",
+  "plugin.yaml",
+  "hermes-memory",
+  "hermes_talon_recall",
+  "tests",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["hermes_talon_recall"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"hermes-memory" = "hermes-memory"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
