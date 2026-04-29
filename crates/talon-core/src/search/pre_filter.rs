@@ -11,6 +11,7 @@ use rusqlite::types::Value;
 
 use crate::config::ScopeFilter;
 use crate::search::input::{WhereClause, WhereOperator};
+use crate::search::query_syntax::normalize_tag_filter;
 
 /// Filters to push down into each retrieval query.
 ///
@@ -25,6 +26,10 @@ pub struct PreFilter {
     pub accepted_note_ids: Option<Vec<i64>>,
     /// `--where` frontmatter clauses.
     pub where_clauses: Vec<WhereClause>,
+    /// Tag filters from `SearchInput.tag` or query syntax.
+    pub tags: Vec<String>,
+    /// Heading filters from `SearchInput.heading` or query syntax.
+    pub headings: Vec<String>,
 }
 
 impl PreFilter {
@@ -34,6 +39,8 @@ impl PreFilter {
             since_ms: None,
             accepted_note_ids: None,
             where_clauses: Vec::new(),
+            tags: Vec::new(),
+            headings: Vec::new(),
         }
     }
 
@@ -71,6 +78,22 @@ impl PreFilter {
             let (fragment, clause_params) = where_clause_sql(clause);
             sql.push_str(&fragment);
             params.extend(clause_params);
+        }
+
+        for tag in &self.tags {
+            sql.push_str(
+                " AND EXISTS (SELECT 1 FROM note_tags nt \
+                 WHERE nt.note_id = n.id AND nt.tag_norm = ?)",
+            );
+            params.push(Value::Text(normalize_tag_filter(tag)));
+        }
+
+        for heading in &self.headings {
+            sql.push_str(
+                " AND EXISTS (SELECT 1 FROM chunks c \
+                 WHERE c.note_id = n.id AND LOWER(c.heading_path) LIKE ?)",
+            );
+            params.push(Value::Text(format!("%{}%", heading.to_lowercase())));
         }
 
         (sql, params)

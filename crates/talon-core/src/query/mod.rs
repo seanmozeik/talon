@@ -26,7 +26,7 @@ pub use lint::query_lint;
 pub use meta::query_meta;
 pub use output::{
     ChangeEntry, ChangesResponse, LinkedNote, MetaEntry, MetaResponse, NoteExcerpt, ReadResponse,
-    ReadResult, RecallResponse, TombstoneEntry, VaultRecall,
+    ReadResult, ReadSection, RecallResponse, TombstoneEntry, VaultRecall,
 };
 pub use read::run_read;
 pub use recall::run_recall;

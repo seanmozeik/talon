@@ -22,6 +22,9 @@ pub struct ReadResult {
     /// Optional note content.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+    /// Section metadata when the read target included an Obsidian heading.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub section: Option<ReadSection>,
     /// Outgoing links.
     #[serde(default)]
     pub links: Vec<String>,
@@ -34,6 +37,20 @@ pub struct ReadResult {
     /// Aliases.
     #[serde(default)]
     pub aliases: Vec<String>,
+}
+
+/// Metadata for a heading-scoped read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReadSection {
+    /// Heading text as written in the note.
+    pub heading: String,
+    /// 1-based line number where the section starts in the note body.
+    pub from_line: u32,
+    /// 1-based inclusive line number where the section ends in the note body.
+    pub to_line: u32,
+    /// Obsidian wikilink reference for the resolved section.
+    pub obsidian_ref: String,
 }
 
 /// Read response.

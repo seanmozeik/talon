@@ -1,4 +1,5 @@
 use super::RenderOptions;
+use super::obsidian::format_ref;
 use super::recall::format_recall_human;
 use super::search::format_search_human;
 use eyre::Result;
@@ -18,8 +19,8 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
         Some(TalonResponseData::Status(resp)) => {
             format_status_human(&mut io::stdout(), resp)?;
         }
-        Some(TalonResponseData::Read(resp)) => emit_read(resp)?,
-        Some(TalonResponseData::Related(resp)) => emit_related(resp)?,
+        Some(TalonResponseData::Read(resp)) => emit_read(resp, opts)?,
+        Some(TalonResponseData::Related(resp)) => emit_related(resp, opts)?,
         Some(TalonResponseData::Meta(resp)) => emit_meta(resp)?,
         Some(TalonResponseData::Changes(resp)) => emit_changes(resp)?,
         Some(TalonResponseData::Lint(resp)) => format_lint_human(&mut io::stdout(), resp)?,
@@ -218,7 +219,8 @@ fn strip_redundant_prefix(check: talon_core::LintCheck, msg: &str) -> &str {
     msg.strip_prefix(prefix).unwrap_or(msg)
 }
 
-fn emit_read(resp: &ReadResponse) -> Result<()> {
+fn emit_read(resp: &ReadResponse, opts: RenderOptions) -> Result<()> {
+    let vault = resp.vault.as_ref().map(talon_core::ContainerPath::as_str);
     for result in &resp.results {
         if !result.found {
             writeln!(io::stdout(), "Not found: {}", result.vault_path.as_str())?;
@@ -229,15 +231,42 @@ fn emit_read(resp: &ReadResponse) -> Result<()> {
             .as_deref()
             .unwrap_or(result.vault_path.as_str());
         writeln!(io::stdout(), "# {title}")?;
-        writeln!(io::stdout(), "Path: {}", result.vault_path.as_str())?;
+        let path_ref = format_ref(
+            vault,
+            result.vault_path.as_str(),
+            result.title.as_deref(),
+            result
+                .section
+                .as_ref()
+                .map(|section| section.heading.as_str()),
+            opts.colors,
+        );
+        writeln!(io::stdout(), "Path: {path_ref}")?;
+        if let Some(section) = result.section.as_ref() {
+            writeln!(
+                io::stdout(),
+                "Section: {} (lines {}-{})",
+                section.obsidian_ref,
+                section.from_line,
+                section.to_line
+            )?;
+        }
         if !result.tags.is_empty() {
             writeln!(io::stdout(), "Tags: {}", result.tags.join(", "))?;
         }
         if !result.links.is_empty() {
-            writeln!(io::stdout(), "Links: {}", result.links.join(", "))?;
+            writeln!(
+                io::stdout(),
+                "Links: {}",
+                format_path_list(vault, &result.links, opts)
+            )?;
         }
         if !result.backlinks.is_empty() {
-            writeln!(io::stdout(), "Backlinks: {}", result.backlinks.join(", "))?;
+            writeln!(
+                io::stdout(),
+                "Backlinks: {}",
+                format_path_list(vault, &result.backlinks, opts)
+            )?;
         }
         writeln!(io::stdout())?;
         if let Some(content) = &result.content {
@@ -247,17 +276,36 @@ fn emit_read(resp: &ReadResponse) -> Result<()> {
     Ok(())
 }
 
-fn emit_related(resp: &RelatedResponse) -> Result<()> {
-    writeln!(io::stdout(), "Related to: {}", resp.path.as_str())?;
+fn emit_related(resp: &RelatedResponse, opts: RenderOptions) -> Result<()> {
+    let vault = resp.vault.as_ref().map(talon_core::ContainerPath::as_str);
+    writeln!(
+        io::stdout(),
+        "Related to: {}",
+        format_ref(vault, resp.path.as_str(), None, None, opts.colors)
+    )?;
     for r in &resp.results {
         writeln!(
             io::stdout(),
             "  - {} ({:?})",
-            r.vault_path.as_str(),
+            format_ref(
+                vault,
+                r.vault_path.as_str(),
+                Some(&r.title),
+                None,
+                opts.colors
+            ),
             r.relation
         )?;
     }
     Ok(())
+}
+
+fn format_path_list(vault: Option<&str>, paths: &[String], opts: RenderOptions) -> String {
+    paths
+        .iter()
+        .map(|path| format_ref(vault, path, None, None, opts.colors))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 fn emit_meta(resp: &MetaResponse) -> Result<()> {

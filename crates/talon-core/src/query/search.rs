@@ -16,10 +16,12 @@ use crate::inference::InferenceClient;
 use crate::numeric::count_u32;
 use crate::search::anchor::{build_anchors, maybe_expand_bm25_snippet, resolve_snippet_heading};
 use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
+use crate::search::query_syntax::parse_query_syntax;
 use crate::search::{MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult};
 
 use super::search_affordances::{
     apply_index_page_preference, is_index_page, query_backlinks, query_citations,
+    query_outgoing_links,
 };
 use super::search_hybrid::{empty_hybrid_response, infer_hybrid_match_kind};
 use super::search_retrieval::{RetrievalOutcome, retrieve_raw_results};
@@ -72,10 +74,12 @@ fn run_search_inner(
     config: Option<&TalonConfig>,
     include_expanded_queries: bool,
 ) -> SearchResponse {
-    let query = match &input.query {
+    let raw_query = match &input.query {
         Some(q) if !q.trim().is_empty() => q.clone(),
         _ => return SearchResponse::empty_input(),
     };
+    let query_syntax = parse_query_syntax(&raw_query);
+    let query = query_syntax.query;
 
     let use_cache = inference.is_some() && !include_expanded_queries;
     if use_cache && let Some(response) = search_cache::lookup(conn, input, config) {
@@ -101,6 +105,8 @@ fn run_search_inner(
         since_ms,
         accepted_note_ids,
         where_clauses: input.where_.clone(),
+        tags: input.tag.iter().cloned().chain(query_syntax.tags).collect(),
+        headings: query_syntax.headings,
     };
 
     // Step 1: retrieve wide pool with pre-filters applied at SQL level.
@@ -143,7 +149,7 @@ fn run_search_inner(
     let anchors_requested = input.anchors.unwrap_or(false);
     let response = SearchResponse {
         vault: None,
-        query: Some(query.clone()),
+        query: Some(raw_query),
         mode: input.mode,
         fast,
         expanded,
@@ -237,6 +243,7 @@ fn raw_to_search_result(
     let mtime = super::mtime::local_mtime_for_path(conn, &raw.path);
     let note_id = get_note_id_by_path(conn, &raw.path);
     let citations = note_id.map_or_else(Vec::new, |id| query_citations(conn, id, &raw.path));
+    let links = query_outgoing_links(conn, &raw.path);
     let backlinks = query_backlinks(conn, &raw.path);
 
     Some(SearchResult {
@@ -250,7 +257,10 @@ fn raw_to_search_result(
         mtime,
         is_index: is_index_page(&raw.path),
         citations,
+        links,
         backlinks,
+        tags: raw.tags.clone(),
+        aliases: raw.aliases.clone(),
         preview_anchors,
     })
 }
@@ -303,6 +313,9 @@ fn get_note_id_by_path(conn: &Connection, vault_path: &str) -> Option<i64> {
 #[cfg(test)]
 #[path = "search_affordances_tests.rs"]
 mod affordances_tests;
+#[cfg(test)]
+#[path = "search_query_syntax_tests.rs"]
+mod query_syntax_tests;
 #[cfg(test)]
 #[path = "search_tests.rs"]
 mod tests;

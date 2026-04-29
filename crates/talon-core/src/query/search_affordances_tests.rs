@@ -52,8 +52,8 @@ fn raw(path: &str) -> RawSearchResult {
     RawSearchResult {
         path: path.into(),
         title: "Title".into(),
-        tags: vec![],
-        aliases: vec![],
+        tags: vec!["wiki".to_string(), "index".to_string()],
+        aliases: vec!["Home".to_string()],
         snippet: "index".into(),
         score: 0.9,
         scores: SearchScores::default(),
@@ -90,6 +90,14 @@ fn raw_to_search_result_exposes_wiki_navigation_metadata() {
         .is_ok(),
         "failed to insert test link"
     );
+    assert!(
+        conn.execute(
+            "INSERT INTO links (from_path, to_path, raw_target) VALUES (?, ?, ?)",
+            params!["wiki/index.md", "wiki/child.md", "child"],
+        )
+        .is_ok(),
+        "failed to insert outgoing test link"
+    );
 
     let raw = raw("wiki/index.md");
     let result = raw_to_search_result(
@@ -108,7 +116,10 @@ fn raw_to_search_result_exposes_wiki_navigation_metadata() {
         result.citations,
         vec!["raw/source.md", "https://example.com/source"]
     );
+    assert_eq!(result.links, vec!["raw/source.md", "wiki/child.md"]);
     assert_eq!(result.backlinks, vec!["wiki/topic.md"]);
+    assert_eq!(result.tags, vec!["wiki", "index"]);
+    assert_eq!(result.aliases, vec!["Home"]);
     drop(conn);
     cleanup(&path);
 }

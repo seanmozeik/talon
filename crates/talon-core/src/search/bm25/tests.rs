@@ -127,6 +127,8 @@ fn bm25_prefilter_numeric_where_uses_value_type() {
             op: WhereOperator::GreaterThan,
             value: Some("3".into()),
         }],
+        tags: Vec::new(),
+        headings: Vec::new(),
     };
 
     let results = search_bm25(&conn, "alpha", 10, 300, &pre_filter);

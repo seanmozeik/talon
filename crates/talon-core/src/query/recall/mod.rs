@@ -60,6 +60,8 @@ pub fn run_recall(
             since_ms: None,
             accepted_note_ids: scope_to_note_ids(conn, &filter),
             where_clauses: Vec::new(),
+            tags: Vec::new(),
+            headings: Vec::new(),
         }
     });
     if pre_filter.is_impossible() {

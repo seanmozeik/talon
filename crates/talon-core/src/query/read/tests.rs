@@ -165,3 +165,61 @@ fn links_and_backlinks_hydrated() {
         "backlink must be present"
     );
 }
+
+#[test]
+fn obsidian_reference_reads_resolved_heading_section() {
+    let conn = fresh_db();
+    insert_note(
+        &conn,
+        "wiki/Hot Sauce Formulation.md",
+        "Hot Sauce Formulation",
+        "# Hot Sauce Formulation\n\nIntro\n\n## Targets\nBottle-ready sauce\n## Other\nNot included\n",
+    );
+
+    let resp = run_read(
+        &conn,
+        &vault_root(),
+        &read_input("[[Hot Sauce Formulation#Targets|targets]]"),
+    );
+    let result = &resp.results[0];
+
+    assert!(result.found);
+    assert_eq!(result.vault_path.as_str(), "wiki/Hot Sauce Formulation.md");
+    assert_eq!(
+        result.content.as_deref(),
+        Some("## Targets\nBottle-ready sauce")
+    );
+    let section = result
+        .section
+        .as_ref()
+        .unwrap_or_else(|| panic!("section metadata"));
+    assert_eq!(section.heading, "Targets");
+    assert_eq!(section.from_line, 5);
+    assert_eq!(section.to_line, 6);
+    assert_eq!(
+        section.obsidian_ref,
+        "[[wiki/Hot Sauce Formulation.md#Targets]]"
+    );
+}
+
+#[test]
+fn obsidian_reference_missing_heading_does_not_dump_whole_note() {
+    let conn = fresh_db();
+    insert_note(
+        &conn,
+        "wiki/Hot Sauce Formulation.md",
+        "Hot Sauce Formulation",
+        "# Hot Sauce Formulation\n\nBody\n",
+    );
+
+    let resp = run_read(
+        &conn,
+        &vault_root(),
+        &read_input("[[Hot Sauce Formulation#Missing]]"),
+    );
+    let result = &resp.results[0];
+
+    assert!(!result.found);
+    assert_eq!(result.vault_path.as_str(), "wiki/Hot Sauce Formulation.md");
+    assert!(result.content.is_none());
+}

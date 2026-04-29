@@ -1,4 +1,5 @@
 use super::RenderOptions;
+use super::obsidian::format_ref;
 use super::style::{cs, wrap_words};
 use anstyle::{AnsiColor, Effects, Style};
 use eyre::Result;
@@ -63,7 +64,15 @@ pub fn format_search_human(
 
     writeln!(w)?;
     for (i, r) in resp.results.iter().enumerate() {
-        format_search_card(w, i + 1, r, opts, &bold, &dim)?;
+        format_search_card(
+            w,
+            i + 1,
+            r,
+            opts,
+            resp.vault.as_ref().map(talon_core::ContainerPath::as_str),
+            &bold,
+            &dim,
+        )?;
     }
     Ok(())
 }
@@ -94,10 +103,12 @@ fn format_search_card(
     rank: usize,
     r: &SearchResult,
     opts: RenderOptions,
+    vault: Option<&str>,
     bold: &Style,
     dim: &Style,
 ) -> Result<()> {
     let path = r.vault_path.as_str();
+    let path_ref = format_ref(vault, path, Some(&r.title), None, opts.colors);
     let kind_str = match r.match_kind {
         talon_core::MatchKind::Fulltext => "fulltext",
         talon_core::MatchKind::Semantic => "semantic",
@@ -112,7 +123,7 @@ fn format_search_card(
         .map_or_else(String::new, |s| format!("  ·  {s}"));
     writeln!(
         w,
-        " {bold}{rank:>2}{bold:#}  {bold}{path}{bold:#}{dim}{scope_suffix}{dim:#}"
+        " {bold}{rank:>2}{bold:#}  {bold}{path_ref}{bold:#}{dim}{scope_suffix}{dim:#}"
     )?;
 
     writeln!(w, "     {dim}{kind_str}  ·  {:.3}{dim:#}", r.score)?;

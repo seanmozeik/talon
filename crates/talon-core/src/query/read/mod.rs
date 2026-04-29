@@ -4,6 +4,8 @@
 //! line-range slicing, and hydrates links / backlinks / tags / aliases from
 //! the relational tables.
 
+mod target;
+
 use std::path::Path;
 
 use rusqlite::{Connection, params};
@@ -32,17 +34,8 @@ pub fn run_read(conn: &Connection, vault_root: &Path, input: &ReadInput) -> Read
         };
     };
 
-    // Try exact path first; fall back to appending `.md` for extension-less lookups.
-    let result = build_read_result(conn, vault_root, path, input);
-    let has_md_ext = std::path::Path::new(path)
-        .extension()
-        .is_some_and(|ext| ext.eq_ignore_ascii_case("md"));
-    let result = if !result.found && !has_md_ext {
-        let with_md = format!("{path}.md");
-        build_read_result(conn, vault_root, &with_md, input)
-    } else {
-        result
-    };
+    let read_target = target::resolve_read_target(conn, path);
+    let result = build_read_result(conn, vault_root, &read_target, input);
 
     ReadResponse {
         vault: None,
@@ -53,17 +46,17 @@ pub fn run_read(conn: &Connection, vault_root: &Path, input: &ReadInput) -> Read
 fn build_read_result(
     conn: &Connection,
     vault_root: &Path,
-    vault_path_str: &str,
+    read_target: &target::ReadTarget,
     input: &ReadInput,
 ) -> ReadResult {
-    let Ok(vault_path) = VaultPath::parse(vault_path_str) else {
-        return not_found_result(vault_path_str, vault_root);
+    let Ok(vault_path) = VaultPath::parse(&read_target.vault_path) else {
+        return not_found_result(&read_target.vault_path, vault_root);
     };
 
     let note: Option<NoteRow> = conn
         .query_row(
             "SELECT id, title, content FROM notes WHERE vault_path = ? AND active = 1",
-            params![vault_path_str],
+            params![&read_target.vault_path],
             |row| {
                 Ok(NoteRow {
                     id: row.get(0)?,
@@ -80,6 +73,7 @@ fn build_read_result(
             vault_path,
             title: None,
             content: None,
+            section: None,
             links: Vec::new(),
             backlinks: Vec::new(),
             tags: Vec::new(),
@@ -93,6 +87,26 @@ fn build_read_result(
         parse_frontmatter(&note.content).body
     };
 
+    let (body, section) = if let Some(heading) = read_target.heading.as_deref() {
+        let Some(slice) = target::find_heading_section(&body, &read_target.vault_path, heading)
+        else {
+            return ReadResult {
+                found: false,
+                vault_path,
+                title: note.title,
+                content: None,
+                section: None,
+                links: query_outgoing_links(conn, &read_target.vault_path),
+                backlinks: query_backlinks(conn, &read_target.vault_path),
+                tags: query_tags(conn, note.id),
+                aliases: query_aliases(conn, note.id),
+            };
+        };
+        (slice.content, Some(slice.section))
+    } else {
+        (body, None)
+    };
+
     let content = apply_line_slice(&body, input.from_line, input.max_lines);
 
     ReadResult {
@@ -100,8 +114,9 @@ fn build_read_result(
         vault_path,
         title: note.title,
         content: Some(content),
-        links: query_outgoing_links(conn, vault_path_str),
-        backlinks: query_backlinks(conn, vault_path_str),
+        section,
+        links: query_outgoing_links(conn, &read_target.vault_path),
+        backlinks: query_backlinks(conn, &read_target.vault_path),
         tags: query_tags(conn, note.id),
         aliases: query_aliases(conn, note.id),
     }
@@ -115,6 +130,7 @@ fn not_found_result(vault_path_str: &str, _vault_root: &Path) -> ReadResult {
         vault_path,
         title: None,
         content: None,
+        section: None,
         links: Vec::new(),
         backlinks: Vec::new(),
         tags: Vec::new(),

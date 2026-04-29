@@ -55,10 +55,10 @@ pub use links::{
 };
 pub use query::{
     ChangeEntry, ChangesInput, ChangesResponse, LinkedNote, MetaEntry, MetaInput, MetaResponse,
-    NoteExcerpt, ReadInput, ReadResponse, ReadResult, RecallFormat, RecallInput, RecallResponse,
-    RelatedInput, RelatedResponse, RelatedResult, RelationKind, TombstoneEntry, VaultRecall,
-    find_related, query_changes, query_lint, query_meta, query_status, run_read, run_recall,
-    run_search, run_search_with_expanded_queries,
+    NoteExcerpt, ReadInput, ReadResponse, ReadResult, ReadSection, RecallFormat, RecallInput,
+    RecallResponse, RelatedInput, RelatedResponse, RelatedResult, RelationKind, TombstoneEntry,
+    VaultRecall, find_related, query_changes, query_lint, query_meta, query_status, run_read,
+    run_recall, run_search, run_search_with_expanded_queries,
 };
 pub use rusqlite::Connection;
 pub use search::{

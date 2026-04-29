@@ -82,9 +82,18 @@ pub struct SearchResult {
     /// Source paths listed in this note's `sources:` frontmatter.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub citations: Vec<String>,
+    /// Notes this result links to.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub links: Vec<String>,
     /// Notes that link to this result.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub backlinks: Vec<String>,
+    /// Tags attached to the result note.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub tags: Vec<String>,
+    /// Aliases attached to the result note.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub aliases: Vec<String>,
     /// Per-result match anchors (populated when `SearchInput.anchors == true`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_anchors: Option<Vec<MatchAnchor>>,

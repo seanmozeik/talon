@@ -2,6 +2,7 @@
 
 mod human;
 mod json;
+mod obsidian;
 mod recall;
 mod search;
 mod style;

@@ -79,16 +79,22 @@ Global `lint.ignore` takes precedence over per-scope `lint = true`.
 
 ## Per-result fields
 
-`search`, `related`, and `meta` results carry these fields in `--json` mode. Search's `isIndex`, `citations`, and `backlinks` are also included in `--agent` mode when non-empty because they are compact navigation cues.
+`search`, `related`, and `meta` results carry these fields in `--json` mode. Search's `isIndex`, `citations`, `links`, `backlinks`, `tags`, and `aliases` are also included in `--agent` mode when non-empty because they are compact navigation cues.
 
 - `scope`: resolved scope name. Omitted for paths that match no scope.
 - `mtime`: file modification time in the system local timezone. `"HH:MM"` (e.g. `"15:42"`) for edits within the last 24 hours, `"YYYY-MM-DD"` (e.g. `"2026-04-25"`) otherwise. Recent edits get instantly-readable wall-clock time; older edits collapse to date. For sub-day precision on indexing/deletion events, see `changes`.
 - `isIndex` (`search` only): true for generic index pages such as `index.md`, `README.md`, and `*_index.md`.
 - `citations` (`search` only): source paths listed in the result note's `sources:` frontmatter, capped for compact output.
+- `links` (`search` / `read`): resolved outgoing Obsidian wikilinks, capped for compact search output.
 - `backlinks` (`search` only): notes that link to the result, capped for compact output.
+- `tags` / `aliases` (`search` / `read`): Obsidian frontmatter and inline metadata indexed for the note.
 - `count` (`related` only): number of distinct link rows between source and target — a rough edge-strength signal.
 
 `changes.indexed_at` and `tombstones.deleted_at` use full RFC 3339 UTC (`"2026-04-25T10:23:00Z"`) since `--since` consumers compare exact timestamps.
+
+`read` accepts Obsidian references such as `[[Hot Sauce Formulation]]`, `[[Hot Sauce Formulation#Targets]]`, and `Hot Sauce Formulation#Targets`. Heading reads return only that section plus line metadata.
+
+`search` query text supports tag and heading filters: `#fermentation`, `tag:fermentation`, `heading:Targets`, and `h:Targets`.
 
 ## Chunking
 

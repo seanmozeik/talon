@@ -63,6 +63,20 @@ pub(super) fn query_backlinks(conn: &Connection, vault_path: &str) -> Vec<String
         .unwrap_or_default()
 }
 
+pub(super) fn query_outgoing_links(conn: &Connection, vault_path: &str) -> Vec<String> {
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT DISTINCT to_path FROM links
+         WHERE from_path = ?1
+         ORDER BY to_path
+         LIMIT ?2",
+    ) else {
+        return Vec::new();
+    };
+    stmt.query_map((vault_path, SEARCH_CONTEXT_LIMIT), |row| row.get(0))
+        .and_then(Iterator::collect)
+        .unwrap_or_default()
+}
+
 fn resolve_source_citation(conn: &Connection, from_path: &str, value: &str) -> Option<String> {
     let target = clean_obsidian_reference(value);
     resolve_linked_source(conn, from_path, value, &target)
