@@ -113,29 +113,6 @@ fn migrations_create_frontmatter_value_type_column() {
 }
 
 #[test]
-fn migrations_add_frontmatter_value_type_to_existing_table() {
-    let mut conn = Connection::open_in_memory().unwrap();
-    conn.execute_batch(
-        "CREATE TABLE note_frontmatter_fields (
-           note_id    INTEGER NOT NULL,
-           field      TEXT NOT NULL,
-           value      TEXT NOT NULL,
-           value_norm TEXT NOT NULL,
-           PRIMARY KEY (note_id, field, value)
-         )",
-    )
-    .unwrap();
-
-    run_migrations(&mut conn).unwrap();
-
-    assert!(column_exists(
-        &conn,
-        "note_frontmatter_fields",
-        "value_type"
-    ));
-}
-
-#[test]
 fn migrations_seed_db_version_setting() {
     let conn = fresh_db();
     let value: String = conn

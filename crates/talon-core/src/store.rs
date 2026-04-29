@@ -12,10 +12,11 @@ use rusqlite::{Connection, OpenFlags};
 use crate::TalonError;
 use crate::indexing::migrations::{TALON_SQLITE_BUSY_TIMEOUT_MS, run_migrations};
 
-/// Opens (or creates) the Talon index database at `path` with the standard
-/// PRAGMA configuration and applies all migrations.
+/// Opens (or creates) the Talon index database at `path`.
 ///
-/// Creates parent directories if they do not exist.
+/// Creates parent directories if they do not exist. The current schema is
+/// initialized only when the database has no Talon schema yet; existing indexes
+/// are opened without running DDL.
 ///
 /// # Errors
 ///
@@ -46,7 +47,10 @@ pub fn open_database(path: &Path) -> Result<Connection, TalonError> {
         source,
     })?;
 
-    run_migrations(&mut conn)?;
+    apply_connection_pragmas(&conn)?;
+    if !has_talon_schema(&conn)? {
+        run_migrations(&mut conn)?;
+    }
     Ok(conn)
 }
 
@@ -71,6 +75,30 @@ pub fn open_database_read_only(path: &Path) -> Result<Connection, TalonError> {
         source,
     })?;
 
+    apply_query_pragmas(&conn)?;
+    Ok(conn)
+}
+
+fn apply_connection_pragmas(conn: &Connection) -> Result<(), TalonError> {
+    conn.pragma_update(None, "journal_mode", "WAL")
+        .map_err(|source| TalonError::Sqlite {
+            context: "set journal_mode",
+            source,
+        })?;
+    apply_common_pragmas(conn)
+}
+
+fn apply_query_pragmas(conn: &Connection) -> Result<(), TalonError> {
+    apply_common_pragmas(conn)?;
+    conn.pragma_update(None, "query_only", "ON")
+        .map_err(|source| TalonError::Sqlite {
+            context: "set query_only",
+            source,
+        })?;
+    Ok(())
+}
+
+fn apply_common_pragmas(conn: &Connection) -> Result<(), TalonError> {
     conn.pragma_update(None, "busy_timeout", TALON_SQLITE_BUSY_TIMEOUT_MS)
         .map_err(|source| TalonError::Sqlite {
             context: "set busy_timeout",
@@ -81,13 +109,23 @@ pub fn open_database_read_only(path: &Path) -> Result<Connection, TalonError> {
             context: "set foreign_keys",
             source,
         })?;
-    conn.pragma_update(None, "query_only", "ON")
-        .map_err(|source| TalonError::Sqlite {
-            context: "set query_only",
-            source,
-        })?;
 
-    Ok(conn)
+    Ok(())
+}
+
+fn has_talon_schema(conn: &Connection) -> Result<bool, TalonError> {
+    conn.query_row(
+        "SELECT EXISTS (
+           SELECT 1 FROM sqlite_master
+           WHERE type = 'table' AND name = 'notes'
+         )",
+        [],
+        |row| row.get::<_, bool>(0),
+    )
+    .map_err(|source| TalonError::Sqlite {
+        context: "inspect talon schema",
+        source,
+    })
 }
 
 #[cfg(test)]
@@ -144,7 +182,7 @@ mod tests {
     }
 
     #[test]
-    fn open_database_runs_migrations() {
+    fn open_database_initializes_schema_when_missing() {
         let path = unique_path("migrated");
         let conn = open_database(&path).unwrap();
         let count: i64 = conn
@@ -176,6 +214,28 @@ mod tests {
             )
             .unwrap();
         assert_eq!(value, "0");
+        drop(conn);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("sqlite-wal"));
+        let _ = fs::remove_file(path.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn reopening_existing_database_does_not_reinitialize_schema() {
+        let path = unique_path("no-reinit");
+        let conn = open_database(&path).unwrap();
+        conn.execute("DROP TRIGGER notes_fts_ai", []).unwrap();
+        drop(conn);
+
+        let conn = open_database(&path).unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type = 'trigger' AND name = 'notes_fts_ai'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0);
         drop(conn);
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("sqlite-wal"));

@@ -1,13 +1,13 @@
-//! `SQLite` schema migrations for the Talon index.
+//! `SQLite` schema initialization for the Talon index.
 //!
-//! Ported verbatim from the TypeScript reference (`indexer/migrations.ts`).
-//! The schema is split into three groups, applied in order:
+//! Talon is still pre-consumer, so the database schema is treated as a single
+//! current shape. Existing incompatible development indexes should be deleted
+//! and rebuilt rather than migrated forward.
 //!
-//! 1. [`SCHEMA_MIGRATIONS`] — `CREATE TABLE` and `CREATE INDEX` statements.
-//! 2. [`TRIGGER_MIGRATIONS`] — FTS5 sync triggers and the `db_version` setting.
-//!    These run inside the same transaction as the schema migrations.
-//! 3. [`REBUILD_MIGRATIONS`] — FTS5 `'rebuild'` commands. These must run
-//!    *outside* a transaction; FTS5 rejects them otherwise.
+//! The schema is split into two statement groups for readability:
+//!
+//! 1. [`SCHEMA_MIGRATIONS`] — tables, virtual tables, and indexes.
+//! 2. [`TRIGGER_MIGRATIONS`] — FTS5 sync triggers and seed metadata.
 //!
 //! `vec_chunks` is intentionally absent — it is created lazily by the
 //! embedding pipeline once the embedding dimensionality is known.
@@ -122,6 +122,8 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_note_aliases_alias_norm ON note_aliases(alias_norm)",
     "CREATE INDEX IF NOT EXISTS idx_note_tags_tag_norm ON note_tags(tag_norm)",
     "CREATE INDEX IF NOT EXISTS idx_fm_field_value_norm ON note_frontmatter_fields(field, value_norm)",
+    "CREATE INDEX IF NOT EXISTS idx_fm_field_type_value
+     ON note_frontmatter_fields(field, value_type, value)",
     "CREATE INDEX IF NOT EXISTS idx_notes_active_path ON notes(active, vault_path)",
     "CREATE INDEX IF NOT EXISTS idx_notes_hash ON notes(hash)",
     "CREATE INDEX IF NOT EXISTS idx_notes_docid ON notes(docid)",
@@ -129,14 +131,8 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
 ];
 
 /// FTS5 sync triggers and the seeded `db_version` setting.
-///
-/// Triggers are dropped first so re-running migrations after a trigger body
-/// change replaces the old definition rather than failing.
 pub const TRIGGER_MIGRATIONS: &[&str] = &[
-    "DROP TRIGGER IF EXISTS notes_fts_ai",
-    "DROP TRIGGER IF EXISTS notes_fts_au",
-    "DROP TRIGGER IF EXISTS notes_fts_ad",
-    "CREATE TRIGGER notes_fts_ai AFTER INSERT ON notes
+    "CREATE TRIGGER IF NOT EXISTS notes_fts_ai AFTER INSERT ON notes
      WHEN NEW.active = 1
      BEGIN
        INSERT INTO notes_fts_bm25(rowid, title, aliases, content)
@@ -144,7 +140,7 @@ pub const TRIGGER_MIGRATIONS: &[&str] = &[
        INSERT INTO notes_fts_fuzzy(rowid, title, aliases)
        VALUES (NEW.id, NEW.title, NEW.aliases);
      END",
-    "CREATE TRIGGER notes_fts_au AFTER UPDATE OF title, aliases, content, active ON notes
+    "CREATE TRIGGER IF NOT EXISTS notes_fts_au AFTER UPDATE OF title, aliases, content, active ON notes
      BEGIN
        INSERT INTO notes_fts_bm25(notes_fts_bm25, rowid, title, aliases, content)
        VALUES ('delete', OLD.id, OLD.title, OLD.aliases, OLD.content);
@@ -157,7 +153,7 @@ pub const TRIGGER_MIGRATIONS: &[&str] = &[
        SELECT NEW.id, NEW.title, NEW.aliases
        WHERE NEW.active = 1;
      END",
-    "CREATE TRIGGER notes_fts_ad AFTER DELETE ON notes
+    "CREATE TRIGGER IF NOT EXISTS notes_fts_ad AFTER DELETE ON notes
      BEGIN
        INSERT INTO notes_fts_bm25(notes_fts_bm25, rowid, title, aliases, content)
        VALUES ('delete', OLD.id, OLD.title, OLD.aliases, OLD.content);
@@ -168,17 +164,15 @@ pub const TRIGGER_MIGRATIONS: &[&str] = &[
     "INSERT OR IGNORE INTO db_meta(key, value) VALUES ('db_version', '0')",
 ];
 
-/// FTS5 rebuild commands. Must run **outside** a transaction.
-pub const REBUILD_MIGRATIONS: &[&str] = &[
-    "INSERT INTO notes_fts_bm25(notes_fts_bm25) VALUES('rebuild')",
-    "INSERT INTO notes_fts_fuzzy(notes_fts_fuzzy) VALUES('rebuild')",
-];
+/// No runtime rebuild statements are part of the current schema initializer.
+pub const REBUILD_MIGRATIONS: &[&str] = &[];
 
-/// Runs the full migration sequence on `conn`.
+/// Applies the current schema to an empty or newly-created database.
 ///
 /// Sets the `WAL`, `busy_timeout`, and `foreign_keys` PRAGMAs, then applies
-/// schema and trigger migrations inside a single transaction, then runs the
-/// FTS5 rebuild statements outside that transaction.
+/// current schema and trigger statements inside a single transaction. This is
+/// not a historical migration chain; incompatible development indexes should be
+/// deleted and rebuilt.
 ///
 /// # Errors
 ///
@@ -201,70 +195,13 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), TalonError> {
         })?;
 
     let tx = conn.transaction().map_err(|source| TalonError::Sqlite {
-        context: "begin migration transaction",
+        context: "begin schema transaction",
         source,
     })?;
     run_statements(&tx, SCHEMA_MIGRATIONS, "schema migration")?;
-    ensure_frontmatter_value_type_column(&tx)?;
     run_statements(&tx, TRIGGER_MIGRATIONS, "trigger migration")?;
     tx.commit().map_err(|source| TalonError::Sqlite {
-        context: "commit migrations",
-        source,
-    })?;
-
-    for statement in REBUILD_MIGRATIONS {
-        conn.execute_batch(statement)
-            .map_err(|source| TalonError::Sqlite {
-                context: "fts rebuild",
-                source,
-            })?;
-    }
-    Ok(())
-}
-
-fn ensure_frontmatter_value_type_column(conn: &Connection) -> Result<(), TalonError> {
-    let mut stmt = conn
-        .prepare("PRAGMA table_info(note_frontmatter_fields)")
-        .map_err(|source| TalonError::Sqlite {
-            context: "inspect frontmatter field schema",
-            source,
-        })?;
-    let columns = stmt
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|source| TalonError::Sqlite {
-            context: "read frontmatter field schema",
-            source,
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()
-        .map_err(|source| TalonError::Sqlite {
-            context: "collect frontmatter field schema",
-            source,
-        })?;
-
-    if columns.iter().any(|column| column == "value_type") {
-        return ensure_frontmatter_value_type_index(conn);
-    }
-
-    conn.execute(
-        "ALTER TABLE note_frontmatter_fields ADD COLUMN value_type TEXT NOT NULL DEFAULT 'string'",
-        [],
-    )
-    .map_err(|source| TalonError::Sqlite {
-        context: "add frontmatter value_type column",
-        source,
-    })?;
-    ensure_frontmatter_value_type_index(conn)?;
-    Ok(())
-}
-
-fn ensure_frontmatter_value_type_index(conn: &Connection) -> Result<(), TalonError> {
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_fm_field_type_value
-         ON note_frontmatter_fields(field, value_type, value)",
-        [],
-    )
-    .map_err(|source| TalonError::Sqlite {
-        context: "create frontmatter value_type index",
+        context: "commit schema",
         source,
     })?;
     Ok(())
