@@ -110,6 +110,8 @@ pub fn run_sync(
 
 /// Like [`run_sync`] but with an explicit [`ChunkerConfig`].
 ///
+/// Per-note scope names are resolved from `config.talon_config` when present.
+///
 /// # Errors
 ///
 /// See [`run_sync`] for error variants.

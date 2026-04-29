@@ -29,6 +29,7 @@ pub(super) async fn emit(args: &SyncArgs, cli: &Cli) -> Result<()> {
     let indexer_config = IndexerConfig {
         include_patterns: config.include_patterns.clone(),
         ignore_patterns: config.ignore_patterns.clone(),
+        talon_config: Some(config.clone()),
     };
 
     let work = async move {

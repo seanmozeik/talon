@@ -42,6 +42,7 @@ fn upsert_note_inserts_new_row() {
             tags: &[],
             mtime_ms: 100,
             size_bytes: 5,
+            scope: "",
         },
     )
     .unwrap();
@@ -66,6 +67,7 @@ fn upsert_note_updates_existing_row_in_place() {
             tags: &[],
             mtime_ms: 100,
             size_bytes: 2,
+            scope: "",
         },
     )
     .unwrap();
@@ -80,6 +82,7 @@ fn upsert_note_updates_existing_row_in_place() {
             tags: &[],
             mtime_ms: 200,
             size_bytes: 2,
+            scope: "",
         },
     )
     .unwrap();
@@ -127,6 +130,7 @@ fn upsert_chunks_inserts_then_dedupes_unchanged_then_deletes_orphan() {
             tags: &[],
             mtime_ms: 100,
             size_bytes: 4,
+            scope: "",
         },
     )
     .unwrap();
@@ -148,9 +152,7 @@ fn upsert_chunks_inserts_then_dedupes_unchanged_then_deletes_orphan() {
         [n.note_id],
     )
     .unwrap();
-
-    // Second pass: chunk 0 unchanged → status preserved; chunk 1 changed
-    // → status reset to 'pending'; chunk 2 added.
+    // Second pass: chunk 0 unchanged (status kept); chunk 1 changed (reset); chunk 2 added.
     upsert_chunks(
         &conn,
         n.note_id,
@@ -214,6 +216,7 @@ fn upsert_aliases_writes_normalized_form() {
             tags: &[],
             mtime_ms: 0,
             size_bytes: 0,
+            scope: "",
         },
     )
     .unwrap();
@@ -262,6 +265,7 @@ fn upsert_frontmatter_flattens_lists_and_nested_values() {
             tags: &[],
             mtime_ms: 0,
             size_bytes: 0,
+            scope: "",
         },
     )
     .unwrap();
@@ -302,6 +306,7 @@ fn perform_note_deletion_soft_deletes_and_clears_children() {
             tags: &["zk".into()],
             mtime_ms: 0,
             size_bytes: 4,
+            scope: "",
         },
     )
     .unwrap();

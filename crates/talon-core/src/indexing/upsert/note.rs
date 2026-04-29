@@ -61,7 +61,7 @@ pub fn upsert_note(
         conn.execute(
             "UPDATE notes SET
                title = ?, tags = ?, aliases = ?, content = ?, frontmatter = ?,
-               mtime_ms = ?, size_bytes = ?, hash = ?, active = 1
+               mtime_ms = ?, size_bytes = ?, hash = ?, active = 1, scope = ?
              WHERE vault_path = ?",
             params![
                 params.title,
@@ -72,6 +72,7 @@ pub fn upsert_note(
                 params.mtime_ms,
                 params.size_bytes,
                 file_hash,
+                params.scope,
                 params.vault_path,
             ],
         )
@@ -90,8 +91,8 @@ pub fn upsert_note(
     conn.execute(
         "INSERT INTO notes
            (vault_path, title, tags, aliases, content, frontmatter,
-            mtime_ms, size_bytes, hash, docid, active)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+            mtime_ms, size_bytes, hash, docid, active, scope)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)",
         params![
             params.vault_path,
             params.title,
@@ -103,6 +104,7 @@ pub fn upsert_note(
             params.size_bytes,
             file_hash,
             docid,
+            params.scope,
         ],
     )
     .map_err(|source| TalonError::Sqlite {

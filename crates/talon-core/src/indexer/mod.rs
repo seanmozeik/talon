@@ -28,4 +28,4 @@ pub use prelude::{
 pub use scan::{
     IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan, run_full_scan_with_chunker,
 };
-pub use wiring::{IndexNoteOutcome, index_one_note, index_one_note_with_config};
+pub use wiring::{IndexNoteOutcome, NoteIndexConfig, index_one_note, index_one_note_with_config};

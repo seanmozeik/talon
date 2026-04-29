@@ -9,7 +9,7 @@
 use rusqlite::{Connection, params};
 
 use crate::TalonError;
-use crate::config::ChunkerConfig;
+use crate::config::{ChunkerConfig, TalonConfig};
 use crate::indexing::{
     ChunkUpsertRow, NoteUpsertResult, UpsertNoteParams, upsert_aliases, upsert_chunks,
     upsert_frontmatter_fields, upsert_links, upsert_note, upsert_tags,
@@ -20,6 +20,18 @@ use crate::text::frontmatter::{extract_wikilinks, parse_frontmatter};
 use crate::text::normalize_vault_path;
 
 use super::prelude::{extract_title, merge_current_path_for_linking};
+
+/// Per-call configuration for [`index_one_note_with_config`].
+///
+/// Bundles the chunker tuning and optional Talon config so that the function
+/// signature stays within the argument-count limit.
+#[derive(Debug)]
+pub struct NoteIndexConfig<'a> {
+    /// Chunker tuning parameters.
+    pub chunker: &'a ChunkerConfig,
+    /// Optional Talon config used to resolve the note's scope name.
+    pub talon_config: Option<&'a TalonConfig>,
+}
 
 /// Outcome of [`index_one_note`].
 #[derive(Debug, Clone)]
@@ -65,11 +77,17 @@ pub fn index_one_note(
         mtime_ms,
         size_bytes,
         existing_for_linking,
-        &ChunkerConfig::default(),
+        &NoteIndexConfig {
+            chunker: &ChunkerConfig::default(),
+            talon_config: None,
+        },
     )
 }
 
-/// Like [`index_one_note`] but accepts an explicit [`ChunkerConfig`].
+/// Like [`index_one_note`] but accepts an explicit [`NoteIndexConfig`].
+///
+/// The `note_config.talon_config` field, if set, is used to resolve the note's
+/// scope name, which is stored in `notes.scope`.
 ///
 /// # Errors
 ///
@@ -83,7 +101,7 @@ pub fn index_one_note_with_config(
     mtime_ms: i64,
     size_bytes: i64,
     existing_for_linking: &[NoteReference],
-    chunker_config: &ChunkerConfig,
+    note_config: &NoteIndexConfig<'_>,
 ) -> Result<IndexNoteOutcome, TalonError> {
     // Normalize to NFD so NFC and NFD forms of the same Unicode filename map
     // to the same DB row (macOS HFS+ stores paths in NFD; Linux typically NFC).
@@ -93,7 +111,7 @@ pub fn index_one_note_with_config(
     let title = extract_title(vault_path, &parsed.frontmatter);
 
     // Chunker receives body only — frontmatter must not appear in chunk text.
-    let chunks = chunk_markdown(&parsed.body, &title, vault_path, chunker_config);
+    let chunks = chunk_markdown(&parsed.body, &title, vault_path, note_config.chunker);
 
     let updated_cache =
         merge_current_path_for_linking(existing_for_linking, vault_path, &title, &parsed.aliases);
@@ -141,6 +159,10 @@ pub fn index_one_note_with_config(
         source,
     })?;
 
+    let scope = note_config
+        .talon_config
+        .and_then(|c| c.resolve_scope_name(std::path::Path::new(vault_path)))
+        .unwrap_or("");
     let note = upsert_note(
         &tx,
         &UpsertNoteParams {
@@ -152,6 +174,7 @@ pub fn index_one_note_with_config(
             tags: &parsed.tags,
             mtime_ms,
             size_bytes,
+            scope,
         },
     )?;
     upsert_chunks(&tx, note.note_id, &chunk_rows)?;

@@ -50,6 +50,9 @@ pub struct UpsertNoteParams<'a> {
     pub mtime_ms: i64,
     /// File size in bytes.
     pub size_bytes: i64,
+    /// Resolved scope name (e.g. `"wiki"`, `"projects"`, `"daily"`).
+    /// Empty string for unscoped notes.
+    pub scope: &'a str,
 }
 
 /// Per-chunk upsert payload. Mirrors [`crate::text::chunker::NoteChunk`] but

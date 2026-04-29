@@ -37,6 +37,24 @@ fn mtime_date(conn: &Connection, path: &str) -> String {
     .unwrap_or_default()
 }
 
+/// Returns the affinity multiplier for a given scope name.
+///
+/// Higher values promote linked notes from high-signal scopes; lower values
+/// dampen contributions from noisy scopes (e.g. daily notes).
+fn scope_affinity(scope: &str) -> f64 {
+    match scope {
+        "wiki" => 1.3,
+        "projects" => 1.1,
+        "raw" => 0.8,
+        "daily" => 0.5,
+        "archive" => 0.4,
+        "private" => 0.3,
+        "meta" => 0.2,
+        // "artifacts" and unscoped/unknown notes use neutral weight 1.0.
+        _ => 1.0,
+    }
+}
+
 /// Minimum active-note score to contribute to linked context.
 /// Same as the suppression confidence gate — marginal active notes
 /// don't get to pollute the graph neighbourhood.
@@ -108,9 +126,10 @@ pub(super) fn build_linked_context(
                 entry.best_source_score = source.score;
                 entry.link_text = r.link_text;
             }
+            let affinity = scope_affinity(r.scope.as_deref().unwrap_or(""));
             entry
                 .source_notes
-                .push((source_vpath.clone(), source.score));
+                .push((source_vpath.clone(), source.score * affinity));
         }
     }
 
@@ -188,6 +207,14 @@ mod tests {
     use rusqlite::Connection;
 
     #[test]
+    fn scope_affinity_wiki_is_highest() {
+        assert!(scope_affinity("wiki") > scope_affinity("projects"));
+        assert!(scope_affinity("projects") > scope_affinity("daily"));
+        assert!(scope_affinity("daily") > scope_affinity("archive"));
+        assert!((scope_affinity("unknown_scope") - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
     fn headline_takes_first_nonempty_line() {
         assert_eq!(to_headline("line one\nline two"), "line one");
     }
@@ -235,8 +262,8 @@ mod tests {
         // 2026-04-15 00:00:00 UTC = 1776211200 seconds = 1776211200000 ms
         conn.execute(
             "INSERT INTO notes (vault_path, title, tags, aliases, content, frontmatter, \
-             mtime_ms, size_bytes, hash, docid, active) \
-             VALUES ('test.md', 'Test', '[]', '[]', '', '{}', 1776211200000, 0, 'h', 1, 1)",
+             mtime_ms, size_bytes, hash, docid, active, scope) \
+             VALUES ('test.md', 'Test', '[]', '[]', '', '{}', 1776211200000, 0, 'h', 1, 1, '')",
             [],
         )
         .unwrap();

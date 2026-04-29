@@ -23,6 +23,7 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
     let indexer_config = IndexerConfig {
         include_patterns: config.include_patterns.clone(),
         ignore_patterns: config.ignore_patterns.clone(),
+        talon_config: Some(config.clone()),
     };
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;

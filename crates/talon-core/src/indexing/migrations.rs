@@ -36,7 +36,8 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
        size_bytes  INTEGER NOT NULL,
        hash        TEXT NOT NULL,
        docid       TEXT NOT NULL,
-       active      INTEGER NOT NULL DEFAULT 1
+       active      INTEGER NOT NULL DEFAULT 1,
+       scope       TEXT NOT NULL DEFAULT ''
      )",
     "CREATE TABLE IF NOT EXISTS chunks (
        id               INTEGER PRIMARY KEY,

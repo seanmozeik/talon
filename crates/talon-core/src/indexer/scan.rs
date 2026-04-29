@@ -7,14 +7,14 @@ use fs_err as fs;
 use rusqlite::Connection;
 
 use crate::TalonError;
-use crate::config::ChunkerConfig;
+use crate::config::{ChunkerConfig, TalonConfig};
 use crate::indexing::perform_note_deletion;
 
 use super::prelude::{
     load_scan_notes_for_linking, matches_ignore_patterns, matches_include_patterns,
     scan_vault_markdown,
 };
-use super::wiring::index_one_note_with_config;
+use super::wiring::{NoteIndexConfig, index_one_note_with_config};
 
 /// Configuration for a vault scan.
 #[derive(Debug, Clone, Default)]
@@ -25,6 +25,8 @@ pub struct IndexerConfig {
     /// Substring ignore patterns layered on top of the built-in defaults
     /// (`.obsidian`, `.git`, `templates`, `.canvas`).
     pub ignore_patterns: Vec<String>,
+    /// Optional Talon config used to resolve per-note scope names during indexing.
+    pub talon_config: Option<TalonConfig>,
 }
 
 impl IndexerConfig {
@@ -36,6 +38,7 @@ impl IndexerConfig {
         Self {
             include_patterns: vec!["**/*.md".into()],
             ignore_patterns: Vec::new(),
+            talon_config: None,
         }
     }
 }
@@ -76,6 +79,7 @@ pub fn run_full_scan(
 }
 
 /// Like [`run_full_scan`] but with an explicit [`ChunkerConfig`].
+/// Scope names are resolved from `config.talon_config` when present.
 ///
 /// # Errors
 ///
@@ -86,6 +90,10 @@ pub fn run_full_scan_with_chunker(
     config: &IndexerConfig,
     chunker_config: &ChunkerConfig,
 ) -> Result<IndexerStats, TalonError> {
+    let note_config = NoteIndexConfig {
+        chunker: chunker_config,
+        talon_config: config.talon_config.as_ref(),
+    };
     let mut stats = IndexerStats::default();
     let mut linking_cache = load_scan_notes_for_linking(
         conn,
@@ -147,7 +155,7 @@ pub fn run_full_scan_with_chunker(
             mtime_ms,
             size_bytes,
             &linking_cache,
-            chunker_config,
+            &note_config,
         )?;
         linking_cache = outcome.updated_links_cache;
         stats.indexed = stats.indexed.saturating_add(1);
@@ -252,24 +260,17 @@ mod tests {
         write_note(&vault, "a.md", "# A\nbody a");
         write_note(&vault, "zone/b.md", "# B\nbody b");
         write_note(&vault, "zone/skip.txt", "ignored");
-
         let db = vault.join("idx.sqlite");
         let mut conn = open_database(&db).unwrap();
         let stats = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
-
         assert_eq!(stats.indexed, 2);
-        // Non-md files are filtered at the walkdir stage (matching the TS
-        // `Bun.Glob('**/*.md')` behavior) so they never reach the per-file
-        // counter — `skipped` only tracks files the scanner *considered*.
-        assert_eq!(stats.deleted, 0);
-
+        assert_eq!(stats.deleted, 0); // .txt files are filtered before the per-file counter.
         let total: i64 = conn
             .query_row("SELECT COUNT(*) FROM notes WHERE active = 1", [], |r| {
                 r.get(0)
             })
             .unwrap();
         assert_eq!(total, 2);
-
         drop(conn);
         cleanup_db(&db);
         fs::remove_dir_all(&vault).unwrap();
@@ -282,14 +283,11 @@ mod tests {
         write_note(&vault, "a.md", "# A");
         let db = vault.join("idx.sqlite");
         let mut conn = open_database(&db).unwrap();
-
         let first = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
         assert_eq!(first.indexed, 1);
-
         let second = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
         assert_eq!(second.indexed, 0);
         assert!(second.skipped >= 1);
-
         drop(conn);
         cleanup_db(&db);
         fs::remove_dir_all(&vault).unwrap();

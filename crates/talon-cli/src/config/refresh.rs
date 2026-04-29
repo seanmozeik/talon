@@ -44,6 +44,7 @@ pub fn refresh_index_if_needed(
     let indexer_config = talon_core::IndexerConfig {
         include_patterns: config.include_patterns.clone(),
         ignore_patterns: config.ignore_patterns.clone(),
+        talon_config: Some(config.clone()),
     };
     match talon_core::refresh_index(
         conn,
@@ -72,6 +73,7 @@ pub fn refresh_index_with_lock(
     let indexer_config = talon_core::IndexerConfig {
         include_patterns: config.include_patterns.clone(),
         ignore_patterns: config.ignore_patterns.clone(),
+        talon_config: Some(config.clone()),
     };
     talon_core::refresh_index_locked(
         conn,

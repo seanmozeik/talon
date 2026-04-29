@@ -34,10 +34,10 @@ pub use contracts::{
 pub use error::{ErrorCode, TalonError, TalonResult};
 pub use expansion::{ExpansionClient, ExpansionError, LlmCache};
 pub use indexer::{
-    IndexNoteOutcome, IndexerConfig, IndexerStats, extract_title, hash_file_content,
-    index_one_note, index_one_note_with_config, load_notes_for_linking, matches_ignore_patterns,
-    matches_include_patterns, reconcile_deletions, run_full_scan, run_full_scan_with_chunker,
-    scan_vault_markdown,
+    IndexNoteOutcome, IndexerConfig, IndexerStats, NoteIndexConfig, extract_title,
+    hash_file_content, index_one_note, index_one_note_with_config, load_notes_for_linking,
+    matches_ignore_patterns, matches_include_patterns, reconcile_deletions, run_full_scan,
+    run_full_scan_with_chunker, scan_vault_markdown,
 };
 pub use indexing::{
     ChangeFeed, ChangeIndex, ChangeTrackingEntry, ChangeTrackingTombstoneEntry, ChunkUpsertRow,
