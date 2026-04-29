@@ -71,7 +71,17 @@ fn raw_to_search_result_exposes_wiki_navigation_metadata() {
         Err(err) => panic!("failed to open temp db: {err}"),
     };
     let note_id = insert_note_with_content(&conn, "wiki/index.md", "Index body");
-    insert_fm_field(&conn, note_id, "sources", "raw/source.md");
+    insert_note_with_content(&conn, "raw/source.md", "Source body");
+    insert_fm_field(&conn, note_id, "sources", "[[Source|source note]]");
+    insert_fm_field(&conn, note_id, "sources", "https://example.com/source");
+    assert!(
+        conn.execute(
+            "INSERT INTO links (from_path, to_path, raw_target, alias) VALUES (?, ?, ?, ?)",
+            params!["wiki/index.md", "raw/source.md", "Source", "source note"],
+        )
+        .is_ok(),
+        "failed to insert source link"
+    );
     assert!(
         conn.execute(
             "INSERT INTO links (from_path, to_path, raw_target) VALUES (?, ?, ?)",
@@ -94,7 +104,10 @@ fn raw_to_search_result_exposes_wiki_navigation_metadata() {
     .unwrap_or_else(|| panic!("raw result should convert"));
 
     assert!(result.is_index);
-    assert_eq!(result.citations, vec!["raw/source.md"]);
+    assert_eq!(
+        result.citations,
+        vec!["raw/source.md", "https://example.com/source"]
+    );
     assert_eq!(result.backlinks, vec!["wiki/topic.md"]);
     drop(conn);
     cleanup(&path);

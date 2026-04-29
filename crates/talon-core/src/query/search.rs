@@ -236,7 +236,7 @@ fn raw_to_search_result(
         .map(str::to_string);
     let mtime = super::mtime::local_mtime_for_path(conn, &raw.path);
     let note_id = get_note_id_by_path(conn, &raw.path);
-    let citations = note_id.map_or_else(Vec::new, |id| query_citations(conn, id));
+    let citations = note_id.map_or_else(Vec::new, |id| query_citations(conn, id, &raw.path));
     let backlinks = query_backlinks(conn, &raw.path);
 
     Some(SearchResult {
