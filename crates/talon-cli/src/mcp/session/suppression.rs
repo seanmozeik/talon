@@ -1,6 +1,6 @@
 use super::ledger::{InjectedChunk, SuppressedRecall, SuppressionReason, TurnLedger};
 
-const CONFIDENCE_GATE: f64 = 0.4;
+const CONFIDENCE_GATE: f64 = 0.55;
 
 /// Default per-turn score decay for chunks seen in prior turns.
 ///
@@ -157,16 +157,16 @@ mod tests {
         ledger
     }
 
-    // Verify the decay formula at DEFAULT_DECAY = 0.85:
+    // Verify the decay formula at DEFAULT_DECAY = 0.85, CONFIDENCE_GATE = 0.55:
     //   effective = score × 0.85^turns_since
-    //   inject if effective >= 0.40
+    //   inject if effective >= 0.55
 
     #[test]
     fn low_score_chunk_suppressed_by_confidence_gate() {
-        // 0.46 × 0.85^1 = 0.391 < 0.40 → suppressed at base gate first
+        // 0.60 passes raw gate (0.60 > 0.55) but after decay: 0.60 × 0.85 = 0.51 < 0.55 → suppressed
         let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 1);
         let result = apply_suppression(
-            vec![candidate("c", "notes/foo.md", 0.46)],
+            vec![candidate("c", "notes/foo.md", 0.60)],
             &ledger,
             DEFAULT_DECAY,
         );
@@ -195,7 +195,7 @@ mod tests {
 
     #[test]
     fn moderate_score_suppressed_three_turns_ago() {
-        // 0.65 × 0.85^3 = 0.65 × 0.614 = 0.399 < 0.40 → suppressed
+        // 0.65 × 0.85^3 = 0.65 × 0.614 = 0.399 < 0.55 → suppressed
         let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 3);
         let result = apply_suppression(
             vec![candidate("c", "notes/foo.md", 0.65)],
@@ -207,17 +207,17 @@ mod tests {
 
     #[test]
     fn high_score_eligible_three_turns_ago() {
-        // 0.66 × 0.85^3 = 0.66 × 0.614 = 0.405 >= 0.40 → passes
+        // 0.92 × 0.85^3 = 0.92 × 0.614 = 0.565 >= 0.55 → passes
         let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 3);
         let result = apply_suppression(
-            vec![candidate("c", "notes/foo.md", 0.66)],
+            vec![candidate("c", "notes/foo.md", 0.92)],
             &ledger,
             DEFAULT_DECAY,
         );
         assert_eq!(
             result.injected.len(),
             1,
-            "score 0.66 should re-emerge after 3 turns"
+            "score 0.92 should re-emerge after 3 turns with gate 0.55"
         );
     }
 

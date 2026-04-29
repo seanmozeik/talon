@@ -153,11 +153,9 @@ pub fn format_recall_prompt_xml(
         for note in &vr.active_notes {
             writeln!(
                 w,
-                r#"    <note path="{}" title="{}" mtime="{}" score="{:.2}">{}</note>"#,
+                r#"    <note path="{}" mtime="{}">{}</note>"#,
                 xml_escape(note.vault_path.as_str()),
-                xml_escape(&note.title),
                 xml_escape(&note.mtime),
-                note.score,
                 xml_escape(&note.snippet),
             )?;
         }
@@ -168,11 +166,9 @@ pub fn format_recall_prompt_xml(
             for l in &vr.linked_context {
                 writeln!(
                     w,
-                    r#"    <note path="{}" title="{}" relation="{:?}" hops="{}"/>"#,
+                    r#"    <note path="{}" relation="{:?}"/>"#,
                     xml_escape(l.vault_path.as_str()),
-                    xml_escape(&l.title),
                     l.relation,
-                    l.hops
                 )?;
             }
             writeln!(w, "  </linked_context>")?;
