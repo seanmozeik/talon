@@ -56,8 +56,12 @@ pub async fn run(cli: &Cli) -> Result<()> {
             crate::mcp::background::embed::spawn_embed_ticker(Arc::clone(&state));
             let stdin = io::stdin();
             let stdout = io::stdout();
-            let outcome =
-                run_jsonrpc_loop_with_state(BufReader::new(stdin.lock()), stdout.lock(), &state)?;
+            // block_in_place allows the synchronous JSON-RPC loop to drop
+            // tokio-backed resources (reqwest clients, inference pools) without
+            // panicking inside the outer async executor.
+            let outcome = tokio::task::block_in_place(|| {
+                run_jsonrpc_loop_with_state(BufReader::new(stdin.lock()), stdout.lock(), &state)
+            })?;
             let _ = outcome;
             Ok(())
         }
