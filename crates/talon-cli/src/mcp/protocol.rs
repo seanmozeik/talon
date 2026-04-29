@@ -103,6 +103,62 @@ pub fn handle_request(request: JsonRpcRequest) -> (Option<JsonRpcResponse>, Meth
     }
 }
 
+/// State-aware variant of [`handle_request`].
+///
+/// For `tools/call` requests, delegates to
+/// [`tool::tools_call_result_with_state`] so that hook tools can access
+/// session state.  All other methods behave identically to [`handle_request`].
+#[must_use]
+pub fn handle_request_with_state(
+    request: JsonRpcRequest,
+    state: &std::sync::Arc<crate::mcp::state::McpServerState>,
+) -> (Option<JsonRpcResponse>, MethodDisposition) {
+    if request.jsonrpc != JSONRPC_VERSION {
+        let id = request.id.unwrap_or(Value::Null);
+        return (
+            Some(error_response(id, INVALID_REQUEST, "invalid request", None)),
+            MethodDisposition::Continue,
+        );
+    }
+
+    match request.method.as_str() {
+        "initialize" => {
+            respond_to_request(request, initialize_result(), MethodDisposition::Continue)
+        }
+        "notifications/initialized" | "initialized" => (None, MethodDisposition::Continue),
+        "tools/list" => respond_to_request(
+            request,
+            tool::tools_list_result(),
+            MethodDisposition::Continue,
+        ),
+        "tools/call" => {
+            let params = request.params.clone();
+            respond_to_request(
+                request,
+                tool::tools_call_result_with_state(params, state),
+                MethodDisposition::Continue,
+            )
+        }
+        "shutdown" => respond_to_request(request, Value::Null, MethodDisposition::Shutdown),
+        _ => {
+            if request.is_notification() {
+                (None, MethodDisposition::Continue)
+            } else {
+                let id = request.id.unwrap_or(Value::Null);
+                (
+                    Some(error_response(
+                        id,
+                        METHOD_NOT_FOUND,
+                        "method not found",
+                        None,
+                    )),
+                    MethodDisposition::Continue,
+                )
+            }
+        }
+    }
+}
+
 fn respond_to_request(
     request: JsonRpcRequest,
     result: Value,

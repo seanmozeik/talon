@@ -1,5 +1,7 @@
 mod dispatch;
 mod error;
+pub(super) mod hook;
+mod hook_recall;
 mod public;
 mod schema;
 mod status;
@@ -7,6 +9,8 @@ mod sync;
 
 #[cfg(test)]
 mod tests;
+
+use std::sync::Arc;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -34,7 +38,49 @@ pub fn tools_list_result() -> Value {
         "inputSchema": schema::input_schema()
     })];
     tools.extend(public::tools_list_entries());
+    tools.extend(hook::hook_tools_list_entries());
     json!({ "tools": tools })
+}
+
+/// Executes one MCP `tools/call` request, with access to session state for
+/// hook-only tools.
+#[must_use]
+pub fn tools_call_result_with_state(
+    params: Option<Value>,
+    state: &Arc<crate::mcp::state::McpServerState>,
+) -> Value {
+    let (name, arguments) = match parse_name_and_arguments(params) {
+        Ok(pair) => pair,
+        Err(error) => return content_result(&error.envelope()),
+    };
+
+    // Try hook tools first — they require state and produce hook-formatted output.
+    if let Some(result) = hook::dispatch_hook(&name, &arguments, state) {
+        return result;
+    }
+
+    // Try named public tools next.
+    if let Some(result) = public::dispatch_named(&name, arguments.clone()) {
+        let envelope = result.unwrap_or_else(ToolError::envelope);
+        return public::named_content_result(&envelope);
+    }
+
+    // Fall through to legacy action-union tool.
+    if name != TOOL_NAME {
+        let error = ToolError::with_detail(
+            "talon",
+            ErrorCode::Internal,
+            format!("unknown tool '{name}'"),
+            json!({ "expected": TOOL_NAME }),
+        );
+        return content_result(&error.envelope());
+    }
+
+    let envelope = match dispatch_arguments(arguments) {
+        Ok(envelope) => envelope,
+        Err(error) => error.envelope(),
+    };
+    content_result(&envelope)
 }
 
 /// Executes one MCP `tools/call` request.

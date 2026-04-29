@@ -4,7 +4,9 @@ use std::sync::Arc;
 use color_eyre::eyre::{Result, WrapErr};
 use serde_json::json;
 
-use crate::mcp::protocol::{JsonRpcRequest, MethodDisposition, handle_request, parse_error};
+use crate::mcp::protocol::{
+    JsonRpcRequest, MethodDisposition, handle_request, handle_request_with_state, parse_error,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransportOutcome {
@@ -60,25 +62,57 @@ where
     }
 }
 
-/// Forward-compatibility stub that accepts process-local server state.
+/// Runs a line-delimited JSON-RPC 2.0 loop with access to process-local server
+/// state, enabling hook-only tools to read and update session state.
 ///
-/// The `state` parameter is currently unused; it will be threaded through
-/// `handle_request` in Phase 4 when hook tools require it.
+/// For `tools/call` requests the state-aware handler is used; all other
+/// methods behave identically to [`run_jsonrpc_loop`].
 ///
 /// # Errors
 ///
 /// Returns an error if reading from the input stream or writing to the output
 /// stream fails. See [`run_jsonrpc_loop`] for the full error contract.
 pub fn run_jsonrpc_loop_with_state<R, W>(
-    reader: R,
-    writer: W,
-    _state: Arc<crate::mcp::state::McpServerState>,
+    mut reader: R,
+    mut writer: W,
+    state: &Arc<crate::mcp::state::McpServerState>,
 ) -> Result<TransportOutcome>
 where
     R: BufRead,
     W: Write,
 {
-    run_jsonrpc_loop(reader, writer)
+    let mut frame = String::new();
+
+    loop {
+        frame.clear();
+        let bytes_read = reader
+            .read_line(&mut frame)
+            .wrap_err("failed to read MCP frame")?;
+        if bytes_read == 0 {
+            return Ok(TransportOutcome::Eof);
+        }
+
+        let trimmed = frame.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let response = match serde_json::from_str::<JsonRpcRequest>(trimmed) {
+            Ok(request) => {
+                let (response, disposition) = handle_request_with_state(request, state);
+                if let Some(response) = response {
+                    write_response(&mut writer, &response)?;
+                }
+                if disposition == MethodDisposition::Shutdown {
+                    return Ok(TransportOutcome::Shutdown);
+                }
+                continue;
+            }
+            Err(error) => parse_error(json!({ "message": error.to_string() })),
+        };
+
+        write_response(&mut writer, &response)?;
+    }
 }
 
 fn write_response<W, T>(writer: &mut W, response: &T) -> Result<()>

@@ -50,7 +50,7 @@ pub async fn run(cli: &Cli) -> Result<()> {
             let stdin = io::stdin();
             let stdout = io::stdout();
             let outcome =
-                run_jsonrpc_loop_with_state(BufReader::new(stdin.lock()), stdout.lock(), state)?;
+                run_jsonrpc_loop_with_state(BufReader::new(stdin.lock()), stdout.lock(), &state)?;
             let _ = outcome;
             Ok(())
         }
