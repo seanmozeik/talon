@@ -17,6 +17,7 @@
 pub mod anchor;
 pub mod bm25;
 pub mod cache;
+pub(crate) mod chunk_excerpt;
 pub mod constants;
 pub mod fuse;
 pub mod fuzzy_title;

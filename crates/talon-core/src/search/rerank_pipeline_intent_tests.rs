@@ -1,3 +1,4 @@
+use super::super::constants::DEFAULT_SNIPPET_LENGTH;
 use super::*;
 use crate::inference::InferenceClient;
 use crate::search::types::SearchScores;
@@ -160,6 +161,20 @@ fn chunk_selection_weights_intent_terms_above_query_terms() {
     );
     drop(conn);
     cleanup(&db_path);
+}
+
+#[test]
+fn focused_chunk_excerpt_moves_late_matches_into_snippet() {
+    let prefix = "opening context without retrieval terms ".repeat(12);
+    let suffix = " closing context without retrieval terms".repeat(12);
+    let text = format!("{prefix}lease renewal needs landlord sign-off this week{suffix}");
+    let query_terms = intent::extract_terms("lease renewal landlord");
+
+    let snippet = focused_chunk_excerpt(&text, &query_terms, &[]);
+
+    assert!(snippet.starts_with("..."));
+    assert!(snippet.contains("lease renewal needs landlord sign-off"));
+    assert!(snippet.chars().count() <= DEFAULT_SNIPPET_LENGTH as usize + 6);
 }
 
 #[test]

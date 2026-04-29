@@ -15,13 +15,13 @@ use crate::cache::rerank as rerank_cache;
 use crate::inference::InferenceClient;
 use rusqlite::Connection;
 
+use super::chunk_excerpt::{
+    CHUNK_INTENT_TERM_WEIGHT, CHUNK_QUERY_TERM_WEIGHT, focused_chunk_excerpt,
+};
 use super::fuse::blend_rerank_probabilities;
 use super::hooks::SearchHooks;
 use super::intent;
 use super::types::RawSearchResult;
-
-const CHUNK_QUERY_TERM_WEIGHT: u32 = 1;
-const CHUNK_INTENT_TERM_WEIGHT: u32 = 5;
 
 pub(crate) struct IntentRerankOptions<'a> {
     pub(crate) conn: &'a Connection,
@@ -276,6 +276,7 @@ fn best_chunk_for_candidate(
         };
         // Algorithm ported verbatim from qmd — store.ts:4140-4151
         let score = chunk_term_score_units(&text, query_terms, intent_terms);
+        let text = focused_chunk_excerpt(&text, query_terms, intent_terms);
         let chunk = RerankChunk {
             text,
             heading_path,
