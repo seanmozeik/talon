@@ -17,6 +17,14 @@ fn test_parse_frontmatter_simple() {
 }
 
 #[test]
+fn frontmatter_tags_skip_non_string_yaml_scalars() {
+    let content = "---\ntags: [rust, 4, true, \"5\"]\n---\n\n#inline";
+    let result = parse_frontmatter(content);
+
+    assert_eq!(result.tags, vec!["rust", "5", "inline"]);
+}
+
+#[test]
 fn test_parse_frontmatter_no_frontmatter() {
     let content = "No frontmatter here.";
     let result = parse_frontmatter(content);

@@ -69,6 +69,26 @@ fn outgoing_depth1_returns_direct_links() {
 }
 
 #[test]
+fn outgoing_result_counts_multiple_link_rows_to_same_target() {
+    let conn = fresh_db();
+    insert_note(&conn, "Graph/Parent.md", "Parent");
+    insert_note(&conn, "Graph/Child.md", "Child");
+    insert_link(&conn, "Graph/Parent.md", "Graph/Child.md", "[[Child]]");
+    insert_link(&conn, "Graph/Parent.md", "Graph/Child.md", "[[Kid]]");
+    insert_link(&conn, "Graph/Parent.md", "Graph/Child.md", "[[Offspring]]");
+
+    let resp = find_related(
+        &conn,
+        &related_input("Graph/Parent.md", 1, Direction::Outgoing),
+        None,
+    );
+
+    assert_eq!(resp.results.len(), 1);
+    assert_eq!(resp.results[0].vault_path.as_str(), "Graph/Child.md");
+    assert_eq!(resp.results[0].count, 3);
+}
+
+#[test]
 fn outgoing_depth2_returns_transitive_links() {
     let conn = fresh_db();
     make_graph(&conn);

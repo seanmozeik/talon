@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::constants::DEFAULT_LIMIT;
+use crate::constants::{CHANGES_DEFAULT_LIMIT, DEFAULT_LIMIT};
 use crate::contracts::PositiveCount;
 use crate::search::input::WhereClause;
 
@@ -163,6 +163,10 @@ pub struct ChangesInput {
     #[serde(default)]
     pub scope_all: bool,
     /// Result limit.
-    #[serde(default)]
+    #[serde(default = "default_changes_limit")]
     pub limit: PositiveCount,
+}
+
+const fn default_changes_limit() -> PositiveCount {
+    PositiveCount::from_const(CHANGES_DEFAULT_LIMIT)
 }

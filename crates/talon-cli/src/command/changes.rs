@@ -21,7 +21,8 @@ pub(super) async fn emit(args: &ChangesArgs, cli: &Cli) -> Result<()> {
         scope_only: args.scope.scope_only.clone(),
         scope_all: args.scope.scope_all,
         limit: PositiveCount::new(
-            args.limit.unwrap_or(talon_core::constants::DEFAULT_LIMIT),
+            args.limit
+                .unwrap_or(talon_core::constants::CHANGES_DEFAULT_LIMIT),
             "limit",
         )?,
     };

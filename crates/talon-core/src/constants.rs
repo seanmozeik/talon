@@ -6,6 +6,9 @@ pub const DEFAULT_SNIPPET_LENGTH: u16 = 300;
 /// Default number of search results.
 pub const DEFAULT_LIMIT: u16 = 10;
 
+/// Default number of change-feed entries.
+pub const CHANGES_DEFAULT_LIMIT: u16 = 100;
+
 /// Hybrid search candidate floor before reranking.
 pub const CANDIDATE_POOL_FLOOR: u16 = 20;
 

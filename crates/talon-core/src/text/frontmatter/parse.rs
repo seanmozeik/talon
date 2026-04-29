@@ -22,20 +22,23 @@ pub fn parse_frontmatter(content: &str) -> FrontmatterExtract {
 
     let parsed = normalize_obsidian_scalars(&raw);
     let mut frontmatter: BTreeMap<String, FrontmatterValue> = BTreeMap::new();
+    let mut parsed_frontmatter: Option<BTreeMap<String, serde_yaml_ng::Value>> = None;
 
     if let Ok(map) = serde_yaml_ng::from_str::<BTreeMap<String, serde_yaml_ng::Value>>(&parsed) {
-        for (key, value) in map {
-            frontmatter.insert(key, serde_value_to_fm(value));
+        for (key, value) in &map {
+            frontmatter.insert(key.clone(), serde_value_to_fm(value.clone()));
         }
+        parsed_frontmatter = Some(map);
     } else if let Ok(map) = serde_yaml_ng::from_str::<BTreeMap<String, serde_yaml_ng::Value>>(&raw)
     {
-        for (key, value) in map {
-            frontmatter.insert(key, serde_value_to_fm(value));
+        for (key, value) in &map {
+            frontmatter.insert(key.clone(), serde_value_to_fm(value.clone()));
         }
+        parsed_frontmatter = Some(map);
     }
 
     let aliases = extract_aliases(&frontmatter);
-    let (fm_tags, inline_tags) = extract_tags(&frontmatter, &body);
+    let (fm_tags, inline_tags) = extract_tags(&frontmatter, parsed_frontmatter.as_ref(), &body);
     let tags = normalize_unique_list(fm_tags, inline_tags);
     let links = extract_wikilinks(&body);
 
@@ -270,15 +273,24 @@ fn extract_aliases(frontmatter: &BTreeMap<String, FrontmatterValue>) -> Vec<Stri
 /// Extracts tags from frontmatter and inline markdown.
 fn extract_tags(
     frontmatter: &BTreeMap<String, FrontmatterValue>,
+    parsed_frontmatter: Option<&BTreeMap<String, serde_yaml_ng::Value>>,
     body: &str,
 ) -> (Vec<String>, Vec<String>) {
     let mut fm_tags = Vec::new();
-    for key in &["tags", "tag"] {
-        if let Some(FrontmatterValue::List(list)) = frontmatter.get(*key) {
-            fm_tags.extend(list.iter().cloned());
+    if let Some(parsed) = parsed_frontmatter {
+        for key in &["tags", "tag"] {
+            if let Some(value) = parsed.get(*key) {
+                fm_tags.extend(extract_string_tags_from_yaml(value));
+            }
         }
-        if let Some(FrontmatterValue::String(s)) = frontmatter.get(*key) {
-            fm_tags.extend(split_list_text(s));
+    } else {
+        for key in &["tags", "tag"] {
+            if let Some(FrontmatterValue::List(list)) = frontmatter.get(*key) {
+                fm_tags.extend(list.iter().cloned());
+            }
+            if let Some(FrontmatterValue::String(s)) = frontmatter.get(*key) {
+                fm_tags.extend(split_list_text(s));
+            }
         }
     }
 
@@ -286,6 +298,22 @@ fn extract_tags(
 
     (fm_tags, inline_tags)
 }
+
+fn extract_string_tags_from_yaml(value: &serde_yaml_ng::Value) -> Vec<String> {
+    match value {
+        serde_yaml_ng::Value::String(s) => split_list_text(s),
+        serde_yaml_ng::Value::Sequence(seq) => seq
+            .iter()
+            .filter_map(|item| match item {
+                serde_yaml_ng::Value::String(s) => Some(split_list_text(s)),
+                _ => None,
+            })
+            .flatten()
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
 fn normalize_unique_list(fm_tags: Vec<String>, inline_tags: Vec<String>) -> Vec<String> {
     let mut all = fm_tags;
     all.extend(inline_tags);

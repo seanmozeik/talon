@@ -144,9 +144,9 @@ fn classify(
         .collect();
 
     // ISO 8601 strings sort lexicographically the same as their epoch-ms source.
-    added.sort_by(|a, b| a.indexed_at.cmp(&b.indexed_at));
-    modified.sort_by(|a, b| a.indexed_at.cmp(&b.indexed_at));
-    deleted.sort_by(|a, b| a.deleted_at.cmp(&b.deleted_at));
+    added.sort_by(|a, b| b.indexed_at.cmp(&a.indexed_at));
+    modified.sort_by(|a, b| b.indexed_at.cmp(&a.indexed_at));
+    deleted.sort_by(|a, b| b.deleted_at.cmp(&a.deleted_at));
 
     let mut remaining = limit;
     added.truncate(remaining);
@@ -175,6 +175,7 @@ mod tests {
     use rusqlite::Connection;
 
     use super::query_changes;
+    use crate::constants::CHANGES_DEFAULT_LIMIT;
     use crate::contracts::PositiveCount;
     use crate::indexing::migrations::run_migrations;
     use crate::query::ChangesInput;
@@ -200,6 +201,16 @@ mod tests {
             scope_only: Vec::new(),
             scope_all: false,
             limit: PositiveCount::new(100, "limit").unwrap(),
+        }
+    }
+
+    fn changes_input_with_limit(since: &str, limit: u16) -> ChangesInput {
+        ChangesInput {
+            since: since.to_string(),
+            scope: Vec::new(),
+            scope_only: Vec::new(),
+            scope_all: false,
+            limit: PositiveCount::new(limit, "limit").unwrap(),
         }
     }
 
@@ -266,5 +277,34 @@ mod tests {
         assert!(result.added.is_empty());
         assert!(result.modified.is_empty());
         assert!(result.deleted.is_empty());
+    }
+
+    #[test]
+    fn entries_are_ordered_newest_first_before_limit() {
+        let conn = fresh_db();
+        insert_event(&conn, "index", "old.md", "2024-01-15T10:30:01Z");
+        insert_event(&conn, "index", "new.md", "2024-01-15T10:30:03Z");
+        insert_event(&conn, "index", "middle.md", "2024-01-15T10:30:02Z");
+
+        let result = query_changes(
+            &conn,
+            &changes_input_with_limit("2024-01-15T10:30:00Z", 2),
+            None,
+        );
+
+        let paths: Vec<&str> = result
+            .added
+            .iter()
+            .map(|entry| entry.path.as_str())
+            .collect();
+        assert_eq!(paths, vec!["new.md", "middle.md"]);
+    }
+
+    #[test]
+    fn serde_default_limit_is_change_feed_default() {
+        let input: ChangesInput =
+            serde_json::from_value(serde_json::json!({ "since": "2024-01-15T10:30:00Z" })).unwrap();
+
+        assert_eq!(input.limit.get(), CHANGES_DEFAULT_LIMIT);
     }
 }
