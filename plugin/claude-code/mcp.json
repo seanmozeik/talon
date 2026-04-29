@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "talon": {
+      "command": "talon",
+      "args": ["mcp"]
+    }
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "talon",
+            "tool": "talon_hook_session_start",
+            "input": {
+              "host": "claude-code",
+              "sessionId": "${session_id}",
+              "cwd": "${cwd}",
+              "transcriptPath": "${transcript_path}"
+            }
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "talon",
+            "tool": "talon_hook_recall",
+            "input": {
+              "host": "claude-code",
+              "sessionId": "${session_id}",
+              "turnId": "${session_id}:${transcript_path}",
+              "cwd": "${cwd}",
+              "transcriptPath": "${transcript_path}",
+              "message": "${prompt}",
+              "budgetTokens": 500,
+              "format": "hook-json"
+            }
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "talon",
+            "tool": "talon_hook_turn_end",
+            "input": {
+              "host": "claude-code",
+              "sessionId": "${session_id}",
+              "turnId": "${session_id}:${transcript_path}:stop",
+              "cwd": "${cwd}",
+              "transcriptPath": "${transcript_path}",
+              "outcome": "completed"
+            }
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "mcp_tool",
+            "server": "talon",
+            "tool": "talon_hook_session_end",
+            "input": {
+              "host": "claude-code",
+              "sessionId": "${session_id}"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
