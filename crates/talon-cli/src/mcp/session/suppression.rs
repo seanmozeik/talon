@@ -2,28 +2,23 @@ use super::ledger::{InjectedChunk, SuppressedRecall, SuppressionReason, TurnLedg
 
 const CONFIDENCE_GATE: f64 = 0.4;
 
-/// Minimum score to re-inject a chunk last seen N turns ago.
+/// Default per-turn score decay for chunks seen in prior turns.
 ///
-/// The threshold decays with distance: the further back a chunk was last
-/// injected, the lower the score needed to inject it again. After enough
-/// turns the chunk is treated as novel and only the base confidence gate applies.
-const fn chunk_min_score(turns_since: usize) -> f64 {
-    match turns_since {
-        0 => f64::INFINITY,   // already injected this very turn
-        1 => 0.90,            // last turn: very high confidence required
-        2 => 0.75,            // two turns ago: high confidence
-        3 => 0.60,            // three turns ago: moderate
-        _ => CONFIDENCE_GATE, // four+ turns: just the base gate
-    }
-}
+/// Lower = more aggressive suppression; higher = more permissive re-injection.
+pub const DEFAULT_DECAY: f64 = 0.85;
 
-const fn note_min_score(turns_since: usize) -> f64 {
-    match turns_since {
-        0 => f64::INFINITY,
-        1 => 0.85,
-        2 => 0.65,
-        _ => CONFIDENCE_GATE,
+/// Returns the effective score of a chunk seen `turns_since` turns ago, after
+/// applying the per-turn decay multiplier.
+///
+/// `effective = raw × decay^turns_since`
+///
+/// The chunk passes suppression if `effective >= CONFIDENCE_GATE`.
+/// A chunk seen 0 turns ago (same turn) always returns 0.0 (never re-inject).
+fn effective_score(raw: f64, turns_since: usize, decay: f64) -> f64 {
+    if turns_since == 0 {
+        return 0.0;
     }
+    raw * decay.powi(i32::try_from(turns_since).unwrap_or(i32::MAX))
 }
 
 /// A candidate from recall output before suppression filtering.
@@ -44,18 +39,20 @@ pub struct SuppressionResult {
 
 /// Apply output-level suppression to a list of recall candidates.
 ///
-/// Suppresses chunks already injected in recent turns and chunks below the
-/// confidence gate. Does NOT use query similarity — we deduplicate output
-/// context, not input messages.
+/// Suppresses chunks below the confidence gate or whose score, after applying
+/// the per-turn decay multiplier, falls below the gate. Does NOT use query
+/// similarity — we deduplicate injected context, not input messages.
 ///
-/// Re-injection is allowed after enough turns if the score exceeds the
-/// distance-decayed threshold. If all candidates are suppressed, `injected`
-/// is empty and the caller must skip injection entirely rather than falling
-/// back to lower-ranked results.
+/// `decay` is the per-turn multiplier (e.g. 0.85). A chunk last injected N
+/// turns ago has its raw score multiplied by `decay^N` before comparing to
+/// the confidence gate. If all candidates are suppressed, `injected` is empty
+/// and the caller must skip injection entirely rather than substituting
+/// lower-ranked results.
 #[must_use]
 pub fn apply_suppression(
     candidates: Vec<RecallCandidate>,
     ledger: &TurnLedger,
+    decay: f64,
 ) -> SuppressionResult {
     let mut injected = Vec::new();
     let mut suppressed = Vec::new();
@@ -71,11 +68,10 @@ pub fn apply_suppression(
             continue;
         }
 
-        // Chunk-level decay: suppress unless score exceeds the threshold for
-        // how long ago this chunk was last injected.
+        // Chunk-level decay.
         if ledger
             .turns_since_chunk_last_injected(&candidate.chunk_id)
-            .is_some_and(|n| candidate.score < chunk_min_score(n))
+            .is_some_and(|n| effective_score(candidate.score, n, decay) < CONFIDENCE_GATE)
         {
             suppressed.push(SuppressedRecall {
                 chunk_id: candidate.chunk_id,
@@ -86,10 +82,10 @@ pub fn apply_suppression(
             continue;
         }
 
-        // Note-level decay: same principle applied to the whole note path.
+        // Note-level decay: same multiplier as chunk, applied to the whole note path.
         if ledger
             .turns_since_note_last_injected(&candidate.path)
-            .is_some_and(|n| candidate.score < note_min_score(n))
+            .is_some_and(|n| effective_score(candidate.score, n, decay) < CONFIDENCE_GATE)
         {
             suppressed.push(SuppressedRecall {
                 chunk_id: candidate.chunk_id,
@@ -121,7 +117,7 @@ pub fn to_injected_chunk(candidate: &RecallCandidate) -> InjectedChunk {
 
 #[cfg(test)]
 mod tests {
-    use super::{RecallCandidate, apply_suppression};
+    use super::{DEFAULT_DECAY, RecallCandidate, apply_suppression};
     use crate::mcp::session::ledger::{InjectedChunk, SuppressionReason, TurnLedger, TurnRecord};
 
     fn candidate(chunk_id: &str, path: &str, score: f64) -> RecallCandidate {
@@ -148,10 +144,10 @@ mod tests {
             suppressed: vec![],
             skipped: false,
         });
-        // Add n-1 subsequent empty turns so the chunk is n turns in the past.
-        for i in 1..n {
+        // Add n subsequent empty turns so the chunk is n turns in the past.
+        for i in 0..n {
             ledger.record_turn(TurnRecord {
-                turn_id: format!("t{i}"),
+                turn_id: format!("e{i}"),
                 query_fingerprint: String::new(),
                 injected: vec![],
                 suppressed: vec![],
@@ -161,10 +157,19 @@ mod tests {
         ledger
     }
 
+    // Verify the decay formula at DEFAULT_DECAY = 0.85:
+    //   effective = score × 0.85^turns_since
+    //   inject if effective >= 0.40
+
     #[test]
-    fn chunk_suppressed_one_turn_ago_even_with_high_score() {
+    fn low_score_chunk_suppressed_by_confidence_gate() {
+        // 0.46 × 0.85^1 = 0.391 < 0.40 → suppressed at base gate first
         let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 1);
-        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.89)], &ledger);
+        let result = apply_suppression(
+            vec![candidate("c", "notes/foo.md", 0.46)],
+            &ledger,
+            DEFAULT_DECAY,
+        );
         assert_eq!(result.injected.len(), 0);
         assert_eq!(
             result.suppressed[0].reason,
@@ -173,30 +178,47 @@ mod tests {
     }
 
     #[test]
-    fn chunk_allowed_four_turns_ago_at_moderate_score() {
-        let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 4);
-        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.55)], &ledger);
+    fn high_score_chunk_passes_one_turn_ago() {
+        // 0.85 × 0.85^1 = 0.72 >= 0.40 → high-confidence chunks still eligible after 1 turn
+        let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 1);
+        let result = apply_suppression(
+            vec![candidate("c", "notes/foo.md", 0.85)],
+            &ledger,
+            DEFAULT_DECAY,
+        );
         assert_eq!(
             result.injected.len(),
             1,
-            "4 turns ago + moderate score should pass"
+            "score 0.85 should pass after 1 turn with decay 0.85"
         );
     }
 
     #[test]
-    fn chunk_suppressed_three_turns_ago_at_low_score() {
+    fn moderate_score_suppressed_three_turns_ago() {
+        // 0.65 × 0.85^3 = 0.65 × 0.614 = 0.399 < 0.40 → suppressed
         let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 3);
-        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.55)], &ledger);
-        // 3 turns ago requires score >= 0.60; 0.55 < 0.60 → suppressed.
+        let result = apply_suppression(
+            vec![candidate("c", "notes/foo.md", 0.65)],
+            &ledger,
+            DEFAULT_DECAY,
+        );
         assert_eq!(result.injected.len(), 0);
     }
 
     #[test]
-    fn chunk_allowed_three_turns_ago_at_high_score() {
+    fn high_score_eligible_three_turns_ago() {
+        // 0.66 × 0.85^3 = 0.66 × 0.614 = 0.405 >= 0.40 → passes
         let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 3);
-        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.65)], &ledger);
-        // 3 turns ago requires score >= 0.60; 0.65 >= 0.60 → injected.
-        assert_eq!(result.injected.len(), 1);
+        let result = apply_suppression(
+            vec![candidate("c", "notes/foo.md", 0.66)],
+            &ledger,
+            DEFAULT_DECAY,
+        );
+        assert_eq!(
+            result.injected.len(),
+            1,
+            "score 0.66 should re-emerge after 3 turns"
+        );
     }
 
     #[test]
@@ -204,6 +226,7 @@ mod tests {
         let result = apply_suppression(
             vec![candidate("new", "notes/bar.md", 0.2)],
             &TurnLedger::new(),
+            DEFAULT_DECAY,
         );
         assert_eq!(result.injected.len(), 0);
         assert_eq!(
@@ -217,6 +240,7 @@ mod tests {
         let result = apply_suppression(
             vec![candidate("new", "notes/new.md", 0.85)],
             &TurnLedger::new(),
+            DEFAULT_DECAY,
         );
         assert_eq!(result.injected.len(), 1);
         assert!(result.suppressed.is_empty());
@@ -224,15 +248,20 @@ mod tests {
 
     #[test]
     fn all_suppressed_means_empty_injected() {
+        // Both chunks have scores that decay below gate after 1 turn (0.46 × 0.85 = 0.391)
         let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 1);
         let result = apply_suppression(
             vec![
-                candidate("c", "notes/foo.md", 0.9),
-                candidate("d", "notes/foo.md", 0.8), // same note, 1 turn ago
+                candidate("c", "notes/foo.md", 0.46),
+                candidate("d", "notes/foo.md", 0.46),
             ],
             &ledger,
+            DEFAULT_DECAY,
         );
-        // Caller must return no additionalContext, not fall back to other results.
-        assert_eq!(result.injected.len(), 0);
+        assert_eq!(
+            result.injected.len(),
+            0,
+            "caller must skip injection, not substitute lower-ranked results"
+        );
     }
 }

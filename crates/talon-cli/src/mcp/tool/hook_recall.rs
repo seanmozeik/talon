@@ -170,10 +170,13 @@ pub(super) fn apply_recall_suppression(
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(session) = store.sessions.get(key) {
-            apply_suppression(candidates, &session.ledger)
+            apply_suppression(candidates, &session.ledger, session.suppression_decay)
         } else {
-            // No session found — inject everything, suppress nothing.
-            apply_suppression(candidates, &TurnLedger::new())
+            apply_suppression(
+                candidates,
+                &TurnLedger::new(),
+                crate::mcp::session::suppression::DEFAULT_DECAY,
+            )
         }
     };
 

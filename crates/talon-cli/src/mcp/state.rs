@@ -50,6 +50,11 @@ pub struct SessionState {
     pub last_seen_at_ms: i64,
     /// Turn history with suppression ledger for recall deduplication.
     pub ledger: TurnLedger,
+    /// Per-turn score decay multiplier for suppression (default `DEFAULT_DECAY`).
+    pub suppression_decay: f64,
+    /// Last assistant response stored by `turn_end`; passed as `prior_messages`
+    /// on the next recall so the recall query is enriched with agent context.
+    pub last_agent_response: Option<String>,
 }
 
 /// Lightweight diagnostics visible to health-check tooling.

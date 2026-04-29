@@ -106,6 +106,8 @@ fn handle_session_start(arguments: &Value, state: &Arc<McpServerState>) -> Value
         created_at_ms: now_ms,
         last_seen_at_ms: now_ms,
         ledger: TurnLedger::new(),
+        suppression_decay: crate::mcp::session::suppression::DEFAULT_DECAY,
+        last_agent_response: None,
     };
 
     {
@@ -139,9 +141,27 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         })
         .unwrap_or_default();
 
+    // Enrich recall with the agent's last response so the query captures
+    // conversation context, not just the current user message.
+    let prior_messages = {
+        let store = state
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        store
+            .sessions
+            .get(&SessionKey {
+                host: parse_host_kind(&host),
+                session_id: session_id.clone(),
+            })
+            .and_then(|s| s.last_agent_response.clone())
+            .into_iter()
+            .collect::<Vec<_>>()
+    };
+
     let input = RecallInput {
         message: message.clone(),
-        prior_messages: Vec::new(),
+        prior_messages,
         budget_tokens,
         exclude: Vec::new(),
         scope,
@@ -184,12 +204,28 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
 fn handle_turn_end(arguments: &Value, state: &Arc<McpServerState>) -> Value {
     let host = string_field(arguments, "host").unwrap_or_else(|| "unknown".to_owned());
     let session_id = string_field(arguments, "sessionId").unwrap_or_default();
+    let last_assistant = string_field(arguments, "lastAssistantMessage");
 
     let key = SessionKey {
         host: parse_host_kind(&host),
         session_id,
     };
-    touch_session(state, &key);
+
+    {
+        let mut store = state
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(session) = store.sessions.get_mut(&key) {
+            let now = now_ms();
+            session.last_seen_at_ms = now;
+            // Store the agent's response so the next recall call can use it
+            // as prior context, enriching the query beyond the user message alone.
+            if last_assistant.is_some() {
+                session.last_agent_response = last_assistant;
+            }
+        }
+    }
 
     json!({ "content": [{ "type": "text", "text": "{\"ok\":true}" }] })
 }
