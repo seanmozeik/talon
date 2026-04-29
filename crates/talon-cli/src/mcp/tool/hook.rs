@@ -170,7 +170,6 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
                 &key,
                 &message,
                 turn_id,
-                budget_tokens,
             );
             super::hook_recall::build_recall_output(&filtered, &format, &vault)
         }

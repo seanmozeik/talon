@@ -8,9 +8,8 @@ use talon_core::{
 };
 
 use crate::mcp::session::chunk_id::derive_chunk_id;
-use crate::mcp::session::fingerprint::QueryFingerprint;
 use crate::mcp::session::ledger::{InjectedChunk, TurnLedger, TurnRecord};
-use crate::mcp::session::suppression::{RecallCandidate, apply_suppression};
+use crate::mcp::session::suppression::{RecallCandidate, apply_suppression, to_injected_chunk};
 use crate::mcp::state::{McpServerState, SessionKey};
 use crate::output::format_recall_prompt_xml;
 
@@ -136,7 +135,6 @@ pub(super) fn apply_recall_suppression(
     key: &SessionKey,
     message: &str,
     turn_id: String,
-    budget_tokens: u32,
 ) -> RecallResponse {
     use std::collections::HashSet;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -163,44 +161,44 @@ pub(super) fn apply_recall_suppression(
         })
         .unwrap_or_default();
 
-    let fp = QueryFingerprint::from_message(message);
-
     // Apply suppression against the session ledger (read lock).
+    // Suppression is output-level only: we check what chunks were already
+    // injected in recent turns, not whether the input message looks similar.
     let suppression_result = {
         let store = state
             .sessions
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(session) = store.sessions.get(key) {
-            apply_suppression(candidates, &session.ledger, &fp, budget_tokens)
+            apply_suppression(candidates, &session.ledger)
         } else {
             // No session found — inject everything, suppress nothing.
-            apply_suppression(candidates, &TurnLedger::new(), &fp, budget_tokens)
+            apply_suppression(candidates, &TurnLedger::new())
         }
     };
 
-    // Build ledger record from suppression result.
+    // If all candidates were suppressed, skip injection entirely.
+    // Do not fall back to lower-ranked results — the agent already has the
+    // relevant context from previous turns.
+    let all_suppressed = suppression_result.injected.is_empty();
+
     let injected_chunks: Vec<InjectedChunk> = suppression_result
         .injected
         .iter()
-        .map(|(c, _)| InjectedChunk {
-            chunk_id: c.chunk_id.clone(),
-            path: c.path.clone(),
-            score: c.score,
-        })
+        .map(to_injected_chunk)
         .collect();
     let injected_paths: HashSet<String> = suppression_result
         .injected
         .iter()
-        .map(|(c, _)| c.path.clone())
+        .map(|c| c.path.clone())
         .collect();
 
     let turn_record = TurnRecord {
         turn_id,
-        query_fingerprint: fp.normalized,
+        query_fingerprint: message.to_owned(),
         injected: injected_chunks,
         suppressed: suppression_result.suppressed,
-        skipped: recall_response.skipped,
+        skipped: recall_response.skipped || all_suppressed,
     };
 
     // Record turn to ledger (write lock).
@@ -216,6 +214,13 @@ pub(super) fn apply_recall_suppression(
             session.ledger.record_turn(turn_record);
             session.last_seen_at_ms = now_ms;
         }
+    }
+
+    // If all candidates were suppressed, mark as skipped so build_recall_output
+    // returns no additionalContext. Do not substitute lower-ranked results.
+    if all_suppressed {
+        recall_response.skipped = true;
+        return recall_response;
     }
 
     // Filter active_notes to only injected paths.

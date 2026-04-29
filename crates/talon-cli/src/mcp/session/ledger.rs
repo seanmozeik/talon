@@ -31,15 +31,7 @@ pub struct SuppressedRecall {
 pub enum SuppressionReason {
     SameChunkRecentlyInjected,
     SameNoteRecentlyInjected,
-    QueryRepeated,
     BelowConfidenceGate,
-    BudgetTrimmed,
-}
-
-#[derive(Debug, Clone)]
-pub enum InjectionReason {
-    Novel,
-    QueryDrift,
 }
 
 /// Bounded turn history.
@@ -132,6 +124,29 @@ impl TurnLedger {
                 .filter(|id| recent_ids.contains(&id.as_str()))
                 .count()
         })
+    }
+
+    /// Returns how many turns have elapsed since this chunk was last injected.
+    /// Returns `None` if the chunk has never been injected.
+    #[must_use]
+    pub fn turns_since_chunk_last_injected(&self, chunk_id: &str) -> Option<usize> {
+        let turn_ids = self.injected_chunks.get(chunk_id)?;
+        // Find the position from the end of the most recent matching turn.
+        self.turns
+            .iter()
+            .rev()
+            .position(|t| turn_ids.contains(&t.turn_id))
+    }
+
+    /// Returns how many turns have elapsed since any chunk from this note path
+    /// was last injected. Returns `None` if never injected.
+    #[must_use]
+    pub fn turns_since_note_last_injected(&self, path: &str) -> Option<usize> {
+        let turn_ids = self.injected_notes.get(path)?;
+        self.turns
+            .iter()
+            .rev()
+            .position(|t| turn_ids.contains(&t.turn_id))
     }
 
     /// Returns the fingerprint of the most recent turn, if any.

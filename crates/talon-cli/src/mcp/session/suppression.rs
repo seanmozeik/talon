@@ -1,11 +1,30 @@
-use super::fingerprint::QueryFingerprint;
-use super::ledger::{InjectionReason, SuppressedRecall, SuppressionReason, TurnLedger};
+use super::ledger::{InjectedChunk, SuppressedRecall, SuppressionReason, TurnLedger};
 
 const CONFIDENCE_GATE: f64 = 0.4;
-const SAME_CHUNK_TURNS: usize = 3;
-const SAME_NOTE_TURNS: usize = 2;
-/// Jaccard below this = high drift
-const HIGH_DRIFT_THRESHOLD: f64 = 0.4;
+
+/// Minimum score to re-inject a chunk last seen N turns ago.
+///
+/// The threshold decays with distance: the further back a chunk was last
+/// injected, the lower the score needed to inject it again. After enough
+/// turns the chunk is treated as novel and only the base confidence gate applies.
+const fn chunk_min_score(turns_since: usize) -> f64 {
+    match turns_since {
+        0 => f64::INFINITY,   // already injected this very turn
+        1 => 0.90,            // last turn: very high confidence required
+        2 => 0.75,            // two turns ago: high confidence
+        3 => 0.60,            // three turns ago: moderate
+        _ => CONFIDENCE_GATE, // four+ turns: just the base gate
+    }
+}
+
+const fn note_min_score(turns_since: usize) -> f64 {
+    match turns_since {
+        0 => f64::INFINITY,
+        1 => 0.85,
+        2 => 0.65,
+        _ => CONFIDENCE_GATE,
+    }
+}
 
 /// A candidate from recall output before suppression filtering.
 #[derive(Debug)]
@@ -19,49 +38,29 @@ pub struct RecallCandidate {
 
 #[derive(Debug)]
 pub struct SuppressionResult {
-    pub injected: Vec<(RecallCandidate, InjectionReason)>,
+    pub injected: Vec<RecallCandidate>,
     pub suppressed: Vec<SuppressedRecall>,
 }
 
-/// Apply suppression policy to a list of candidates.
+/// Apply output-level suppression to a list of recall candidates.
 ///
-/// `current_fp` is the current turn's fingerprint.
-/// `ledger` holds prior turn history.
+/// Suppresses chunks already injected in recent turns and chunks below the
+/// confidence gate. Does NOT use query similarity — we deduplicate output
+/// context, not input messages.
+///
+/// Re-injection is allowed after enough turns if the score exceeds the
+/// distance-decayed threshold. If all candidates are suppressed, `injected`
+/// is empty and the caller must skip injection entirely rather than falling
+/// back to lower-ranked results.
 #[must_use]
 pub fn apply_suppression(
     candidates: Vec<RecallCandidate>,
     ledger: &TurnLedger,
-    current_fp: &QueryFingerprint,
-    budget_tokens: u32,
 ) -> SuppressionResult {
-    let last_fp = ledger
-        .last_fingerprint()
-        .map(QueryFingerprint::from_message);
-    let similarity = last_fp.as_ref().map_or(0.0, |fp| current_fp.similarity(fp));
-    let high_drift = similarity < HIGH_DRIFT_THRESHOLD;
-
-    // Query repeated exactly or very closely: suppress all
-    if similarity > 0.9 {
-        return SuppressionResult {
-            injected: vec![],
-            suppressed: candidates
-                .into_iter()
-                .map(|c| SuppressedRecall {
-                    chunk_id: c.chunk_id,
-                    path: c.path,
-                    score: c.score,
-                    reason: SuppressionReason::QueryRepeated,
-                })
-                .collect(),
-        };
-    }
-
     let mut injected = Vec::new();
     let mut suppressed = Vec::new();
-    let mut tokens_used: u32 = 0;
 
     for candidate in candidates {
-        // Confidence gate
         if candidate.score < CONFIDENCE_GATE {
             suppressed.push(SuppressedRecall {
                 chunk_id: candidate.chunk_id,
@@ -72,9 +71,12 @@ pub fn apply_suppression(
             continue;
         }
 
-        // Same chunk recently injected
-        let chunk_recent = ledger.chunk_injected_in_last_n(&candidate.chunk_id, SAME_CHUNK_TURNS);
-        if chunk_recent > 0 && !high_drift {
+        // Chunk-level decay: suppress unless score exceeds the threshold for
+        // how long ago this chunk was last injected.
+        if ledger
+            .turns_since_chunk_last_injected(&candidate.chunk_id)
+            .is_some_and(|n| candidate.score < chunk_min_score(n))
+        {
             suppressed.push(SuppressedRecall {
                 chunk_id: candidate.chunk_id,
                 path: candidate.path,
@@ -84,9 +86,11 @@ pub fn apply_suppression(
             continue;
         }
 
-        // Same note recently injected
-        let note_recent = ledger.note_injected_in_last_n(&candidate.path, SAME_NOTE_TURNS);
-        if note_recent > 0 && !high_drift {
+        // Note-level decay: same principle applied to the whole note path.
+        if ledger
+            .turns_since_note_last_injected(&candidate.path)
+            .is_some_and(|n| candidate.score < note_min_score(n))
+        {
             suppressed.push(SuppressedRecall {
                 chunk_id: candidate.chunk_id,
                 path: candidate.path,
@@ -96,27 +100,7 @@ pub fn apply_suppression(
             continue;
         }
 
-        // Budget check (rough: ~4 chars per token). Truncation from usize to u32
-        // is intentional — snippet lengths never approach 4 GiB.
-        #[allow(clippy::cast_possible_truncation)]
-        let token_est = (candidate.snippet.len() / 4) as u32;
-        if tokens_used + token_est > budget_tokens {
-            suppressed.push(SuppressedRecall {
-                chunk_id: candidate.chunk_id,
-                path: candidate.path,
-                score: candidate.score,
-                reason: SuppressionReason::BudgetTrimmed,
-            });
-            continue;
-        }
-
-        tokens_used += token_est;
-        let reason = if high_drift && chunk_recent > 0 {
-            InjectionReason::QueryDrift
-        } else {
-            InjectionReason::Novel
-        };
-        injected.push((candidate, reason));
+        injected.push(candidate);
     }
 
     SuppressionResult {
@@ -125,27 +109,37 @@ pub fn apply_suppression(
     }
 }
 
+/// Builds an [`InjectedChunk`] record from a suppression-approved candidate.
+#[must_use]
+pub fn to_injected_chunk(candidate: &RecallCandidate) -> InjectedChunk {
+    InjectedChunk {
+        chunk_id: candidate.chunk_id.clone(),
+        path: candidate.path.clone(),
+        score: candidate.score,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{RecallCandidate, apply_suppression};
-    use crate::mcp::session::fingerprint::QueryFingerprint;
     use crate::mcp::session::ledger::{InjectedChunk, SuppressionReason, TurnLedger, TurnRecord};
 
-    fn make_candidate(chunk_id: &str, path: &str, score: f64, snippet: &str) -> RecallCandidate {
+    fn candidate(chunk_id: &str, path: &str, score: f64) -> RecallCandidate {
         RecallCandidate {
             chunk_id: chunk_id.to_owned(),
             path: path.to_owned(),
             score,
-            title: "Test Note".to_owned(),
-            snippet: snippet.to_owned(),
+            title: "Test".to_owned(),
+            snippet: "snippet".to_owned(),
         }
     }
 
-    fn ledger_with_chunk(chunk_id: &str, path: &str) -> TurnLedger {
+    fn ledger_with_chunk_n_turns_ago(chunk_id: &str, path: &str, n: usize) -> TurnLedger {
         let mut ledger = TurnLedger::new();
+        // Insert the target chunk injection in turn 0.
         ledger.record_turn(TurnRecord {
-            turn_id: "turn-1".to_owned(),
-            query_fingerprint: "some query".to_owned(),
+            turn_id: "t0".to_owned(),
+            query_fingerprint: String::new(),
             injected: vec![InjectedChunk {
                 chunk_id: chunk_id.to_owned(),
                 path: path.to_owned(),
@@ -154,27 +148,24 @@ mod tests {
             suppressed: vec![],
             skipped: false,
         });
+        // Add n-1 subsequent empty turns so the chunk is n turns in the past.
+        for i in 1..n {
+            ledger.record_turn(TurnRecord {
+                turn_id: format!("t{i}"),
+                query_fingerprint: String::new(),
+                injected: vec![],
+                suppressed: vec![],
+                skipped: false,
+            });
+        }
         ledger
     }
 
     #[test]
-    fn same_chunk_suppressed_in_last_three_turns() {
-        // The ledger stores fingerprint "some query" for the prior turn.
-        // Use a query with significant overlap so Jaccard >= HIGH_DRIFT_THRESHOLD (0.4)
-        // and suppression is not overridden by drift detection.
-        // "some query topic" vs "some query": intersection={some,query}, union={some,query,topic}
-        // Jaccard = 2/3 ≈ 0.67 >= 0.4, so high_drift = false and suppression applies.
-        let ledger = ledger_with_chunk("chunk-abc", "notes/foo.md");
-        let fp = QueryFingerprint::from_message("some query topic");
-        let candidates = vec![make_candidate(
-            "chunk-abc",
-            "notes/foo.md",
-            0.85,
-            "some snippet content here for the test",
-        )];
-        let result = apply_suppression(candidates, &ledger, &fp, 10_000);
+    fn chunk_suppressed_one_turn_ago_even_with_high_score() {
+        let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 1);
+        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.89)], &ledger);
         assert_eq!(result.injected.len(), 0);
-        assert_eq!(result.suppressed.len(), 1);
         assert_eq!(
             result.suppressed[0].reason,
             SuppressionReason::SameChunkRecentlyInjected
@@ -182,18 +173,39 @@ mod tests {
     }
 
     #[test]
-    fn below_confidence_gate_suppressed() {
-        let ledger = TurnLedger::new();
-        let fp = QueryFingerprint::from_message("any query here");
-        let candidates = vec![make_candidate(
-            "chunk-xyz",
-            "notes/bar.md",
-            0.2,
-            "low score snippet content",
-        )];
-        let result = apply_suppression(candidates, &ledger, &fp, 10_000);
+    fn chunk_allowed_four_turns_ago_at_moderate_score() {
+        let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 4);
+        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.55)], &ledger);
+        assert_eq!(
+            result.injected.len(),
+            1,
+            "4 turns ago + moderate score should pass"
+        );
+    }
+
+    #[test]
+    fn chunk_suppressed_three_turns_ago_at_low_score() {
+        let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 3);
+        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.55)], &ledger);
+        // 3 turns ago requires score >= 0.60; 0.55 < 0.60 → suppressed.
         assert_eq!(result.injected.len(), 0);
-        assert_eq!(result.suppressed.len(), 1);
+    }
+
+    #[test]
+    fn chunk_allowed_three_turns_ago_at_high_score() {
+        let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 3);
+        let result = apply_suppression(vec![candidate("c", "notes/foo.md", 0.65)], &ledger);
+        // 3 turns ago requires score >= 0.60; 0.65 >= 0.60 → injected.
+        assert_eq!(result.injected.len(), 1);
+    }
+
+    #[test]
+    fn below_confidence_gate_suppressed() {
+        let result = apply_suppression(
+            vec![candidate("new", "notes/bar.md", 0.2)],
+            &TurnLedger::new(),
+        );
+        assert_eq!(result.injected.len(), 0);
         assert_eq!(
             result.suppressed[0].reason,
             SuppressionReason::BelowConfidenceGate
@@ -201,29 +213,26 @@ mod tests {
     }
 
     #[test]
-    fn query_repeated_suppresses_all() {
-        // Set up a ledger with a prior turn using the same query
-        let mut ledger = TurnLedger::new();
-        let prior_query = "what is the vault indexing strategy";
-        ledger.record_turn(TurnRecord {
-            turn_id: "turn-1".to_owned(),
-            query_fingerprint: prior_query.to_owned(),
-            injected: vec![],
-            suppressed: vec![],
-            skipped: false,
-        });
+    fn novel_chunk_passes_through() {
+        let result = apply_suppression(
+            vec![candidate("new", "notes/new.md", 0.85)],
+            &TurnLedger::new(),
+        );
+        assert_eq!(result.injected.len(), 1);
+        assert!(result.suppressed.is_empty());
+    }
 
-        // Current query is nearly identical (>0.9 Jaccard)
-        let fp = QueryFingerprint::from_message(prior_query);
-        let candidates = vec![
-            make_candidate("chunk-1", "notes/a.md", 0.9, "snippet one"),
-            make_candidate("chunk-2", "notes/b.md", 0.8, "snippet two"),
-        ];
-        let result = apply_suppression(candidates, &ledger, &fp, 10_000);
+    #[test]
+    fn all_suppressed_means_empty_injected() {
+        let ledger = ledger_with_chunk_n_turns_ago("c", "notes/foo.md", 1);
+        let result = apply_suppression(
+            vec![
+                candidate("c", "notes/foo.md", 0.9),
+                candidate("d", "notes/foo.md", 0.8), // same note, 1 turn ago
+            ],
+            &ledger,
+        );
+        // Caller must return no additionalContext, not fall back to other results.
         assert_eq!(result.injected.len(), 0);
-        assert_eq!(result.suppressed.len(), 2);
-        for s in &result.suppressed {
-            assert_eq!(s.reason, SuppressionReason::QueryRepeated);
-        }
     }
 }
