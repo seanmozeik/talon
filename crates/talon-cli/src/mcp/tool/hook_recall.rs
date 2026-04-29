@@ -252,6 +252,10 @@ pub(super) fn apply_recall_suppression(
                 .partial_cmp(&a.aggregated_score)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
+        // Hard cap: linked context never exceeds this regardless of how many
+        // active notes are present or how high aggregated scores compound.
+        const MAX_LINKED: usize = 5;
+        vr.linked_context.truncate(MAX_LINKED);
     }
 
     recall_response
