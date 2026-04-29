@@ -1,8 +1,13 @@
 use super::super::search_hybrid::infer_hybrid_match_kind;
 use super::*;
+use crate::config::{
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, Scope, ScopeGlob,
+    ScopePriority, ScopesConfig, SearchConfig,
+};
 use crate::search::types::SearchScores;
 use crate::store::open_database;
 use rusqlite::{Connection, params};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 fn unique_path() -> std::path::PathBuf {
@@ -18,6 +23,13 @@ fn cleanup(path: &std::path::Path) {
     let _ = fs_err::remove_file(path);
     let _ = fs_err::remove_file(path.with_extension("sqlite-wal"));
     let _ = fs_err::remove_file(path.with_extension("sqlite-shm"));
+}
+
+fn assert_close(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() < f64::EPSILON,
+        "expected {expected}, got {actual}"
+    );
 }
 
 fn insert_note_with_content(conn: &Connection, vault_path: &str, content: &str) -> i64 {
@@ -51,6 +63,46 @@ fn raw(path: &str, snippet: &str, bm25: bool, semantic_heading: Option<&str>) ->
     }
 }
 
+fn config_with_boosted_wiki_scope() -> TalonConfig {
+    let mut scopes = ScopesConfig::new();
+    scopes.insert(
+        "wiki".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("wiki/**".to_string()),
+            priority: ScopePriority::Boosted,
+            default: true,
+            lint: true,
+        },
+    );
+
+    TalonConfig {
+        vault_path: PathBuf::from("/tmp/vault"),
+        db_path: PathBuf::from("/tmp/vault/idx.sqlite"),
+        config_file_path: None,
+        include_patterns: Vec::new(),
+        ignore_patterns: Vec::new(),
+        inference: InferenceConfig {
+            base_url: "http://localhost".to_string(),
+            models: InferenceModels {
+                query_embedding: "query".to_string(),
+                document_embedding: "document".to_string(),
+                chunk_embedding: "chunk".to_string(),
+                reranker: "reranker".to_string(),
+            },
+        },
+        expansion: ExpansionConfig {
+            provider: "openai-compatible".to_string(),
+            base_url: "http://localhost".to_string(),
+            model: "expansion".to_string(),
+            max_tokens: None,
+        },
+        scopes,
+        search: SearchConfig::default(),
+        lint: LintConfig::default(),
+        chunker: ChunkerConfig::default(),
+    }
+}
+
 #[test]
 fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
     let path = unique_path();
@@ -65,8 +117,16 @@ fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
     );
 
     let raw = raw("notes/fallback.md", "short alpha", true, None);
-    let result = raw_to_search_result(&raw, SearchMode::Fulltext, &conn, false, "alpha", None)
-        .unwrap_or_else(|| panic!("raw result should convert"));
+    let result = raw_to_search_result(
+        &raw,
+        SearchMode::Fulltext,
+        &conn,
+        false,
+        "alpha",
+        raw.score,
+        None,
+    )
+    .unwrap_or_else(|| panic!("raw result should convert"));
 
     assert!(
         result.snippet.len() > raw.snippet.len(),
@@ -76,6 +136,45 @@ fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
         result.snippet.contains("longer body excerpt"),
         "fallback retrieval should surface body text"
     );
+    drop(conn);
+    cleanup(&path);
+}
+
+#[test]
+fn apply_scope_priority_preserves_pre_multiplier_raw_score() {
+    let config = config_with_boosted_wiki_scope();
+    let raw = raw("wiki/shout.md", "shout", false, None);
+    let scored = apply_scope_priority(vec![raw], Some(&config));
+
+    assert_eq!(scored.len(), 1);
+    assert_close(scored[0].raw_score, 0.9);
+    assert_close(scored[0].raw.score, 2.7);
+}
+
+#[test]
+fn raw_to_search_result_uses_supplied_pre_multiplier_raw_score() {
+    let path = unique_path();
+    let conn = match open_database(&path) {
+        Ok(conn) => conn,
+        Err(err) => panic!("failed to open temp db: {err}"),
+    };
+    let mut raw = raw("wiki/shout.md", "shout", false, None);
+    raw.score = 2.7;
+
+    let result = raw_to_search_result(
+        &raw,
+        SearchMode::Semantic,
+        &conn,
+        false,
+        "",
+        0.9,
+        Some(&config_with_boosted_wiki_scope()),
+    )
+    .unwrap_or_else(|| panic!("raw result should convert"));
+
+    assert_close(result.score, 2.7);
+    assert_eq!(result.raw_score, Some(0.9));
+    assert_eq!(result.scope.as_deref(), Some("wiki"));
     drop(conn);
     cleanup(&path);
 }
@@ -180,8 +279,16 @@ fn raw_to_search_result_truncates_on_char_boundaries() {
         Some("Heading"),
     );
 
-    let result = raw_to_search_result(&raw, SearchMode::Semantic, &conn, false, "", None)
-        .unwrap_or_else(|| panic!("raw result should convert"));
+    let result = raw_to_search_result(
+        &raw,
+        SearchMode::Semantic,
+        &conn,
+        false,
+        "",
+        raw.score,
+        None,
+    )
+    .unwrap_or_else(|| panic!("raw result should convert"));
 
     assert_eq!(
         result.snippet.chars().count(),

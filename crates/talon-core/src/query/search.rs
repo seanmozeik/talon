@@ -23,6 +23,11 @@ use super::search_retrieval::{RetrievalOutcome, retrieve_raw_results};
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::types::RawSearchResult;
 
+struct ScoredRawSearchResult {
+    raw: RawSearchResult,
+    raw_score: f64,
+}
+
 /// Runs a search query and returns a [`SearchResponse`].
 ///
 /// Supports four modes:
@@ -145,7 +150,15 @@ fn run_search_inner(
         results: scored
             .into_iter()
             .filter_map(|r| {
-                raw_to_search_result(&r, input.mode, conn, anchors_requested, &query, config)
+                raw_to_search_result(
+                    &r.raw,
+                    input.mode,
+                    conn,
+                    anchors_requested,
+                    &query,
+                    r.raw_score,
+                    config,
+                )
             })
             .collect(),
         diagnostics,
@@ -169,6 +182,7 @@ fn raw_to_search_result(
     conn: &Connection,
     anchors_requested: bool,
     query: &str,
+    raw_score: f64,
     config: Option<&TalonConfig>,
 ) -> Option<SearchResult> {
     let match_kind = match mode {
@@ -223,7 +237,7 @@ fn raw_to_search_result(
         title: raw.title.clone(),
         snippet,
         score: raw.score,
-        raw_score: Some(raw.score),
+        raw_score: Some(raw_score),
         match_kind,
         scope,
         mtime,
@@ -238,18 +252,25 @@ fn raw_to_search_result(
 fn apply_scope_priority(
     results: Vec<RawSearchResult>,
     config: Option<&TalonConfig>,
-) -> Vec<RawSearchResult> {
+) -> Vec<ScoredRawSearchResult> {
     let Some(cfg) = config else {
-        return results;
+        return results
+            .into_iter()
+            .map(|raw| {
+                let raw_score = raw.score;
+                ScoredRawSearchResult { raw, raw_score }
+            })
+            .collect();
     };
 
     results
         .into_iter()
-        .map(|mut r| {
-            let resolution = cfg.resolve_scope(std::path::Path::new(&r.path));
+        .map(|mut raw| {
+            let raw_score = raw.score;
+            let resolution = cfg.resolve_scope(std::path::Path::new(&raw.path));
             let multiplier = resolution.priority.multiplier();
-            r.score *= multiplier;
-            r
+            raw.score *= multiplier;
+            ScoredRawSearchResult { raw, raw_score }
         })
         .collect()
 }
