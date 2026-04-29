@@ -88,8 +88,8 @@ fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
     Ok(())
 }
 
-/// Regression test: talon_hook_recall must not panic with "Cannot drop a runtime
-/// in a context where blocking is not allowed" when InferenceClient is created
+/// Regression test: `talon_hook_recall` must not panic with "Cannot drop a runtime
+/// in a context where blocking is not allowed" when `InferenceClient` is created
 /// and dropped inside the synchronous JSON-RPC loop (which runs inside tokio).
 #[test]
 fn hook_recall_does_not_panic_inside_mcp_loop() -> Result<()> {
