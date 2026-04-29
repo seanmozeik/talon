@@ -5,7 +5,6 @@ use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::elapsed_ms;
 use eyre::{Result, WrapErr as _, bail};
-use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     ExpansionClient, ResponseMeta, ScopeFilter, SearchInput, SearchMode, SyncLockError,
@@ -25,7 +24,7 @@ pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
         .map_or_else(SearchMode::default, std::convert::Into::into);
     let fast = cli.fast;
     let include_expanded_queries = cli.verbose;
-    let config = config::load_config(cli.config_file.as_deref()).ok();
+    let config = config::load_config(cli.config_file.as_deref())?;
 
     let where_clauses: Vec<talon_core::WhereClause> = args
         .where_
@@ -40,7 +39,7 @@ pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
         fast,
         args.limit,
         args.candidate_limit,
-        config.as_ref().map(|config| &config.search),
+        Some(&config.search),
     )?;
     input.where_ = where_clauses;
     input.since = args.since.clone();
@@ -49,10 +48,8 @@ pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
     input.scope_only.clone_from(&args.scope.scope_only);
     input.scope_all = args.scope.scope_all;
 
-    if let Some(cfg) = config.as_ref() {
-        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
-            .map_err(|e| eyre::eyre!("{e}"))?;
-    }
+    ScopeFilter::from_args(&config, &input.scope, &input.scope_only, input.scope_all)
+        .map_err(|e| eyre::eyre!("{e}"))?;
 
     let started = Instant::now();
 
@@ -60,7 +57,7 @@ pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
         tokio::task::spawn_blocking(move || {
             execute_search(
                 input,
-                config.as_ref(),
+                &config,
                 started,
                 fast,
                 mode,
@@ -84,58 +81,34 @@ pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
 
 fn execute_search(
     input: SearchInput,
-    config: Option<&talon_core::TalonConfig>,
+    config: &talon_core::TalonConfig,
     started: Instant,
     fast: bool,
     mode: SearchMode,
     include_expanded_queries: bool,
 ) -> Result<TalonEnvelope> {
-    let db_path: PathBuf = config
-        .as_ref()
-        .map_or_else(crate::config::default_db_path, |c| c.db_path.clone());
-
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let conn = if let Some(cfg) = config {
-        open_search_database(cfg, &db_path, fast)?
-    } else {
-        open_database_read_only(&db_path)
-            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?
-    };
+    let conn = open_search_database(config, &config.db_path, fast)?;
 
     let (inference, expansion) =
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
             (None, None)
         } else {
-            let inference_url = config.as_ref().map_or_else(
-                || "http://localhost:8080".to_string(),
-                |c| c.inference.base_url.clone(),
-            );
-            if let Some(config) = config {
-                talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
-            }
-            let inference = match config {
-                Some(config) => InferenceClient::with_rerank_options_and_protocol(
-                    inference_url,
-                    config.search.rerank_batch_size,
-                    config.search.rerank_max_tokens,
-                    config.inference.rerank,
-                ),
-                None => InferenceClient::new(inference_url),
-            }
+            talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
+            let inference = InferenceClient::with_rerank_options_and_protocol(
+                &config.inference.base_url,
+                config.search.rerank_batch_size,
+                config.search.rerank_max_tokens,
+                config.inference.rerank,
+            )
             .wrap_err("building inference client")
             .ok();
-            let expansion = config
-                .as_ref()
-                .map(|c| {
-                    ExpansionClient::with_max_tokens(
-                        c.expansion.base_url.clone(),
-                        &c.expansion.model,
-                        c.expansion.max_tokens,
-                    )
-                })
-                .transpose()
-                .ok()
-                .flatten();
+            let expansion = ExpansionClient::with_max_tokens(
+                config.expansion.base_url.clone(),
+                &config.expansion.model,
+                config.expansion.max_tokens,
+            )
+            .ok();
             (inference, expansion)
         };
 
@@ -145,7 +118,7 @@ fn execute_search(
             &input,
             inference.as_ref(),
             expansion.as_ref(),
-            config,
+            Some(config),
         )
     } else {
         run_search(
@@ -153,22 +126,22 @@ fn execute_search(
             &input,
             inference.as_ref(),
             expansion.as_ref(),
-            config,
+            Some(config),
         )
     };
-    response.vault = vault_container_path(config);
+    response.vault = vault_container_path(Some(config));
 
-    let scope_set = config.as_ref().map(|cfg| {
-        ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all).map_or_else(
-            |_| ScopeFilter::default_for(cfg).resolved_set(),
-            |f| f.resolved_set(),
-        )
-    });
+    let scope_set =
+        ScopeFilter::from_args(config, &input.scope, &input.scope_only, input.scope_all)
+            .map_or_else(
+                |_| ScopeFilter::default_for(config).resolved_set(),
+                |f| f.resolved_set(),
+            );
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count: Some(response.total),
         warnings: Vec::new(),
-        scope_set,
+        scope_set: Some(scope_set),
         since: input.since,
     };
     Ok(TalonEnvelope::ok(
