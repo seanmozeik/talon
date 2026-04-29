@@ -136,6 +136,19 @@ pub enum FrontmatterValueType {
     List,
 }
 
+impl FrontmatterValueType {
+    #[must_use]
+    pub const fn as_db_str(self) -> &'static str {
+        match self {
+            Self::String => "string",
+            Self::Number => "number",
+            Self::Bool => "bool",
+            Self::Date => "date",
+            Self::List => "list",
+        }
+    }
+}
+
 impl From<FrontmatterValue> for FrontmatterValueType {
     fn from(value: FrontmatterValue) -> Self {
         match value {

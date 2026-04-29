@@ -4,7 +4,7 @@ use rusqlite::{Connection, params};
 
 use crate::TalonError;
 use crate::links::ResolvedLink;
-use crate::text::frontmatter::{FrontmatterValue, normalize_keyword};
+use crate::text::frontmatter::{FrontmatterValue, FrontmatterValueType, normalize_keyword};
 
 /// Replaces the link rows originating from `vault_path`.
 ///
@@ -97,19 +97,24 @@ pub fn upsert_tags(conn: &Connection, note_id: i64, tags: &[String]) -> Result<(
     Ok(())
 }
 
-fn flatten_frontmatter(value: &FrontmatterValue, prefix: &str, out: &mut Vec<(String, String)>) {
+fn flatten_frontmatter(
+    value: &FrontmatterValue,
+    prefix: &str,
+    out: &mut Vec<(String, String, FrontmatterValueType)>,
+) {
     let key = if prefix.is_empty() {
         String::from("value")
     } else {
         prefix.to_string()
     };
     match value {
-        FrontmatterValue::String(s) | FrontmatterValue::Date(s) => out.push((key, s.clone())),
-        FrontmatterValue::Number(n) => out.push((key, n.to_string())),
-        FrontmatterValue::Boolean(b) => out.push((key, b.to_string())),
+        FrontmatterValue::String(s) => out.push((key, s.clone(), FrontmatterValueType::String)),
+        FrontmatterValue::Date(s) => out.push((key, s.clone(), FrontmatterValueType::Date)),
+        FrontmatterValue::Number(n) => out.push((key, n.to_string(), FrontmatterValueType::Number)),
+        FrontmatterValue::Boolean(b) => out.push((key, b.to_string(), FrontmatterValueType::Bool)),
         FrontmatterValue::List(items) => {
             for item in items {
-                flatten_frontmatter(&FrontmatterValue::String(item.clone()), prefix, out);
+                out.push((key.clone(), item.clone(), FrontmatterValueType::List));
             }
         }
     }
@@ -137,16 +142,16 @@ pub fn upsert_frontmatter_fields(
         context: "delete old frontmatter fields",
         source,
     })?;
-    let mut flat: Vec<(String, String)> = Vec::new();
+    let mut flat: Vec<(String, String, FrontmatterValueType)> = Vec::new();
     for (key, value) in frontmatter {
         flatten_frontmatter(value, key, &mut flat);
     }
-    for (field, value) in flat {
+    for (field, value, value_type) in flat {
         let norm = normalize_keyword(&value);
         conn.execute(
-            "INSERT INTO note_frontmatter_fields (note_id, field, value, value_norm)
-             VALUES (?, ?, ?, ?)",
-            params![note_id, field, value, norm],
+            "INSERT INTO note_frontmatter_fields (note_id, field, value, value_type, value_norm)
+             VALUES (?, ?, ?, ?, ?)",
+            params![note_id, field, value, value_type.as_db_str(), norm],
         )
         .map_err(|source| TalonError::Sqlite {
             context: "insert frontmatter field",

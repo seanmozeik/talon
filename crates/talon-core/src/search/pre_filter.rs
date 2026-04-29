@@ -125,12 +125,10 @@ fn where_clause_sql(clause: &WhereClause) -> (String, Vec<Value>) {
         // EXISTS with `value != ?` naturally excludes notes where the field is absent
         // (no rows → EXISTS false), matching the Rust post-filter behavior exactly.
         WhereOperator::NotEquals => (format!(" AND {pfx} AND value != ?)"), vec![key, val]),
-        WhereOperator::LessThan => (format!(" AND {pfx} AND value < ?)"), vec![key, val]),
-        WhereOperator::LessThanOrEqual => (format!(" AND {pfx} AND value <= ?)"), vec![key, val]),
-        WhereOperator::GreaterThan => (format!(" AND {pfx} AND value > ?)"), vec![key, val]),
-        WhereOperator::GreaterThanOrEqual => {
-            (format!(" AND {pfx} AND value >= ?)"), vec![key, val])
-        }
+        WhereOperator::LessThan => ordered_where_clause_sql(pfx, key, clause, "<"),
+        WhereOperator::LessThanOrEqual => ordered_where_clause_sql(pfx, key, clause, "<="),
+        WhereOperator::GreaterThan => ordered_where_clause_sql(pfx, key, clause, ">"),
+        WhereOperator::GreaterThanOrEqual => ordered_where_clause_sql(pfx, key, clause, ">="),
         // INSTR is case-sensitive, matching Rust's str::contains exactly.
         // LIKE would be case-insensitive for ASCII and diverge.
         WhereOperator::Contains => (
@@ -138,4 +136,25 @@ fn where_clause_sql(clause: &WhereClause) -> (String, Vec<Value>) {
             vec![key, val],
         ),
     }
+}
+
+fn ordered_where_clause_sql(
+    pfx: &str,
+    key: Value,
+    clause: &WhereClause,
+    op: &str,
+) -> (String, Vec<Value>) {
+    let Some(target) = clause.value.as_deref() else {
+        return (format!(" AND {pfx} AND 0)"), vec![key]);
+    };
+    if let Ok(number) = target.parse::<f64>() {
+        return (
+            format!(" AND {pfx} AND value_type = 'number' AND CAST(value AS REAL) {op} ?)"),
+            vec![key, Value::Real(number)],
+        );
+    }
+    (
+        format!(" AND {pfx} AND value_type = 'date' AND value {op} ?)"),
+        vec![key, Value::Text(target.to_string())],
+    )
 }

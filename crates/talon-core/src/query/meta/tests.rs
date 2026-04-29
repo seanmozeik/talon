@@ -83,6 +83,21 @@ fn insert_fm_field(conn: &Connection, note_id: i64, field: &str, value: &str) {
     .unwrap();
 }
 
+fn insert_typed_fm_field(
+    conn: &Connection,
+    note_id: i64,
+    field: &str,
+    value: &str,
+    value_type: &str,
+) {
+    conn.execute(
+        "INSERT INTO note_frontmatter_fields \
+             (note_id, field, value, value_type, value_norm) VALUES (?, ?, ?, ?, ?)",
+        params![note_id, field, value, value_type, value.to_lowercase()],
+    )
+    .unwrap();
+}
+
 fn insert_tag(conn: &Connection, note_id: i64, tag: &str) {
     conn.execute(
         "INSERT INTO note_tags (note_id, tag, tag_norm) VALUES (?, ?, ?)",
@@ -90,8 +105,6 @@ fn insert_tag(conn: &Connection, note_id: i64, tag: &str) {
     )
     .unwrap();
 }
-
-// ── Test 1: tag counts ─────────────────────���──────────────────────────────
 
 #[test]
 fn tag_counts_aggregates_by_tag() {
@@ -120,8 +133,6 @@ fn tag_counts_aggregates_by_tag() {
     assert_eq!(tc.get("algorithms"), Some(&1));
 }
 
-// ── Test 2: where equals ──────────────────────────────────────────────────
-
 #[test]
 fn where_equals_filters_notes() {
     let conn = fresh_db();
@@ -147,8 +158,6 @@ fn where_equals_filters_notes() {
     assert_eq!(resp.entries[0].path.as_str(), "project.md");
 }
 
-// ── Test 3: where exists ──────────────────────────────────────────────────
-
 #[test]
 fn where_exists_returns_notes_with_field() {
     let conn = fresh_db();
@@ -172,8 +181,6 @@ fn where_exists_returns_notes_with_field() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "done.md");
 }
-
-// ── Test 4: where contains ────────────────────────────────────────────────
 
 #[test]
 fn where_contains_matches_substring() {
@@ -200,7 +207,55 @@ fn where_contains_matches_substring() {
     assert_eq!(resp.entries[0].path.as_str(), "rust-notes.md");
 }
 
-// ── Test 5: sources lookup ────────────────────────────────────────────────
+#[test]
+fn where_numeric_comparison_uses_value_type() {
+    let conn = fresh_db();
+    let n1 = insert_note_with_fm(&conn, "high.md", "{}", 0);
+    let n2 = insert_note_with_fm(&conn, "low.md", "{}", 0);
+    insert_typed_fm_field(&conn, n1, "priority", "10", "number");
+    insert_typed_fm_field(&conn, n2, "priority", "2", "number");
+
+    let resp = query_meta(
+        &conn,
+        &MetaInput {
+            where_: vec![WhereClause {
+                key: "priority".into(),
+                op: WhereOperator::GreaterThan,
+                value: Some("3".into()),
+            }],
+            ..MetaInput::default()
+        },
+        None,
+    );
+
+    assert_eq!(resp.entries.len(), 1);
+    assert_eq!(resp.entries[0].path.as_str(), "high.md");
+}
+
+#[test]
+fn where_date_comparison_uses_value_type() {
+    let conn = fresh_db();
+    let n1 = insert_note_with_fm(&conn, "new.md", "{}", 0);
+    let n2 = insert_note_with_fm(&conn, "old.md", "{}", 0);
+    insert_typed_fm_field(&conn, n1, "due", "2026-04-29", "date");
+    insert_typed_fm_field(&conn, n2, "due", "2026-04-01", "date");
+
+    let resp = query_meta(
+        &conn,
+        &MetaInput {
+            where_: vec![WhereClause {
+                key: "due".into(),
+                op: WhereOperator::GreaterThan,
+                value: Some("2026-04-15".into()),
+            }],
+            ..MetaInput::default()
+        },
+        None,
+    );
+
+    assert_eq!(resp.entries.len(), 1);
+    assert_eq!(resp.entries[0].path.as_str(), "new.md");
+}
 
 #[test]
 fn sources_returns_notes_referencing_target() {
@@ -223,8 +278,6 @@ fn sources_returns_notes_referencing_target() {
     assert_eq!(resp.entries[0].path.as_str(), "referencing.md");
 }
 
-// ── Test 6: since filter ──────────────────────────────────────────────────
-
 #[test]
 fn since_filter_excludes_old_notes() {
     let conn = fresh_db();
@@ -243,8 +296,6 @@ fn since_filter_excludes_old_notes() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "new.md");
 }
-
-// ── Test 7: scope_only filter ─────────────────────────────────────────────
 
 #[test]
 fn scope_only_filters_by_configured_scope() {
@@ -265,8 +316,6 @@ fn scope_only_filters_by_configured_scope() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "Atlas/note.md");
 }
-
-// ── Test 8: select projects fields ────────────────────────────────────────
 
 #[test]
 fn select_projects_only_requested_fields() {

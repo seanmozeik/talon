@@ -78,6 +78,7 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
        note_id    INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
        field      TEXT NOT NULL,
        value      TEXT NOT NULL,
+       value_type TEXT NOT NULL DEFAULT 'string',
        value_norm TEXT NOT NULL,
        PRIMARY KEY (note_id, field, value)
      )",
@@ -204,6 +205,7 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), TalonError> {
         source,
     })?;
     run_statements(&tx, SCHEMA_MIGRATIONS, "schema migration")?;
+    ensure_frontmatter_value_type_column(&tx)?;
     run_statements(&tx, TRIGGER_MIGRATIONS, "trigger migration")?;
     tx.commit().map_err(|source| TalonError::Sqlite {
         context: "commit migrations",
@@ -217,6 +219,54 @@ pub fn run_migrations(conn: &mut Connection) -> Result<(), TalonError> {
                 source,
             })?;
     }
+    Ok(())
+}
+
+fn ensure_frontmatter_value_type_column(conn: &Connection) -> Result<(), TalonError> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(note_frontmatter_fields)")
+        .map_err(|source| TalonError::Sqlite {
+            context: "inspect frontmatter field schema",
+            source,
+        })?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|source| TalonError::Sqlite {
+            context: "read frontmatter field schema",
+            source,
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|source| TalonError::Sqlite {
+            context: "collect frontmatter field schema",
+            source,
+        })?;
+
+    if columns.iter().any(|column| column == "value_type") {
+        return ensure_frontmatter_value_type_index(conn);
+    }
+
+    conn.execute(
+        "ALTER TABLE note_frontmatter_fields ADD COLUMN value_type TEXT NOT NULL DEFAULT 'string'",
+        [],
+    )
+    .map_err(|source| TalonError::Sqlite {
+        context: "add frontmatter value_type column",
+        source,
+    })?;
+    ensure_frontmatter_value_type_index(conn)?;
+    Ok(())
+}
+
+fn ensure_frontmatter_value_type_index(conn: &Connection) -> Result<(), TalonError> {
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_fm_field_type_value
+         ON note_frontmatter_fields(field, value_type, value)",
+        [],
+    )
+    .map_err(|source| TalonError::Sqlite {
+        context: "create frontmatter value_type index",
+        source,
+    })?;
     Ok(())
 }
 

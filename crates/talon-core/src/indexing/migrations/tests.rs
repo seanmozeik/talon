@@ -30,6 +30,18 @@ fn index_exists(conn: &Connection, name: &str) -> bool {
     count > 0
 }
 
+fn column_exists(conn: &Connection, table: &str, column: &str) -> bool {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table})"))
+        .unwrap();
+    let columns: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .unwrap()
+        .collect::<rusqlite::Result<Vec<_>>>()
+        .unwrap();
+    columns.iter().any(|name| name == column)
+}
+
 fn trigger_exists(conn: &Connection, name: &str) -> bool {
     let count: i64 = conn
         .query_row(
@@ -72,6 +84,7 @@ fn migrations_create_all_indexes() {
         "idx_note_aliases_alias_norm",
         "idx_note_tags_tag_norm",
         "idx_fm_field_value_norm",
+        "idx_fm_field_type_value",
         "idx_notes_active_path",
         "idx_notes_hash",
         "idx_notes_docid",
@@ -87,6 +100,39 @@ fn migrations_create_all_triggers() {
     for trigger in ["notes_fts_ai", "notes_fts_au", "notes_fts_ad"] {
         assert!(trigger_exists(&conn, trigger), "missing trigger: {trigger}");
     }
+}
+
+#[test]
+fn migrations_create_frontmatter_value_type_column() {
+    let conn = fresh_db();
+    assert!(column_exists(
+        &conn,
+        "note_frontmatter_fields",
+        "value_type"
+    ));
+}
+
+#[test]
+fn migrations_add_frontmatter_value_type_to_existing_table() {
+    let mut conn = Connection::open_in_memory().unwrap();
+    conn.execute_batch(
+        "CREATE TABLE note_frontmatter_fields (
+           note_id    INTEGER NOT NULL,
+           field      TEXT NOT NULL,
+           value      TEXT NOT NULL,
+           value_norm TEXT NOT NULL,
+           PRIMARY KEY (note_id, field, value)
+         )",
+    )
+    .unwrap();
+
+    run_migrations(&mut conn).unwrap();
+
+    assert!(column_exists(
+        &conn,
+        "note_frontmatter_fields",
+        "value_type"
+    ));
 }
 
 #[test]

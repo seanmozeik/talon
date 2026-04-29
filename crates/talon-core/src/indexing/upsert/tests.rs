@@ -267,23 +267,22 @@ fn upsert_frontmatter_flattens_lists_and_nested_values() {
     .unwrap();
     upsert_frontmatter_fields(&conn, n.note_id, &fm).unwrap();
 
-    let tag_count: i64 = conn
+    let tags: (i64, String) = conn
         .query_row(
-            "SELECT COUNT(*) FROM note_frontmatter_fields WHERE note_id = ? AND field = ?",
+            "SELECT COUNT(*), MIN(value_type) FROM note_frontmatter_fields WHERE note_id = ? AND field = ?",
             params![n.note_id, "tags"],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .unwrap();
-    assert_eq!(tag_count, 2);
-
-    let status_value: String = conn
+    let status: (String, String) = conn
         .query_row(
-            "SELECT value FROM note_frontmatter_fields WHERE note_id = ? AND field = ?",
+            "SELECT value, value_type FROM note_frontmatter_fields WHERE note_id = ? AND field = ?",
             params![n.note_id, "status"],
-            |r| r.get(0),
+            |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .unwrap();
-    assert_eq!(status_value, "draft");
+    assert_eq!(tags, (2, "list".to_string()));
+    assert_eq!(status, ("draft".to_string(), "string".to_string()));
     cleanup(&path);
 }
 

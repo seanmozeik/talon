@@ -172,7 +172,13 @@ fn escape_double_quoted(value: &str) -> String {
 
 fn serde_value_to_fm(value: serde_yaml_ng::Value) -> FrontmatterValue {
     match value {
-        serde_yaml_ng::Value::String(s) => FrontmatterValue::String(s),
+        serde_yaml_ng::Value::String(s) => {
+            if is_date_value(&s) {
+                FrontmatterValue::Date(s)
+            } else {
+                FrontmatterValue::String(s)
+            }
+        }
         serde_yaml_ng::Value::Number(n) => FrontmatterValue::Number(n.as_f64().unwrap_or_default()),
         serde_yaml_ng::Value::Bool(b) => FrontmatterValue::Boolean(b),
         serde_yaml_ng::Value::Null | serde_yaml_ng::Value::Tagged(_) => {
@@ -188,6 +194,15 @@ fn serde_value_to_fm(value: serde_yaml_ng::Value) -> FrontmatterValue {
             FrontmatterValue::List(flattened)
         }
     }
+}
+
+fn is_date_value(value: &str) -> bool {
+    time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339).is_ok()
+        || time::Date::parse(
+            value,
+            time::macros::format_description!("[year]-[month]-[day]"),
+        )
+        .is_ok()
 }
 
 /// Flattens a list of values into a list of strings.

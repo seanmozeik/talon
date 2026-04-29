@@ -25,6 +25,17 @@ fn frontmatter_tags_skip_non_string_yaml_scalars() {
 }
 
 #[test]
+fn date_like_frontmatter_string_gets_date_type() {
+    let content = "---\ndue: 2026-04-29\n---\n\nBody text.";
+    let result = parse_frontmatter(content);
+
+    assert_eq!(
+        result.frontmatter.get("due"),
+        Some(&FrontmatterValue::Date("2026-04-29".to_string()))
+    );
+}
+
+#[test]
 fn test_parse_frontmatter_no_frontmatter() {
     let content = "No frontmatter here.";
     let result = parse_frontmatter(content);

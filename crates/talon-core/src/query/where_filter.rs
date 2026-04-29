@@ -3,6 +3,8 @@
 //! Used by both the search and meta query handlers to evaluate
 //! `WhereClause` predicates against notes stored in `note_frontmatter_fields`.
 
+use std::cmp::Ordering;
+
 use rusqlite::{Connection, params};
 
 use crate::search::{WhereClause, WhereOperator};
@@ -31,19 +33,17 @@ pub fn check_where_clause(conn: &Connection, note_id: i64, clause: &WhereClause)
         WhereOperator::NotEquals => check_fm_field(conn, note_id, &clause.key, |value| {
             value != clause.value.as_deref()
         }),
-        WhereOperator::LessThan => check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-            v < clause.value.as_deref().unwrap_or("")
-        }),
-        WhereOperator::LessThanOrEqual => check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-            v <= clause.value.as_deref().unwrap_or("")
-        }),
-        WhereOperator::GreaterThan => check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-            v > clause.value.as_deref().unwrap_or("")
-        }),
+        WhereOperator::LessThan => {
+            check_fm_field_ordered(conn, note_id, &clause.key, clause, Ordering::is_lt)
+        }
+        WhereOperator::LessThanOrEqual => {
+            check_fm_field_ordered(conn, note_id, &clause.key, clause, |o| !o.is_gt())
+        }
+        WhereOperator::GreaterThan => {
+            check_fm_field_ordered(conn, note_id, &clause.key, clause, Ordering::is_gt)
+        }
         WhereOperator::GreaterThanOrEqual => {
-            check_fm_field_numeric(conn, note_id, &clause.key, |v| {
-                v >= clause.value.as_deref().unwrap_or("")
-            })
+            check_fm_field_ordered(conn, note_id, &clause.key, clause, |o| !o.is_lt())
         }
         WhereOperator::Contains => check_fm_field(conn, note_id, &clause.key, |value| {
             value.is_some_and(|v| v.contains(clause.value.as_deref().unwrap_or("")))
@@ -71,22 +71,71 @@ where
     !values.is_empty() && values.iter().any(|v| pred(Some(v.as_str())))
 }
 
-/// Returns `true` if ANY stored string value for `field` on `note_id` satisfies `pred`.
+/// Returns `true` if ANY stored typed value for `field` on `note_id` satisfies `pred`.
 ///
 /// Returns `false` when the field has no entries.
-pub fn check_fm_field_numeric<F>(conn: &Connection, note_id: i64, field: &str, pred: F) -> bool
+pub fn check_fm_field_ordered<F>(
+    conn: &Connection,
+    note_id: i64,
+    field: &str,
+    clause: &WhereClause,
+    pred: F,
+) -> bool
 where
-    F: Fn(&str) -> bool,
+    F: Fn(Ordering) -> bool,
 {
-    let Ok(mut stmt) =
-        conn.prepare("SELECT value FROM note_frontmatter_fields WHERE note_id = ? AND field = ?")
-    else {
+    let Some(target) = clause.value.as_deref() else {
         return false;
     };
-    let values: Vec<String> = stmt
-        .query_map(params![note_id, field], |row| row.get::<_, String>(0))
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT value, value_type FROM note_frontmatter_fields WHERE note_id = ? AND field = ?",
+    ) else {
+        return false;
+    };
+    let values: Vec<(String, String)> = stmt
+        .query_map(params![note_id, field], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
         .and_then(Iterator::collect)
         .unwrap_or_default();
 
-    !values.is_empty() && values.iter().any(|v| pred(v.as_str()))
+    values
+        .iter()
+        .filter_map(|(value, value_type)| compare_typed_value(value, value_type, target))
+        .any(pred)
+}
+
+fn compare_typed_value(value: &str, value_type: &str, target: &str) -> Option<Ordering> {
+    match value_type {
+        "number" => {
+            let lhs = value.parse::<f64>().ok()?;
+            let rhs = target.parse::<f64>().ok()?;
+            lhs.partial_cmp(&rhs)
+        }
+        "date" => {
+            let lhs = parse_date_millis(value)?;
+            let rhs = parse_date_millis(target)?;
+            Some(lhs.cmp(&rhs))
+        }
+        _ => None,
+    }
+}
+
+fn parse_date_millis(value: &str) -> Option<i128> {
+    if let Ok(dt) =
+        time::OffsetDateTime::parse(value, &time::format_description::well_known::Rfc3339)
+    {
+        return Some(dt.unix_timestamp_nanos() / 1_000_000);
+    }
+
+    let date = time::Date::parse(
+        value,
+        time::macros::format_description!("[year]-[month]-[day]"),
+    )
+    .ok()?;
+    let dt = date
+        .with_hms(0, 0, 0)
+        .ok()
+        .map(time::PrimitiveDateTime::assume_utc)?;
+    Some(dt.unix_timestamp_nanos() / 1_000_000)
 }

@@ -1,6 +1,7 @@
 use rusqlite::params;
 
 use super::*;
+use crate::search::{WhereClause, WhereOperator};
 use crate::store::open_database;
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -40,6 +41,21 @@ fn insert_alias(conn: &Connection, note_id: i64, alias: &str) {
     conn.execute(
         "INSERT INTO note_aliases (note_id, alias, alias_norm) VALUES (?, ?, ?)",
         params![note_id, alias, norm],
+    )
+    .unwrap();
+}
+
+fn insert_frontmatter_field(
+    conn: &Connection,
+    note_id: i64,
+    field: &str,
+    value: &str,
+    value_type: &str,
+) {
+    conn.execute(
+        "INSERT INTO note_frontmatter_fields (note_id, field, value, value_type, value_norm)
+         VALUES (?, ?, ?, ?, ?)",
+        params![note_id, field, value, value_type, normalize_keyword(value)],
     )
     .unwrap();
 }
@@ -91,6 +107,32 @@ fn bm25_ignores_inactive_notes() {
         .unwrap();
     let results = search_bm25(&conn, "atomic", 10, 300, &PreFilter::none());
     assert!(results.is_empty());
+    drop(conn);
+    cleanup(&path);
+}
+
+#[test]
+fn bm25_prefilter_numeric_where_uses_value_type() {
+    let path = unique_path();
+    let conn = open_database(&path).unwrap();
+    let high = insert_note(&conn, "high.md", "Alpha", "alpha shared", "[]");
+    let low = insert_note(&conn, "low.md", "Alpha", "alpha shared", "[]");
+    insert_frontmatter_field(&conn, high, "priority", "10", "number");
+    insert_frontmatter_field(&conn, low, "priority", "2", "number");
+    let pre_filter = PreFilter {
+        since_ms: None,
+        accepted_note_ids: None,
+        where_clauses: vec![WhereClause {
+            key: "priority".into(),
+            op: WhereOperator::GreaterThan,
+            value: Some("3".into()),
+        }],
+    };
+
+    let results = search_bm25(&conn, "alpha", 10, 300, &pre_filter);
+
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].path, "high.md");
     drop(conn);
     cleanup(&path);
 }
