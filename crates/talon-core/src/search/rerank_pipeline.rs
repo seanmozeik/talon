@@ -18,7 +18,6 @@ use rusqlite::Connection;
 use super::fuse::{blend_rerank_probabilities, sigmoid};
 use super::hooks::SearchHooks;
 use super::intent;
-use super::intent_alignment::apply_intent_alignment_boost;
 use super::types::RawSearchResult;
 
 const CHUNK_QUERY_TERM_WEIGHT: u32 = 1;
@@ -206,13 +205,9 @@ fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
     }
 
     let blended = blend_rerank_probabilities(&active, &scores);
-    let final_results = match intent.map(intent::extract_terms) {
-        Some(terms) => apply_intent_alignment_boost(blended, &terms),
-        None => blended,
-    };
     let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     hooks.emit_rerank_end(elapsed_ms);
-    final_results
+    blended
 }
 
 fn select_best_chunks_for_rerank(

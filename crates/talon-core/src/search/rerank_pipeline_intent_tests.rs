@@ -1,6 +1,5 @@
 use super::*;
 use crate::inference::InferenceClient;
-use crate::search::intent_alignment::apply_intent_alignment_boost;
 use crate::search::types::SearchScores;
 use crate::store::open_database;
 use rusqlite::{Connection, params};
@@ -161,44 +160,6 @@ fn chunk_selection_weights_intent_terms_above_query_terms() {
     );
     drop(conn);
     cleanup(&db_path);
-}
-
-#[test]
-fn intent_alignment_boost_promotes_candidate_matching_agent_intent() {
-    let results = apply_intent_alignment_boost(
-        vec![
-            RawSearchResult {
-                snippet: "general fermented sauce project notes".to_owned(),
-                ..make_candidate("wiki/formulation.md", 0.93)
-            },
-            RawSearchResult {
-                snippet: "active project status next actions checklist".to_owned(),
-                ..make_candidate("projects/launch-readiness.md", 0.74)
-            },
-        ],
-        &intent::extract_terms("active project status and next actions"),
-    );
-
-    assert_eq!(results[0].path, "projects/launch-readiness.md");
-}
-
-#[test]
-fn operational_intent_prefers_project_target_over_wiki_boundary_text() {
-    let results = apply_intent_alignment_boost(
-        vec![
-            RawSearchResult {
-                snippet: "use the active project status page for next actions".to_owned(),
-                ..make_candidate("wiki/hot-sauce-formulation.md", 0.93)
-            },
-            RawSearchResult {
-                snippet: "active project status next actions checklist".to_owned(),
-                ..make_candidate("projects/hot-sauce/launch-readiness.md", 0.74)
-            },
-        ],
-        &intent::extract_terms("active project status and next actions"),
-    );
-
-    assert_eq!(results[0].path, "projects/hot-sauce/launch-readiness.md");
 }
 
 #[test]
