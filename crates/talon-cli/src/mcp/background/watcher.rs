@@ -51,6 +51,8 @@ fn run_watcher(vault_path: &Path, state: &Arc<McpServerState>) -> Result<()> {
         .watcher_running
         .store(true, Ordering::Relaxed);
 
+    let mut conn = talon_core::open_database(&state_clone.config.db_path)?;
+
     for result in rx {
         match result {
             Ok(events) => {
@@ -62,15 +64,12 @@ fn run_watcher(vault_path: &Path, state: &Arc<McpServerState>) -> Result<()> {
                     continue;
                 }
                 // Refresh the text index (no-embed, skip if busy).
-                if let Err(e) = {
-                    let mut conn = talon_core::open_database(&state_clone.config.db_path)?;
-                    crate::config::refresh_index_if_needed(
-                        &state_clone.config.config,
-                        &mut conn,
-                        true,
-                        RefreshLockPolicy::SkipIfBusy,
-                    )
-                } {
+                if let Err(e) = crate::config::refresh_index_if_needed(
+                    &state_clone.config.config,
+                    &mut conn,
+                    true,
+                    RefreshLockPolicy::SkipIfBusy,
+                ) {
                     let mut err = state_clone
                         .diagnostics
                         .last_refresh_error

@@ -20,7 +20,7 @@ pub fn spawn_embed_ticker(state: Arc<McpServerState>) {
             if let Err(e) = run_embed_ticker(&state) {
                 let mut err = state
                     .diagnostics
-                    .last_refresh_error
+                    .last_embed_error
                     .lock()
                     .unwrap_or_else(std::sync::PoisonError::into_inner);
                 *err = Some(format!("embed ticker error: {e:#}"));
@@ -32,7 +32,21 @@ fn run_embed_ticker(state: &Arc<McpServerState>) -> color_eyre::eyre::Result<()>
     let interval = Duration::from_secs(DEFAULT_INTERVAL_SECS);
     loop {
         std::thread::sleep(interval);
-        let _ = run_embed_tick(state);
+        if let Err(e) = run_embed_tick(state) {
+            let mut err = state
+                .diagnostics
+                .last_embed_error
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *err = Some(format!("embed tick error: {e:#}"));
+        } else {
+            let mut err = state
+                .diagnostics
+                .last_embed_error
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            *err = None;
+        }
     }
 }
 

@@ -55,14 +55,32 @@ pub(super) fn dispatch_recall_for_hook(
     ))
 }
 
+/// Output format for hook recall responses.
+#[derive(Copy, Clone)]
+pub(super) enum RecallOutputFormat {
+    HookJson,
+    PromptXml,
+    AgentJson,
+}
+
+impl RecallOutputFormat {
+    pub(super) fn from_str(s: &str) -> Self {
+        match s {
+            "prompt-xml" => Self::PromptXml,
+            "agent-json" => Self::AgentJson,
+            _ => Self::HookJson,
+        }
+    }
+}
+
 /// Formats a `RecallResponse` into the MCP tool result for `talon_hook_recall`.
 pub(super) fn build_recall_output(
     recall_response: &RecallResponse,
-    format: &str,
+    format: RecallOutputFormat,
     vault: &str,
 ) -> Value {
     match format {
-        "hook-json" => {
+        RecallOutputFormat::HookJson => {
             if recall_response.skipped {
                 let hook_output = json!({
                     "hookSpecificOutput": {
@@ -83,11 +101,11 @@ pub(super) fn build_recall_output(
                 json!({ "content": [{ "type": "text", "text": text }] })
             }
         }
-        "prompt-xml" => {
+        RecallOutputFormat::PromptXml => {
             let xml_string = render_prompt_xml(recall_response, vault);
             json!({ "content": [{ "type": "text", "text": xml_string }] })
         }
-        "agent-json" => {
+        RecallOutputFormat::AgentJson => {
             use talon_core::{ResponseMeta, TalonEnvelope, TalonResponseData};
             let result_count = recall_response
                 .vault_recall
@@ -108,10 +126,6 @@ pub(super) fn build_recall_output(
                 .and_then(|v| serde_json::to_string(&v).ok())
                 .unwrap_or_else(|| serde_json::to_string(&envelope).unwrap_or_default());
             json!({ "content": [{ "type": "text", "text": text }] })
-        }
-        _ => {
-            // Unknown format — fall back to hook-json behaviour.
-            build_recall_output(recall_response, "hook-json", vault)
         }
     }
 }
@@ -161,16 +175,32 @@ pub(super) fn apply_recall_suppression(
         })
         .unwrap_or_default();
 
-    // Apply suppression against the session ledger (read lock).
-    // Suppression is output-level only: we check what chunks were already
-    // injected in recent turns, not whether the input message looks similar.
+    // Compute now_ms before acquiring the lock.
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+
+    // Single write lock: read ledger for suppression, build turn record, record turn.
+    // Avoids the double-lock (read then write) that existed previously.
     let suppression_result = {
-        let store = state
+        let mut store = state
             .sessions
-            .lock()
+            .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(session) = store.sessions.get(key) {
-            apply_suppression(candidates, &session.ledger, session.suppression_decay)
+        if let Some(session) = store.sessions.get_mut(key) {
+            let result = apply_suppression(candidates, &session.ledger, session.suppression_decay);
+            let injected_chunks: Vec<InjectedChunk> =
+                result.injected.iter().map(to_injected_chunk).collect();
+            let turn_record = TurnRecord {
+                turn_id,
+                query_fingerprint: message.to_owned(),
+                injected: injected_chunks,
+                suppressed: result.suppressed.clone(),
+                skipped: recall_response.skipped || result.injected.is_empty(),
+            };
+            session.ledger.record_turn(turn_record);
+            session.last_seen_at_ms = now_ms;
+            result
         } else {
             apply_suppression(
                 candidates,
@@ -185,39 +215,11 @@ pub(super) fn apply_recall_suppression(
     // relevant context from previous turns.
     let all_suppressed = suppression_result.injected.is_empty();
 
-    let injected_chunks: Vec<InjectedChunk> = suppression_result
-        .injected
-        .iter()
-        .map(to_injected_chunk)
-        .collect();
     let injected_paths: HashSet<String> = suppression_result
         .injected
         .iter()
         .map(|c| c.path.clone())
         .collect();
-
-    let turn_record = TurnRecord {
-        turn_id,
-        query_fingerprint: message.to_owned(),
-        injected: injected_chunks,
-        suppressed: suppression_result.suppressed,
-        skipped: recall_response.skipped || all_suppressed,
-    };
-
-    // Record turn to ledger (write lock).
-    let now_ms = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
-    {
-        let mut store = state
-            .sessions
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(session) = store.sessions.get_mut(key) {
-            session.ledger.record_turn(turn_record);
-            session.last_seen_at_ms = now_ms;
-        }
-    }
 
     // If all candidates were suppressed, mark as skipped so build_recall_output
     // returns no additionalContext. Do not substitute lower-ranked results.

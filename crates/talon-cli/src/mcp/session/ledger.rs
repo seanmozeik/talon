@@ -1,4 +1,4 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 pub const MAX_TURNS: usize = 32;
 
@@ -38,10 +38,10 @@ pub enum SuppressionReason {
 #[derive(Debug)]
 pub struct TurnLedger {
     turns: VecDeque<TurnRecord>,
-    /// `chunk_id` → list of `turn_id`s where it was injected.
-    injected_chunks: HashMap<String, Vec<String>>,
-    /// `path` → list of `turn_id`s where it was injected.
-    injected_notes: HashMap<String, Vec<String>>,
+    /// `chunk_id` → set of `turn_id`s where it was injected.
+    injected_chunks: HashMap<String, HashSet<String>>,
+    /// `path` → set of `turn_id`s where it was injected.
+    injected_notes: HashMap<String, HashSet<String>>,
 }
 
 impl Default for TurnLedger {
@@ -73,11 +73,11 @@ impl TurnLedger {
             self.injected_chunks
                 .entry(chunk.chunk_id.clone())
                 .or_default()
-                .push(record.turn_id.clone());
+                .insert(record.turn_id.clone());
             self.injected_notes
                 .entry(chunk.path.clone())
                 .or_default()
-                .push(record.turn_id.clone());
+                .insert(record.turn_id.clone());
         }
         self.turns.push_back(record);
     }
@@ -85,17 +85,17 @@ impl TurnLedger {
     /// Removes `turn_id` references from chunk/note maps when a turn is evicted.
     fn remove_turn_refs(&mut self, turn_id: &str) {
         for ids in self.injected_chunks.values_mut() {
-            ids.retain(|id| id != turn_id);
+            ids.remove(turn_id);
         }
         for ids in self.injected_notes.values_mut() {
-            ids.retain(|id| id != turn_id);
+            ids.remove(turn_id);
         }
     }
 
     /// Returns how many of the last N turns contained this `chunk_id`.
     #[must_use]
     pub fn chunk_injected_in_last_n(&self, chunk_id: &str, n: usize) -> usize {
-        let recent_ids: Vec<&str> = self
+        let recent_ids: HashSet<&str> = self
             .turns
             .iter()
             .rev()
@@ -104,7 +104,7 @@ impl TurnLedger {
             .collect();
         self.injected_chunks.get(chunk_id).map_or(0, |ids| {
             ids.iter()
-                .filter(|id| recent_ids.contains(&id.as_str()))
+                .filter(|id| recent_ids.contains(id.as_str()))
                 .count()
         })
     }
@@ -112,7 +112,7 @@ impl TurnLedger {
     /// Returns how many of the last N turns contained this note `path`.
     #[must_use]
     pub fn note_injected_in_last_n(&self, path: &str, n: usize) -> usize {
-        let recent_ids: Vec<&str> = self
+        let recent_ids: HashSet<&str> = self
             .turns
             .iter()
             .rev()
@@ -121,7 +121,7 @@ impl TurnLedger {
             .collect();
         self.injected_notes.get(path).map_or(0, |ids| {
             ids.iter()
-                .filter(|id| recent_ids.contains(&id.as_str()))
+                .filter(|id| recent_ids.contains(id.as_str()))
                 .count()
         })
     }
@@ -135,7 +135,7 @@ impl TurnLedger {
         self.turns
             .iter()
             .rev()
-            .position(|t| turn_ids.contains(&t.turn_id))
+            .position(|t| turn_ids.contains(t.turn_id.as_str()))
     }
 
     /// Returns how many turns have elapsed since any chunk from this note path
@@ -146,7 +146,7 @@ impl TurnLedger {
         self.turns
             .iter()
             .rev()
-            .position(|t| turn_ids.contains(&t.turn_id))
+            .position(|t| turn_ids.contains(t.turn_id.as_str()))
     }
 
     /// Returns the fingerprint of the most recent turn, if any.

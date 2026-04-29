@@ -29,8 +29,10 @@ impl QueryFingerprint {
         if union == 0 {
             1.0
         } else {
-            // Precision loss is acceptable for a similarity score over word-token counts.
-            #[allow(clippy::cast_precision_loss)]
+            #[expect(
+                clippy::cast_precision_loss,
+                reason = "precision loss is acceptable for word-token similarity scores"
+            )]
             let result = intersection as f64 / union as f64;
             result
         }

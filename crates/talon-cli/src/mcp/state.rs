@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use talon_core::TalonConfig;
 
 use crate::mcp::session::ledger::TurnLedger;
@@ -9,7 +9,7 @@ use crate::mcp::session::ledger::TurnLedger;
 #[derive(Debug)]
 pub struct McpServerState {
     pub config: Arc<ConfigState>,
-    pub sessions: Arc<Mutex<SessionStore>>,
+    pub sessions: Arc<RwLock<SessionStore>>,
     pub diagnostics: Arc<DiagnosticsState>,
 }
 
@@ -62,6 +62,7 @@ pub struct SessionState {
 pub struct DiagnosticsState {
     pub watcher_running: std::sync::atomic::AtomicBool,
     pub last_refresh_error: Mutex<Option<String>>,
+    pub last_embed_error: Mutex<Option<String>>,
 }
 
 impl McpServerState {
@@ -71,12 +72,13 @@ impl McpServerState {
     pub fn new(config: ConfigState) -> Arc<Self> {
         Arc::new(Self {
             config: Arc::new(config),
-            sessions: Arc::new(Mutex::new(SessionStore {
+            sessions: Arc::new(RwLock::new(SessionStore {
                 sessions: HashMap::new(),
             })),
             diagnostics: Arc::new(DiagnosticsState {
                 watcher_running: std::sync::atomic::AtomicBool::new(false),
                 last_refresh_error: Mutex::new(None),
+                last_embed_error: Mutex::new(None),
             }),
         })
     }
@@ -105,7 +107,7 @@ mod tests {
         let state = McpServerState::new(stub_config_state());
         let is_empty = state
             .sessions
-            .lock()
+            .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .sessions
             .is_empty();

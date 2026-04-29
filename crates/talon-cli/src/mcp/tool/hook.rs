@@ -113,7 +113,7 @@ fn handle_session_start(arguments: &Value, state: &Arc<McpServerState>) -> Value
     {
         let mut store = state
             .sessions
-            .lock()
+            .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         store.sessions.insert(key, session);
     }
@@ -146,7 +146,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
     let prior_messages = {
         let store = state
             .sessions
-            .lock()
+            .read()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         store
             .sessions
@@ -191,7 +191,8 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
                 &message,
                 turn_id,
             );
-            super::hook_recall::build_recall_output(&filtered, &format, &vault)
+            let fmt = super::hook_recall::RecallOutputFormat::from_str(&format);
+            super::hook_recall::build_recall_output(&filtered, fmt, &vault)
         }
         Err(err) => {
             touch_session(state, &key);
@@ -214,7 +215,7 @@ fn handle_turn_end(arguments: &Value, state: &Arc<McpServerState>) -> Value {
     {
         let mut store = state
             .sessions
-            .lock()
+            .write()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(session) = store.sessions.get_mut(&key) {
             let now = now_ms();
@@ -261,7 +262,7 @@ fn touch_session(state: &Arc<McpServerState>, key: &SessionKey) {
     let now = now_ms();
     let mut store = state
         .sessions
-        .lock()
+        .write()
         .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(session) = store.sessions.get_mut(key) {
         session.last_seen_at_ms = now;
