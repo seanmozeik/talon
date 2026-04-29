@@ -104,9 +104,15 @@ fn search_input_schema() -> Value {
         "properties": {
             "query": { "type": "string" },
             "scope": { "type": "array", "items": { "type": "string" } },
+            "scopeOnly": { "type": "array", "items": { "type": "string" } },
+            "scopeAll": { "type": "boolean", "default": false },
             "mode": { "type": "string", "enum": ["hybrid", "semantic", "fulltext", "title"] },
+            "fast": { "type": "boolean", "default": false },
             "limit": { "type": "integer", "default": 10 },
-            "includeSnippets": { "type": "boolean", "default": true }
+            "candidateLimit": { "type": "integer", "default": 40 },
+            "where": { "type": "array", "items": { "type": "string" } },
+            "includeSnippets": { "type": "boolean", "default": true },
+            "anchors": { "type": "boolean", "default": false }
         },
         "required": ["query"]
     })
@@ -117,6 +123,7 @@ fn read_input_schema() -> Value {
         "type": "object",
         "properties": {
             "path": { "type": "string" },
+            "raw": { "type": "boolean", "default": false },
             "fromLine": { "type": "integer" },
             "maxLines": { "type": "integer" }
         },
