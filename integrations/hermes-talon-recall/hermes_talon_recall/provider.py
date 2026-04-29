@@ -1,10 +1,7 @@
-"""TalonRecallProvider: Hermes MemoryProvider backed by `talon recall`.
+"""TalonRecallProvider: Hermes MemoryProvider backed by `talon mcp`.
 
-Talon is recall-only and stateless per call. This plugin:
-  - Implements prefetch() synchronously — always uses the current query.
-  - Returns "" on timeout (20s), non-zero exit, empty output, or skipped response.
-  - Buffers recent user turns via sync_turn() so --prior-message widens the query.
-  - Never writes to the vault.
+Uses a persistent MCP child process for session-aware, deduplicated vault recall.
+Falls back to empty context (not an error) if the MCP process is unavailable.
 """
 
 from __future__ import annotations
@@ -14,7 +11,8 @@ import logging
 import os
 import shutil
 import subprocess
-from collections import deque
+import threading
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -22,17 +20,111 @@ from agent.memory_provider import MemoryProvider
 
 logger = logging.getLogger(__name__)
 
-_INSTALL_HINT = (
-    "Install Talon: https://github.com/seanmozeik/talon  "
-    "or set TALON_BIN to the absolute binary path."
-)
 _NO_RECALL = ""
 _SKIPPED_PREFIX = '<vault_recall skipped="true"'
-_TIMEOUT = 20  # seconds
+_TIMEOUT = 5.0  # seconds per RPC call
+_MCP_INIT_TIMEOUT = 10.0
+
+
+class TalonMcpClient:
+    """Minimal JSON-RPC 2.0 client over a talon mcp stdio child process."""
+
+    def __init__(self, binary: str, env: dict[str, str]) -> None:
+        self._binary = binary
+        self._env = env
+        self._proc: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+        self._next_id = 1
+
+    def start(self) -> None:
+        """Start talon mcp child process and perform MCP handshake."""
+        self._proc = subprocess.Popen(
+            [self._binary, "mcp"],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            env=self._env,
+        )
+        self._send_init()
+
+    def _send_init(self) -> None:
+        """Send MCP initialize + initialized notification."""
+        self._rpc_call(
+            "initialize",
+            {
+                "protocolVersion": "2024-11-05",
+                "capabilities": {},
+                "clientInfo": {"name": "hermes-talon", "version": "1.0"},
+            },
+            timeout=_MCP_INIT_TIMEOUT,
+        )
+        self._send_notification("notifications/initialized")
+
+    def call_tool(
+        self, name: str, arguments: dict[str, Any], timeout: float = _TIMEOUT
+    ) -> dict[str, Any] | None:
+        """Call an MCP tool and return the result dict, or None on failure."""
+        result = self._rpc_call(
+            "tools/call", {"name": name, "arguments": arguments}, timeout=timeout
+        )
+        if result is None:
+            return None
+        return result.get("result")
+
+    def _rpc_call(
+        self, method: str, params: dict[str, Any], timeout: float = _TIMEOUT
+    ) -> dict[str, Any] | None:
+        if self._proc is None or self._proc.poll() is not None:
+            return None
+        with self._lock:
+            req_id = self._next_id
+            self._next_id += 1
+            request = json.dumps(
+                {"jsonrpc": "2.0", "id": req_id, "method": method, "params": params}
+            )
+            try:
+                assert self._proc.stdin is not None
+                self._proc.stdin.write((request + "\n").encode())
+                self._proc.stdin.flush()
+                assert self._proc.stdout is not None
+                line = self._proc.stdout.readline()  # blocking read
+                if not line:
+                    return None
+                return json.loads(line.decode())
+            except Exception as exc:
+                logger.warning("talon-mcp: RPC error for %s: %s", method, exc)
+                return None
+
+    def _send_notification(self, method: str) -> None:
+        if self._proc is None:
+            return
+        notification = json.dumps({"jsonrpc": "2.0", "method": method})
+        try:
+            assert self._proc.stdin is not None
+            self._proc.stdin.write((notification + "\n").encode())
+            self._proc.stdin.flush()
+        except Exception:
+            pass
+
+    def shutdown(self) -> None:
+        if self._proc is None:
+            return
+        try:
+            self._send_notification("shutdown")
+            if self._proc.stdin:
+                self._proc.stdin.close()
+            self._proc.wait(timeout=3)
+        except Exception:
+            self._proc.kill()
+        self._proc = None
+
+    @property
+    def alive(self) -> bool:
+        return self._proc is not None and self._proc.poll() is None
 
 
 class TalonRecallProvider(MemoryProvider):
-    """Hermes MemoryProvider — vault-native context via talon recall --format prompt-xml."""
+    """Hermes MemoryProvider — vault-native auto-recall via talon mcp."""
 
     @property
     def name(self) -> str:
@@ -41,14 +133,13 @@ class TalonRecallProvider(MemoryProvider):
     def __init__(self) -> None:
         self._binary: str | None = None
         self._vault_path: str | None = None
-        self._budget_tokens: int = 250
+        self._budget_tokens: int = 500
         self._min_confidence: float = 0.4
         self._fast: bool = False
-        self._prior_message_count: int = 2
-        # Stores user message strings only — assistant content not useful for BM25 expansion.
-        self._turn_history: deque[str] = deque(maxlen=8)
+        self._session_id: str = ""
+        self._client: TalonMcpClient | None = None
 
-    # ── MemoryProvider ABC ────────────────────────────────────────────────────
+    # ── MemoryProvider ABC ─────────────────────────────────────────────────
 
     def is_available(self) -> bool:
         return self._resolve_binary() is not None
@@ -56,84 +147,108 @@ class TalonRecallProvider(MemoryProvider):
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         binary = self._resolve_binary()
         if binary is None:
-            raise RuntimeError(f"talon binary not found. {_INSTALL_HINT}")
+            return
         self._binary = binary
         self._load_config(kwargs.get("hermes_home", ""))
         if vault_env := os.environ.get("TALON_VAULT"):
             self._vault_path = vault_env
 
+        self._session_id = session_id or str(uuid.uuid4())
+        client = TalonMcpClient(binary, self._build_env())
+        try:
+            client.start()
+            client.call_tool(
+                "talon_hook_session_start",
+                {
+                    "host": "hermes",
+                    "sessionId": self._session_id,
+                },
+            )
+            self._client = client
+        except Exception as exc:
+            logger.warning("talon-mcp: failed to start: %s", exc)
+
     def system_prompt_block(self) -> str:
         return (
             "# Talon Vault\n"
-            "Relevant vault notes are auto-injected as <vault_recall> before each turn. "
-            "Use `talon read` or `talon search` via the shell to look up notes directly."
+            "Relevant vault notes are injected as <vault_recall> context before each turn. "
+            "Duplicate context from prior turns is suppressed automatically. "
+            "Use talon_search, talon_read, or talon_related for explicit vault queries."
         )
 
     def prefetch(self, query: str, *, session_id: str = "") -> str:
-        """Run talon recall synchronously. Returns vault_recall XML or empty string.
-
-        Empty string is returned (cache-safe, no injection) on:
-          - 20s timeout
-          - non-zero exit code
-          - empty stdout
-          - skipped=true confidence-gate response
-        """
-        if self._binary is None:
+        if self._client is None or not self._client.alive:
             return _NO_RECALL
-        try:
-            result = subprocess.run(
-                self._build_command(query),
-                capture_output=True,
-                text=True,
-                timeout=_TIMEOUT,
-                env=self._build_env(),
-            )
-        except subprocess.TimeoutExpired:
-            logger.debug("talon-recall: prefetch timed out after %ds", _TIMEOUT)
+        result = self._client.call_tool(
+            "talon_hook_recall",
+            {
+                "host": "hermes",
+                "sessionId": self._session_id,
+                "turnId": str(uuid.uuid4()),
+                "message": query,
+                "budgetTokens": self._budget_tokens,
+                "format": "prompt-xml",
+            },
+        )
+        if result is None:
             return _NO_RECALL
-        except Exception as exc:
-            logger.warning("talon-recall: subprocess error: %s", exc)
+        content = result.get("content", [])
+        if not content:
             return _NO_RECALL
-
-        if result.returncode != 0:
-            logger.warning(
-                "talon-recall: exited %d: %s", result.returncode, result.stderr[:200]
-            )
+        text = content[0].get("text", "")
+        if not text or text.startswith(_SKIPPED_PREFIX):
             return _NO_RECALL
-
-        stdout = result.stdout.strip()
-        if not stdout or stdout.startswith(_SKIPPED_PREFIX):
-            return _NO_RECALL
-
-        return stdout
+        return text
 
     def sync_turn(
         self, user_content: str, assistant_content: str, *, session_id: str = ""
     ) -> None:
-        """Buffer user message for --prior-message expansion on the next prefetch."""
-        if user_content.strip():
-            self._turn_history.append(user_content)
+        if self._client is None or not self._client.alive:
+            return
+        self._client.call_tool(
+            "talon_hook_turn_end",
+            {
+                "host": "hermes",
+                "sessionId": self._session_id,
+                "turnId": str(uuid.uuid4()),
+                "outcome": "completed",
+                "lastUserMessage": user_content,
+                "lastAssistantMessage": assistant_content,
+            },
+        )
 
     def get_tool_schemas(self) -> list[dict[str, Any]]:
         return []
 
     def shutdown(self) -> None:
-        pass
+        if self._client is not None:
+            try:
+                self._client.call_tool(
+                    "talon_hook_session_end",
+                    {
+                        "host": "hermes",
+                        "sessionId": self._session_id,
+                    },
+                )
+            except Exception:
+                pass
+            self._client.shutdown()
+            self._client = None
 
-    # ── config ────────────────────────────────────────────────────────────────
+    # ── config ─────────────────────────────────────────────────────────────
 
     def get_config_schema(self) -> list[dict[str, Any]]:
         return [
             {
                 "key": "vault_path",
-                "description": "Absolute path to your Obsidian vault directory",
+                "description": "Absolute path to your Obsidian vault",
                 "required": False,
                 "env_var": "TALON_VAULT",
             },
             {
                 "key": "budget_tokens",
-                "description": "Token budget for the recall context block (default 250)",
-                "default": 250,
+                "description": "Token budget for recall context (default 500)",
+                "default": 500,
             },
             {
                 "key": "min_confidence",
@@ -145,11 +260,6 @@ class TalonRecallProvider(MemoryProvider):
                 "description": "Skip LLM expansion and reranking (default false)",
                 "default": False,
             },
-            {
-                "key": "prior_message_count",
-                "description": "Recent user turns fed via --prior-message (default 2)",
-                "default": 2,
-            },
         ]
 
     def save_config(self, values: dict[str, Any], hermes_home: str) -> None:
@@ -157,7 +267,7 @@ class TalonRecallProvider(MemoryProvider):
             json.dumps(values, indent=2)
         )
 
-    # ── private helpers ───────────────────────────────────────────────────────
+    # ── private helpers ────────────────────────────────────────────────────
 
     def _resolve_binary(self) -> str | None:
         if bin_env := os.environ.get("TALON_BIN"):
@@ -181,23 +291,6 @@ class TalonRecallProvider(MemoryProvider):
         self._budget_tokens = int(cfg.get("budget_tokens", self._budget_tokens))
         self._min_confidence = float(cfg.get("min_confidence", self._min_confidence))
         self._fast = bool(cfg.get("fast", self._fast))
-        self._prior_message_count = int(
-            cfg.get("prior_message_count", self._prior_message_count)
-        )
-
-    def _build_command(self, query: str) -> list[str]:
-        assert self._binary is not None
-        cmd = [
-            self._binary, "--agent", "recall", query,
-            "--format", "prompt-xml",
-            "--budget-tokens", str(self._budget_tokens),
-            "--min-confidence", str(self._min_confidence),
-        ]
-        for msg in list(self._turn_history)[-self._prior_message_count:]:
-            cmd += ["--prior-message", msg]
-        if self._fast:
-            cmd.append("--fast")
-        return cmd
 
     def _build_env(self) -> dict[str, str]:
         env = os.environ.copy()
