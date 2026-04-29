@@ -7,7 +7,7 @@ use serde_json::Value;
 #[test]
 fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_talon"))
-        .arg("--mcp")
+        .arg("mcp")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -36,7 +36,7 @@ fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
     let output = child.wait_with_output()?;
     if !output.status.success() {
         bail!(
-            "talon --mcp exited with status {:?}: {}",
+            "talon mcp exited with status {:?}: {}",
             output.status.code(),
             String::from_utf8_lossy(&output.stderr)
         );

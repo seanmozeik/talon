@@ -18,22 +18,34 @@ pub const SKILL_MD: &str =
 /// Runs the CLI and returns a process exit code.
 #[must_use]
 pub async fn run() -> u8 {
-    let args = cli::parse_or_exit();
+    let cli = cli::parse_or_exit();
     platform::start();
 
-    if args.skill.enabled() {
+    if cli.skill {
         return output::write_stdout_bytes(SKILL_MD.as_bytes());
     }
 
-    banner::eprint_fancy_prelude_for_run(&args);
+    banner::eprint_fancy_prelude_for_run(&cli);
 
-    match command::run(&args).await {
+    match command::run(&cli).await {
         Ok(()) => exit_codes::SUCCESS,
         Err(error) => {
             // When JSON output was requested, emit a structured error envelope so the caller
             // always receives machine-readable output — even on failure (Decision 8).
-            if args.json.enabled() || args.agent.enabled() {
-                let action = args.positionals.first().map_or("unknown", String::as_str);
+            if cli.json || cli.agent {
+                let action = cli.command.as_ref().map_or("unknown", |cmd| match cmd {
+                    cli::Commands::Mcp => "mcp",
+                    cli::Commands::Init(_) => "init",
+                    cli::Commands::Sync(_) => "sync",
+                    cli::Commands::Status(_) => "status",
+                    cli::Commands::Search(_) => "search",
+                    cli::Commands::Read(_) => "read",
+                    cli::Commands::Related(_) => "related",
+                    cli::Commands::Meta(_) => "meta",
+                    cli::Commands::Changes(_) => "changes",
+                    cli::Commands::Lint(_) => "lint",
+                    cli::Commands::Recall(_) => "recall",
+                });
                 let envelope = talon_core::TalonEnvelope::err(
                     action,
                     talon_core::ErrorEnvelope {
@@ -42,7 +54,7 @@ pub async fn run() -> u8 {
                         detail: None,
                     },
                 );
-                let mode = if args.agent.enabled() {
+                let mode = if cli.agent {
                     output::OutputMode::Agent
                 } else {
                     output::OutputMode::JsonPretty

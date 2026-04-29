@@ -20,7 +20,9 @@ fn version_flag_exits_zero_and_prints_semver() {
         .arg("--version")
         .assert()
         .success()
-        .stdout(predicate::str::is_match(r"^\d+\.\d+\.\d+\n$").unwrap_or_else(|e| panic!("{e}")));
+        .stdout(
+            predicate::str::is_match(r"^talon \d+\.\d+\.\d+\n$").unwrap_or_else(|e| panic!("{e}")),
+        );
 }
 
 #[test]
@@ -30,7 +32,9 @@ fn short_version_flag_exits_zero_and_prints_semver() {
         .arg("-V")
         .assert()
         .success()
-        .stdout(predicate::str::is_match(r"^\d+\.\d+\.\d+\n$").unwrap_or_else(|e| panic!("{e}")));
+        .stdout(
+            predicate::str::is_match(r"^talon \d+\.\d+\.\d+\n$").unwrap_or_else(|e| panic!("{e}")),
+        );
 }
 
 #[test]

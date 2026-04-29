@@ -1,6 +1,6 @@
 //! Colored figlet banner for human-oriented TTY runs.
 
-use crate::cli::CliArgs;
+use crate::cli::Cli;
 use anstyle::{Color, Effects, RgbColor, Style};
 use std::io::Write;
 
@@ -16,12 +16,8 @@ const GRADIENT_STOPS: [(u8, u8, u8); 4] = [
 ];
 
 /// Prints the banner to stderr when stdout/stderr are TTYs and agent mode is off.
-pub fn eprint_fancy_prelude_for_run(args: &CliArgs) {
-    if args.agent.enabled()
-        || args.json.enabled()
-        || args.mcp.enabled()
-        || !human_tty_for_cli_arts()
-    {
+pub fn eprint_fancy_prelude_for_run(cli: &Cli) {
+    if cli.agent || cli.json || !human_tty_for_cli_arts() {
         return;
     }
     eprint_figlet_indented(LINE_INDENT);

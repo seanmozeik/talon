@@ -1,10 +1,10 @@
 use super::{output_mode, should_spin};
-use crate::cli::CliArgs;
+use crate::cli::{Cli, ReadArgs};
 use crate::config::{self, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
-use eyre::{Result, WrapErr as _, bail};
+use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
@@ -12,12 +12,8 @@ use talon_core::{
     run_read,
 };
 
-pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
-    if rest.is_empty() {
-        bail!("read requires a path");
-    }
-
-    let path = rest.join(" ");
+pub(super) async fn emit(args: &ReadArgs, cli: &Cli) -> Result<()> {
+    let path = args.path.clone();
     let from_line = args
         .from_line
         .map(|n| PositiveCount::new(n, "from-line"))
@@ -26,7 +22,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         .max_lines
         .map(|n| PositiveCount::new(n, "max-lines"))
         .transpose()?;
-    let raw = args.raw.enabled();
+    let raw = args.raw;
 
     let input = ReadInput {
         path: Some(path),
@@ -35,7 +31,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         max_lines,
     };
 
-    let config = config::load_config(args.config_file.as_deref())?;
+    let config = config::load_config(cli.config_file.as_deref())?;
     let db_path: PathBuf = config.db_path.clone();
     let vault_root: PathBuf = config.vault_path.clone();
     let vault = vault_container_path(Some(&config));
@@ -59,10 +55,10 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         let data = TalonResponseData::Read(response);
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("read", data, meta))
     };
-    let response = if should_spin(args) {
+    let response = if should_spin(cli) {
         spinner::with_spinner("Reading...".to_string(), work).await?
     } else {
         work.await?
     };
-    emit_response(&response, output_mode(args))
+    emit_response(&response, output_mode(cli))
 }

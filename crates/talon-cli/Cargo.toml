@@ -17,7 +17,9 @@ path = "src/main.rs"
 [dependencies]
 anstream.workspace = true
 anstyle.workspace = true
-bpaf.workspace = true
+clap.workspace = true
+clap_complete.workspace = true
+clap_complete_nushell.workspace = true
 color-eyre.workspace = true
 dirs.workspace = true
 eyre.workspace = true

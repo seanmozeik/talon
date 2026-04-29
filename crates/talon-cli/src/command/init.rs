@@ -1,7 +1,8 @@
+use crate::cli::InitArgs;
 use crate::config;
 use eyre::Result;
 
-pub(super) fn emit() -> Result<()> {
+pub(super) fn emit(_args: &InitArgs) -> Result<()> {
     let result = config::init_config()?;
     if result {
         eprintln!("Created {}", config::default_config_path().display());

@@ -1,5 +1,5 @@
 use super::{output_mode, should_spin};
-use crate::cli::{CliArgs, parse_where_clause};
+use crate::cli::{Cli, SearchArgs, parse_where_clause};
 use crate::config::{self, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
@@ -13,19 +13,21 @@ use talon_core::{
     run_search_with_expanded_queries, vec_ext::register_sqlite_vec,
 };
 
-pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
-    if rest.is_empty() {
+pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
+    if args.query.is_empty() {
         bail!("search requires a query");
     }
 
-    let query = rest.join(" ");
-    let mode = args.mode.unwrap_or_default();
-    let fast = args.fast.enabled();
-    let include_expanded_queries = args.verbose.enabled();
-    let config = config::load_config(args.config_file.as_deref()).ok();
+    let query = args.query.join(" ");
+    let mode = args
+        .mode
+        .map_or_else(SearchMode::default, std::convert::Into::into);
+    let fast = cli.fast;
+    let include_expanded_queries = cli.verbose;
+    let config = config::load_config(cli.config_file.as_deref()).ok();
 
     let where_clauses: Vec<talon_core::WhereClause> = args
-        .where_clauses
+        .where_
         .iter()
         .map(|s| parse_where_clause(s).map_err(|e| eyre::eyre!("invalid --where: {s}: {e}")))
         .collect::<Result<Vec<_>>>()?;
@@ -41,7 +43,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     )?;
     input.where_ = where_clauses;
     input.since = args.since.clone();
-    input.anchors = args.anchors.enabled().then_some(true);
+    input.anchors = args.anchors.then_some(true);
     input.scope.clone_from(&args.scope.scope);
     input.scope_only.clone_from(&args.scope.scope_only);
     input.scope_all = args.scope.scope_all;
@@ -68,12 +70,12 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         .wrap_err("search task join failed")?
     };
 
-    let response = if should_spin(args) {
+    let response = if should_spin(cli) {
         spinner::with_spinner("Searching...".to_string(), work).await?
     } else {
         work.await?
     };
-    emit_response(&response, output_mode(args))
+    emit_response(&response, output_mode(cli))
 }
 
 fn execute_search(

@@ -1,5 +1,5 @@
 use super::{output_mode, should_spin};
-use crate::cli::CliArgs;
+use crate::cli::{Cli, SyncArgs};
 use crate::config;
 use crate::output::emit_response;
 use crate::spinner;
@@ -13,14 +13,14 @@ use talon_core::{
     vec_ext::register_sqlite_vec,
 };
 
-pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
+pub(super) async fn emit(args: &SyncArgs, cli: &Cli) -> Result<()> {
     let input = SyncInput {
-        paths: rest.to_vec(),
-        fast: args.fast.enabled(),
-        force: args.force.enabled(),
+        paths: args.paths.clone(),
+        fast: cli.fast,
+        force: args.force,
         no_wait: false,
     };
-    let config = config::load_config(args.config_file.as_deref())?;
+    let config = config::load_config(cli.config_file.as_deref())?;
     let vault_path: PathBuf = config.vault_path.clone();
     let db_path: PathBuf = config.db_path.clone();
     let lock_path: PathBuf = db_path
@@ -105,10 +105,10 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         let data = TalonResponseData::Sync(sync_resp);
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("sync", data, meta))
     };
-    let response = if should_spin(args) {
+    let response = if should_spin(cli) {
         spinner::with_spinner("Syncing...".to_string(), work).await?
     } else {
         work.await?
     };
-    emit_response(&response, output_mode(args))
+    emit_response(&response, output_mode(cli))
 }

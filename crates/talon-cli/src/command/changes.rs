@@ -1,5 +1,5 @@
 use super::{output_mode, should_spin};
-use crate::cli::CliArgs;
+use crate::cli::{ChangesArgs, Cli};
 use crate::config::{self, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
@@ -12,15 +12,11 @@ use talon_core::{
     query_changes,
 };
 
-pub(super) async fn emit(args: &CliArgs) -> Result<()> {
-    let since = args
-        .since
-        .clone()
-        .ok_or_else(|| eyre::eyre!("changes requires --since <timestamp>"))?;
-    let since_str = since.clone();
+pub(super) async fn emit(args: &ChangesArgs, cli: &Cli) -> Result<()> {
+    let since_str = args.since.clone();
 
     let input = talon_core::ChangesInput {
-        since,
+        since: args.since.clone(),
         scope: args.scope.scope.clone(),
         scope_only: args.scope.scope_only.clone(),
         scope_all: args.scope.scope_all,
@@ -30,7 +26,7 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
         )?,
     };
 
-    let config = config::load_config(args.config_file.as_deref())?;
+    let config = config::load_config(cli.config_file.as_deref())?;
     let db_path: PathBuf = config.db_path.clone();
     let vault = vault_container_path(Some(&config));
     let scope_set = Some(
@@ -39,7 +35,7 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
             .resolved_set(),
     );
 
-    let fast = args.fast.enabled();
+    let fast = cli.fast;
     let started = Instant::now();
     let work = async move {
         let mut conn = open_database(&db_path)
@@ -59,10 +55,10 @@ pub(super) async fn emit(args: &CliArgs) -> Result<()> {
         let data = TalonResponseData::Changes(response);
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("changes", data, meta))
     };
-    let response = if should_spin(args) {
+    let response = if should_spin(cli) {
         spinner::with_spinner("Fetching changes...".to_string(), work).await?
     } else {
         work.await?
     };
-    emit_response(&response, output_mode(args))
+    emit_response(&response, output_mode(cli))
 }

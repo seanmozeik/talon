@@ -1,10 +1,10 @@
 use super::{output_mode, should_spin};
-use crate::cli::CliArgs;
+use crate::cli::{Cli, RecallArgs};
 use crate::config::{self, vault_container_path};
 use crate::output::{emit_response, format_recall_prompt_xml};
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
-use eyre::{Result, WrapErr as _, bail};
+use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
@@ -46,20 +46,19 @@ fn recall_clients(
     (inference, expansion)
 }
 
-pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
-    if rest.is_empty() {
-        bail!("recall requires a message; usage: talon recall <message...>");
-    }
+pub(super) async fn emit(args: &RecallArgs, cli: &Cli) -> Result<()> {
+    let message = args.message.join(" ");
+    let fast = cli.fast;
+    let prompt_xml = args.format.as_deref() == Some("prompt-xml");
 
-    let message = rest.join(" ");
-    let fast = args.fast.enabled();
-    let prompt_xml = args.recall.format.as_deref() == Some("prompt-xml");
+    let depth = args.depth.unwrap_or(1);
+    let min_confidence = args.min_confidence.unwrap_or(0.4);
 
     let input = RecallInput {
         message,
-        prior_messages: args.recall.prior_messages.clone(),
-        budget_tokens: args.recall.budget_tokens.unwrap_or(500),
-        exclude: args.recall.exclude.clone(),
+        prior_messages: args.prior_messages.clone(),
+        budget_tokens: args.budget_tokens.unwrap_or(500),
+        exclude: args.exclude.clone(),
         scope: args.scope.scope.clone(),
         scope_only: args.scope.scope_only.clone(),
         scope_all: args.scope.scope_all,
@@ -68,13 +67,13 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         } else {
             talon_core::RecallFormat::Json
         },
-        depth: args.depth.unwrap_or(1),
-        min_confidence: args.recall.min_confidence.unwrap_or(0.4),
+        depth,
+        min_confidence,
         fast,
     };
 
     let started = Instant::now();
-    let config = config::load_config(args.config_file.as_deref()).ok();
+    let config = config::load_config(cli.config_file.as_deref()).ok();
     if let Some(cfg) = config.as_ref() {
         ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
             .map_err(|e| eyre::eyre!("{e}"))?;
@@ -132,7 +131,7 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
         .wrap_err("recall task join failed")?
     };
 
-    let (recall_resp, meta, vault) = if should_spin(args) && !prompt_xml {
+    let (recall_resp, meta, vault) = if should_spin(cli) && !prompt_xml {
         spinner::with_spinner("Recalling...".to_string(), work).await?
     } else {
         work.await?
@@ -144,5 +143,5 @@ pub(super) async fn emit(args: &CliArgs, rest: &[String]) -> Result<()> {
     }
 
     let envelope = TalonEnvelope::ok("recall", TalonResponseData::Recall(recall_resp), meta);
-    emit_response(&envelope, output_mode(args))
+    emit_response(&envelope, output_mode(cli))
 }

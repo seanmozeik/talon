@@ -1,5 +1,5 @@
 use super::output_mode;
-use crate::cli::CliArgs;
+use crate::cli::{Cli, StatusArgs};
 use crate::config;
 use crate::output::emit_response;
 use crate::telemetry::elapsed_ms;
@@ -7,10 +7,10 @@ use eyre::Result;
 use std::time::Instant;
 use talon_core::{ResponseMeta, StatusResponse, TalonEnvelope, TalonResponseData, open_database};
 
-pub(super) fn emit(args: &CliArgs) -> Result<()> {
+pub(super) fn emit(_args: &StatusArgs, cli: &Cli) -> Result<()> {
     let started = Instant::now();
 
-    let config_res = config::load_config(args.config_file.as_deref());
+    let config_res = config::load_config(cli.config_file.as_deref());
     let config = match config_res {
         Ok(c) => c,
         Err(e) => {
@@ -39,7 +39,7 @@ pub(super) fn emit(args: &CliArgs) -> Result<()> {
                 since: None,
             };
             let data = TalonResponseData::Status(resp);
-            return emit_response(&TalonEnvelope::ok("status", data, meta), output_mode(args));
+            return emit_response(&TalonEnvelope::ok("status", data, meta), output_mode(cli));
         }
     };
 
@@ -83,5 +83,5 @@ pub(super) fn emit(args: &CliArgs) -> Result<()> {
         since: None,
     };
     let data = TalonResponseData::Status(response);
-    emit_response(&TalonEnvelope::ok("status", data, meta), output_mode(args))
+    emit_response(&TalonEnvelope::ok("status", data, meta), output_mode(cli))
 }
