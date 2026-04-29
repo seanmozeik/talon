@@ -17,6 +17,7 @@ use crate::mcp::transport::run_jsonrpc_loop_with_state;
 use crate::output::OutputMode;
 use eyre::{Result, bail};
 use std::io::{self, BufReader};
+use std::sync::Arc;
 
 /// Runs the selected command.
 ///
@@ -47,6 +48,11 @@ pub async fn run(cli: &Cli) -> Result<()> {
                 db_path,
             };
             let state = McpServerState::new(config_state);
+            let vault_path_for_watcher = state.config.vault_path.clone();
+            crate::mcp::background::watcher::spawn_watcher(
+                vault_path_for_watcher,
+                Arc::clone(&state),
+            );
             let stdin = io::stdin();
             let stdout = io::stdout();
             let outcome =

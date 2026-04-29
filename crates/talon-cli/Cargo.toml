@@ -25,6 +25,7 @@ dirs.workspace = true
 eyre.workspace = true
 fs-err.workspace = true
 indicatif.workspace = true
+notify-debouncer-mini = "0.7.0"
 rattles.workspace = true
 serde.workspace = true
 serde_json.workspace = true

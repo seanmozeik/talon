@@ -6,6 +6,7 @@
 //! next story. Keeping the transport explicit makes the wire contract easy to
 //! test and avoids committing the CLI to a larger server abstraction too early.
 
+pub mod background;
 pub mod protocol;
 pub mod session;
 pub mod state;
