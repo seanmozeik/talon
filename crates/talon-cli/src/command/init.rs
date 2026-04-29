@@ -5,7 +5,6 @@ use std::io::{self, Write as _};
 
 pub(super) fn emit(_args: &InitArgs) -> Result<()> {
     let result = config::init_config()?;
-    crate::banner::clear_fancy_prelude();
     let mut stderr = io::stderr().lock();
     if result {
         writeln!(

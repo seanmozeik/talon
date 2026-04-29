@@ -1,6 +1,6 @@
 //! Colored figlet banner for human-oriented TTY runs.
 
-use crate::cli::Cli;
+use crate::cli::{Cli, Commands};
 use anstyle::{Color, Effects, RgbColor, Style};
 use std::fmt::Write as _;
 use std::io::{IsTerminal, Write};
@@ -33,6 +33,27 @@ pub fn clear_fancy_prelude() {
     let mut stdout = std::io::stdout().lock();
     let _ = write!(stdout, "{}", clear_fancy_prelude_escape());
     let _ = stdout.flush();
+}
+
+/// Returns whether the banner should be cleared before emitting command output.
+pub fn should_clear_fancy_prelude(cli: &Cli) -> bool {
+    if cli.agent || cli.json || !human_tty_for_cli_arts() {
+        return false;
+    }
+
+    matches!(
+        cli.command.as_ref(),
+        Some(
+            Commands::Search(_)
+                | Commands::Read(_)
+                | Commands::Sync(_)
+                | Commands::Related(_)
+                | Commands::Meta(_)
+                | Commands::Changes(_)
+                | Commands::Lint(_)
+                | Commands::Recall(_)
+        )
+    )
 }
 
 /// Returns the colored banner string for clap `before_help`.

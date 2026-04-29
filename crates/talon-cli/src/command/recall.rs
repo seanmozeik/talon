@@ -139,12 +139,17 @@ pub(super) async fn emit(args: &RecallArgs, cli: &Cli) -> Result<()> {
     };
 
     if prompt_xml {
-        crate::banner::clear_fancy_prelude();
+        if crate::banner::should_clear_fancy_prelude(cli) {
+            crate::banner::clear_fancy_prelude();
+        }
         let mut stdout = std::io::stdout().lock();
         format_recall_prompt_xml(&mut stdout, &recall_resp, &vault)?;
         return Ok(());
     }
 
     let envelope = TalonEnvelope::ok("recall", TalonResponseData::Recall(recall_resp), meta);
+    if crate::banner::should_clear_fancy_prelude(cli) {
+        crate::banner::clear_fancy_prelude();
+    }
     emit_response(&envelope, output_mode(cli))
 }

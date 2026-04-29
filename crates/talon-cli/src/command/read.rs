@@ -60,5 +60,8 @@ pub(super) async fn emit(args: &ReadArgs, cli: &Cli) -> Result<()> {
     } else {
         work.await?
     };
+    if crate::banner::should_clear_fancy_prelude(cli) {
+        crate::banner::clear_fancy_prelude();
+    }
     emit_response(&response, output_mode(cli))
 }
