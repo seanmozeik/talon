@@ -2,7 +2,8 @@
 
 use crate::cli::Cli;
 use anstyle::{Color, Effects, RgbColor, Style};
-use std::io::Write;
+use std::fmt::Write as _;
+use std::io::{IsTerminal, Write};
 
 const BANNER_TALON: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/talon.txt"));
@@ -21,6 +22,40 @@ pub fn eprint_fancy_prelude_for_run(cli: &Cli) {
         return;
     }
     eprint_figlet_indented(LINE_INDENT);
+}
+
+/// Returns the colored banner string for clap `before_help`.
+/// Only emits colors when stderr is a TTY that accepts ANSI codes.
+pub fn help_banner_colored() -> String {
+    if !std::io::stdout().is_terminal() || !crate::platform::user_accepts_ansi_color() {
+        return String::new();
+    }
+
+    let lines: Vec<&str> = BANNER_TALON
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect();
+    let width = lines
+        .iter()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or(1)
+        .saturating_sub(1)
+        .max(1);
+
+    let mut out = String::new();
+    for line in lines {
+        let _ = write!(out, "{LINE_INDENT}");
+        for (index, ch) in line.chars().enumerate() {
+            let (r, g, b) = gradient_rgb(index, width);
+            let style = Style::new()
+                .fg_color(Some(Color::Rgb(RgbColor(r, g, b))))
+                .effects(Effects::BOLD);
+            let _ = write!(out, "{style}{ch}{style:#}");
+        }
+        let _ = writeln!(out);
+    }
+    out
 }
 
 fn human_tty_for_cli_arts() -> bool {

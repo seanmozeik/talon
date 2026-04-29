@@ -37,7 +37,7 @@ pub use sync_args::SyncArgs;
     version = env!("CARGO_PKG_VERSION"),
     subcommand_required = false,
     about = "Obsidian vault search, indexing, and MCP server.",
-    before_help = banner::help_banner(),
+    before_help = crate::banner::help_banner_colored(),
     after_help = r#"Examples:
   talon search "project setup" --mode hybrid
   talon read src/main.rs --from-line 10 --max-lines 20
@@ -109,20 +109,6 @@ pub enum Commands {
 
     #[command(about = "Run MCP-over-stdio mode.")]
     Mcp,
-}
-
-mod banner {
-    use std::fmt::Write as _;
-
-    const BANNER: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/talon.txt"));
-
-    pub fn help_banner() -> String {
-        let mut out = String::new();
-        for line in BANNER.lines().filter(|l| !l.is_empty()) {
-            let _ = writeln!(out, "  {line}");
-        }
-        out
-    }
 }
 
 /// Parses CLI args or exits on error.
