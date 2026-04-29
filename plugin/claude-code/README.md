@@ -24,10 +24,12 @@ Automatically injects relevant vault notes as context before each Claude Code tu
    cp plugin/claude-code/hooks.json ~/.claude/hooks.json
    ```
 
-4. **Add skill** (optional) — copy `SKILL.md` into your project `.claude/` directory:
+4. **Add skill** (optional) — generate the agent contract from the binary into your project `.claude/`:
    ```
-   cp plugin/claude-code/SKILL.md .claude/SKILL.md
+   mkdir -p .claude
+   talon --skill > .claude/SKILL.md
    ```
+   This writes the canonical skill directly from the installed binary — no static copy to go stale.
 
 5. **Restart Claude Code**. On the next session start, `talon mcp` will launch and
    vault context will be injected automatically before each prompt.
