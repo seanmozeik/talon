@@ -7,13 +7,9 @@ description: Agent-facing contract for Obsidian vault search, read, sync, recall
 
 Use Talon to search and inspect an indexed Obsidian vault. Talon is optimized for agents: start with natural-language search, inspect compact navigation metadata, follow the graph when useful, then read exact notes or sections.
 
-## MCP Mode (Claude Code)
+> **Claude Code**: vault recall is injected automatically before each turn — no recall tool call needed. Use the MCP tools below for explicit queries only.
 
-When using Claude Code, vault recall is **automatic** — Talon injects relevant notes before each turn invisibly via hooks. You do not need to call any recall tool. The three public MCP tools (`talon_search`, `talon_read`, `talon_related`) are available for explicit queries beyond what auto-recall surfaces.
-
-## CLI Mode
-
-Always pass `--agent` on every command when using the CLI. The examples below are the pattern to follow.
+Always pass `--agent` on every command. The examples below are the pattern to follow.
 
 ## Default Search
 
