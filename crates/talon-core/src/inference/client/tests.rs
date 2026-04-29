@@ -22,6 +22,7 @@ fn test_client(server_uri: String) -> InferenceClient {
         sleep: no_sleep,
         rerank_batch_size: RERANK_BATCH_SIZE,
         _rerank_max_tokens: crate::search::constants::RERANK_MAX_TOKENS,
+        rerank_config: RerankConfig::default(),
     }
 }
 
@@ -122,6 +123,44 @@ fn rerank_reads_flat_score_payloads() {
     assert_eq!(result.len(), 1);
     assert_eq!(result[0].index, 0);
     assert!((result[0].score - 0.73).abs() < f32::EPSILON);
+}
+
+#[test]
+fn rerank_tei_logits_request_sends_flags_and_normalizes_scores() {
+    let runtime = runtime();
+    let server = runtime.block_on(MockServer::start());
+    runtime.block_on(
+        Mock::given(method("POST"))
+            .and(path("/rerank"))
+            .and(body_partial_json(json!({
+                "query": "query",
+                "texts": ["t0"],
+                "raw_scores": true,
+                "truncate": false,
+                "return_text": false
+            })))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"index": 0, "score": 0.0}
+            ])))
+            .mount(&server),
+    );
+
+    let client = InferenceClient::with_rerank_options_and_protocol(
+        server.uri(),
+        RERANK_BATCH_SIZE,
+        crate::search::constants::RERANK_MAX_TOKENS,
+        RerankConfig {
+            request_shape: RerankRequestShape::Tei,
+            score_scale: RerankScoreScale::Logits,
+            truncate: false,
+        },
+    )
+    .unwrap();
+    let result = client
+        .rerank("query", &[String::from("t0")], false)
+        .unwrap();
+
+    assert!((result[0].score - 0.5).abs() < f32::EPSILON);
 }
 
 #[test]

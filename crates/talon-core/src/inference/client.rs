@@ -15,6 +15,7 @@ use super::error::{InferenceError, redact};
 use super::types::{
     EmbedChunkedRequest, EmbedChunkedResponse, EmbedRequest, RerankRequest, RerankResult,
 };
+use crate::config::{RerankConfig, RerankRequestShape, RerankScoreScale};
 use crate::search::constants::RERANK_BATCH_SIZE;
 
 /// Default HTTP timeout for sidecar calls.
@@ -32,6 +33,7 @@ pub struct InferenceClient {
     sleep: fn(Duration),
     rerank_batch_size: usize,
     _rerank_max_tokens: u32,
+    rerank_config: RerankConfig,
 }
 
 impl InferenceClient {
@@ -59,6 +61,7 @@ impl InferenceClient {
             timeout,
             RERANK_BATCH_SIZE,
             crate::search::constants::RERANK_MAX_TOKENS,
+            RerankConfig::default(),
         )
     }
 
@@ -72,11 +75,31 @@ impl InferenceClient {
         rerank_batch_size: usize,
         rerank_max_tokens: u32,
     ) -> Result<Self, InferenceError> {
+        Self::with_rerank_options_and_protocol(
+            base_url,
+            rerank_batch_size,
+            rerank_max_tokens,
+            RerankConfig::default(),
+        )
+    }
+
+    /// Builds a client with custom rerank process and protocol tunables.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`InferenceError::Build`] on `reqwest::Client` build failure.
+    pub fn with_rerank_options_and_protocol(
+        base_url: impl Into<String>,
+        rerank_batch_size: usize,
+        rerank_max_tokens: u32,
+        rerank_config: RerankConfig,
+    ) -> Result<Self, InferenceError> {
         Self::with_timeout_and_rerank_options(
             base_url,
             DEFAULT_INFERENCE_TIMEOUT,
             rerank_batch_size,
             rerank_max_tokens,
+            rerank_config,
         )
     }
 
@@ -85,6 +108,7 @@ impl InferenceClient {
         timeout: Duration,
         rerank_batch_size: usize,
         rerank_max_tokens: u32,
+        rerank_config: RerankConfig,
     ) -> Result<Self, InferenceError> {
         let http = HttpClient::builder()
             .timeout(timeout)
@@ -98,6 +122,7 @@ impl InferenceClient {
             sleep: std::thread::sleep,
             rerank_batch_size: rerank_batch_size.max(1),
             _rerank_max_tokens: rerank_max_tokens,
+            rerank_config,
         })
     }
 
@@ -163,6 +188,8 @@ impl InferenceClient {
             let body = RerankRequest {
                 query: query.to_string(),
                 texts: batch.to_vec(),
+                raw_scores: self.rerank_raw_scores_flag(),
+                truncate: self.rerank_truncate_flag(),
                 return_text,
             };
             let mut batch_results: Vec<RerankResult> = self.post_json(&url, &body)?;
@@ -178,11 +205,29 @@ impl InferenceClient {
                         message: "rerank index overflow".to_owned(),
                     }
                 })?;
+                result.score = self.normalize_rerank_score(result.score);
             }
             results.extend(batch_results);
         }
 
         Ok(results)
+    }
+
+    fn rerank_raw_scores_flag(&self) -> Option<bool> {
+        (self.rerank_config.request_shape == RerankRequestShape::Tei)
+            .then_some(self.rerank_config.score_scale == RerankScoreScale::Logits)
+    }
+
+    fn rerank_truncate_flag(&self) -> Option<bool> {
+        (self.rerank_config.request_shape == RerankRequestShape::Tei)
+            .then_some(self.rerank_config.truncate)
+    }
+
+    fn normalize_rerank_score(&self, score: f32) -> f32 {
+        match self.rerank_config.score_scale {
+            RerankScoreScale::Normalized => score.clamp(0.0, 1.0),
+            RerankScoreScale::Logits => 1.0 / (1.0 + (-score).exp()),
+        }
     }
 
     fn post_json<B, R>(&self, url: &str, body: &B) -> Result<R, InferenceError>

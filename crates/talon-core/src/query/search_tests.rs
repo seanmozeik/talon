@@ -1,8 +1,8 @@
 use super::super::search_hybrid::infer_hybrid_match_kind;
 use super::*;
 use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, Scope, ScopeGlob,
-    ScopePriority, ScopesConfig, SearchConfig,
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
+    Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig,
 };
 use crate::search::types::SearchScores;
 use crate::store::open_database;
@@ -89,6 +89,7 @@ fn config_with_wiki_scope() -> TalonConfig {
                 chunk_embedding: "chunk".to_string(),
                 reranker: "reranker".to_string(),
             },
+            rerank: RerankConfig::default(),
         },
         expansion: ExpansionConfig {
             provider: "openai-compatible".to_string(),

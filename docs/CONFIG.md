@@ -16,4 +16,18 @@ rerank_batch_size = 4
 rerank_max_tokens = 128
 ```
 
+`[inference.rerank]` controls the `/rerank` protocol Talon expects from the
+sidecar or adapter.
+
+```toml
+[inference.rerank]
+request_shape = "minimal"  # minimal | tei
+score_scale = "normalized" # normalized | logits
+truncate = true            # sent only for request_shape = "tei"
+```
+
+The minimal request shape is:
+`POST /rerank { query, texts, return_text } -> [{ index, score }]`.
+Scores should be normalized to `[0, 1]` unless `score_scale = "logits"`.
+
 Ultraclaw does not inject, adapt, or validate Talon config.

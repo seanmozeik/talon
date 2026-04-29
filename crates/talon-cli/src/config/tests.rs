@@ -46,6 +46,14 @@ fn config_template_parses_indexer_chunk_settings() {
     assert_eq!(config.search.rerank_cache_size, 2000);
     assert_eq!(config.search.rerank_batch_size, 4);
     assert_eq!(config.search.rerank_max_tokens, 128);
+    assert_eq!(
+        config.inference.rerank.request_shape,
+        talon_core::RerankRequestShape::Minimal
+    );
+    assert_eq!(
+        config.inference.rerank.score_scale,
+        talon_core::RerankScoreScale::Normalized
+    );
     assert!(
         config.db_path.is_absolute(),
         "template db_path should load as an absolute path, got {}",
@@ -76,6 +84,11 @@ document_embedding = "embed"
 chunk_embedding = "embed_chunked"
 reranker = "rerank"
 
+[inference.rerank]
+request_shape = "tei"
+score_scale = "logits"
+truncate = false
+
 [expansion]
 provider = "openai-compatible"
 base_url = "http://localhost:1234/v1"
@@ -91,6 +104,15 @@ model = "gemma-smol"
     assert_eq!(config.search.rerank_cache_size, 2000);
     assert_eq!(config.search.rerank_batch_size, 4);
     assert_eq!(config.search.rerank_max_tokens, 128);
+    assert_eq!(
+        config.inference.rerank.request_shape,
+        talon_core::RerankRequestShape::Tei
+    );
+    assert_eq!(
+        config.inference.rerank.score_scale,
+        talon_core::RerankScoreScale::Logits
+    );
+    assert!(!config.inference.rerank.truncate);
 }
 
 #[test]

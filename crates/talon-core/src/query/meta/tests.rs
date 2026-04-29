@@ -2,8 +2,8 @@ use rusqlite::{Connection, params};
 
 use super::*;
 use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, Scope, ScopeGlob,
-    ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, Scope,
+    ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
 };
 use crate::indexing::migrations::run_migrations;
 use crate::query::MetaInput;
@@ -37,6 +37,7 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
                 chunk_embedding: "c".to_string(),
                 reranker: "r".to_string(),
             },
+            rerank: RerankConfig::default(),
         },
         expansion: ExpansionConfig {
             provider: "openai-compatible".to_string(),

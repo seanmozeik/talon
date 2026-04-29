@@ -12,7 +12,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use talon_core::{
     AnchorKind, ChunkerConfig, Direction, LintCheck, LintInput, MetaInput, PositiveCount,
     RecallInput, RelatedInput, SearchInput, SearchMode, WhereClause, WhereOperator,
-    config::{ExpansionConfig, InferenceConfig, InferenceModels, ScopesConfig, TalonConfig},
+    config::{
+        ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, ScopesConfig, TalonConfig,
+    },
     embed::EmbedPassOptions,
     indexer::IndexerConfig,
     inference::InferenceClient,
@@ -122,6 +124,7 @@ fn minimal_config(vault: &std::path::Path) -> TalonConfig {
                 chunk_embedding: "embed".to_string(),
                 reranker: "rerank".to_string(),
             },
+            rerank: RerankConfig::default(),
         },
         expansion: ExpansionConfig {
             provider: "openai-compatible".to_string(),

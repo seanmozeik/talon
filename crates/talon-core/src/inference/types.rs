@@ -50,14 +50,20 @@ pub struct EmbedChunkedResponse {
 
 /// `POST /rerank` request body.
 ///
-/// `return_text` is inert server-side but TEI clients send it, so we mirror
-/// that for shape compatibility.
+/// `return_text` is accepted by common reranker endpoints. TEI-style fields are
+/// optional so the client can target either minimal sidecars or full TEI routes.
 #[derive(Debug, Clone, Serialize)]
 pub struct RerankRequest {
     /// Query text.
     pub query: String,
     /// Candidate texts to rerank.
     pub texts: Vec<String>,
+    /// TEI-compatible score-scale flag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_scores: Option<bool>,
+    /// TEI-compatible truncation flag.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub truncate: Option<bool>,
     /// TEI compatibility flag (server returns index+score either way).
     pub return_text: bool,
 }

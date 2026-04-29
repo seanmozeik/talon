@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use super::ScopeFilter;
 use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, Scope, ScopeGlob,
-    ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
+    Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
 };
 use crate::error::TalonError;
 
@@ -35,6 +35,7 @@ fn config_with(scopes: Vec<(&str, Scope)>) -> TalonConfig {
                 chunk_embedding: "embed-c".to_string(),
                 reranker: "rerank".to_string(),
             },
+            rerank: RerankConfig::default(),
         },
         expansion: ExpansionConfig {
             provider: "openai-compatible".to_string(),

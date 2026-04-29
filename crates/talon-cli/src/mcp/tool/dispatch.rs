@@ -39,10 +39,11 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
         } else {
             talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
             (
-                InferenceClient::with_rerank_options(
+                InferenceClient::with_rerank_options_and_protocol(
                     &config.inference.base_url,
                     config.search.rerank_batch_size,
                     config.search.rerank_max_tokens,
+                    config.inference.rerank,
                 )
                 .ok(),
                 ExpansionClient::with_max_tokens(
@@ -251,10 +252,11 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
     } else {
         talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
         (
-            InferenceClient::with_rerank_options(
+            InferenceClient::with_rerank_options_and_protocol(
                 &config.inference.base_url,
                 config.search.rerank_batch_size,
                 config.search.rerank_max_tokens,
+                config.inference.rerank,
             )
             .ok(),
             ExpansionClient::with_max_tokens(

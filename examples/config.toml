@@ -33,6 +33,16 @@ document_embedding = "embed"
 chunk_embedding = "embed_chunked"
 reranker = "rerank"
 
+[inference.rerank]
+# Expected response: [{ index, score }] for every input text, sorted descending.
+# Scores are normalized relevance values in [0, 1]. Set score_scale = "logits"
+# only for endpoints that return raw cross-encoder logits.
+score_scale = "normalized"
+# "minimal" sends { query, texts, return_text }. "tei" also sends
+# { raw_scores, truncate } for full Text Embeddings Inference compatibility.
+request_shape = "minimal"
+truncate = true
+
 # Query-expansion endpoint. OpenAI-compatible chat completions.
 [expansion]
 provider = "openai-compatible"

@@ -23,9 +23,9 @@ pub mod text;
 pub mod vec_ext;
 
 pub use config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, Scope,
-    ScopeFilter, ScopeGlob, ScopePriority, ScopeResolution, ScopesConfig, SearchConfig,
-    TalonConfig,
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
+    RerankRequestShape, RerankScoreScale, Scope, ScopeFilter, ScopeGlob, ScopePriority,
+    ScopeResolution, ScopesConfig, SearchConfig, TalonConfig,
 };
 pub use contracts::{
     ContainerPath, ErrorEnvelope, PositiveCount, ResponseMeta, TalonEnvelope, TalonInput,

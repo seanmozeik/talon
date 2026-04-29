@@ -13,7 +13,10 @@ use defaults::{
 };
 
 pub use chunker::ChunkerConfig;
-pub use endpoints::{ExpansionConfig, InferenceConfig, InferenceModels};
+pub use endpoints::{
+    ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, RerankRequestShape,
+    RerankScoreScale,
+};
 pub use scope_filter::ScopeFilter;
 
 /// Priority tier for scope-based ranking.

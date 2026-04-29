@@ -72,6 +72,15 @@ document_embedding = "embed"
 chunk_embedding = "embed_chunked"
 reranker = "rerank"
 
+[inference.rerank]
+# Minimal common reranker API:
+#   POST /rerank { query, texts, return_text } -> [{ index, score }]
+# Use request_shape = "tei" to also send TEI's raw_scores/truncate flags.
+request_shape = "minimal"
+# normalized = endpoint returns [0, 1]; logits = Talon applies sigmoid.
+score_scale = "normalized"
+truncate = true
+
 [expansion]
 provider = "openai-compatible"
 base_url = "http://localhost:1234/v1"
@@ -206,6 +215,7 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
                 chunk_embedding: "embed_chunked".to_string(),
                 reranker: "rerank".to_string(),
             },
+            rerank: talon_core::RerankConfig::default(),
         },
         expansion: talon_core::ExpansionConfig {
             provider: "openai-compatible".to_string(),

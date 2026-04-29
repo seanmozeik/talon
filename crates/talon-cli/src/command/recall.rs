@@ -24,10 +24,11 @@ fn recall_clients(
         talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
     }
     let inference = match config {
-        Some(config) => InferenceClient::with_rerank_options(
+        Some(config) => InferenceClient::with_rerank_options_and_protocol(
             inference_url,
             config.search.rerank_batch_size,
             config.search.rerank_max_tokens,
+            config.inference.rerank,
         ),
         None => InferenceClient::new(inference_url),
     }

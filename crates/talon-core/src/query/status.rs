@@ -108,7 +108,9 @@ fn is_unscoped(path: &str, config: &TalonConfig) -> bool {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::config::{ExpansionConfig, InferenceConfig, InferenceModels, ScopesConfig};
+    use crate::config::{
+        ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, ScopesConfig,
+    };
     use crate::indexing::migrations::run_migrations;
     use rusqlite::Connection;
     use std::path::PathBuf;
@@ -134,6 +136,7 @@ mod tests {
                     chunk_embedding: "nomic-embed-text".to_string(),
                     reranker: "ms-marco-MiniLM-L-6-v2".to_string(),
                 },
+                rerank: RerankConfig::default(),
             },
             expansion: ExpansionConfig {
                 provider: "openai-compatible".to_string(),
@@ -239,6 +242,7 @@ mod tests {
                     chunk_embedding: "nomic-embed-text".to_string(),
                     reranker: "ms-marco-MiniLM-L-6-v2".to_string(),
                 },
+                rerank: RerankConfig::default(),
             },
             expansion: ExpansionConfig {
                 provider: "openai-compatible".to_string(),
