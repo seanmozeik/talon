@@ -1,108 +1,125 @@
 ---
 name: talon
-description: Obsidian vault search, read, sync (index + embed), recall, related, meta, changes, lint, and status for agents and CLI users.
+description: Agent-facing contract for Obsidian vault search, read, sync, recall, related, meta, changes, lint, and status.
 ---
 
 # Talon
 
-Use Talon when you need to search or inspect an indexed Obsidian vault. It is built for agent workflows: search first, follow links/backlinks when the graph matters, then read the exact note or section you need.
+Use Talon to search and inspect an indexed Obsidian vault. Talon is optimized for agents: start with natural-language search, inspect compact navigation metadata, follow the graph when useful, then read exact notes or sections.
 
-Default output is human-readable. Use `--json` for the full JSON envelope and `--agent` for compact token-efficient JSON without the envelope.
+Always pass `--agent` on every command. The examples below are the pattern to follow.
 
-## Core Commands
+## Default Search
 
-- **`sync`**: Scan the vault, update the SQLite index, and run embeddings. Use this before judging semantic search quality.
-- **`sync --fast`**: Lexical/index pass only; skips embeddings. Do not use this when testing embedding retrieval.
-- **`search "query"`**: Hybrid search. Modes: `hybrid` (default), `semantic`, `fulltext`, `title`.
-- **`search --fast "query"`**: Lexical-only search; skips expansion, embeddings, and rerank.
-- **`recall "message"`**: Retrieve compact context for an agent turn, including active notes and graph-neighborhood linked context.
-- **`read <path-or-obsidian-ref>`**: Return note body with frontmatter stripped, plus links, backlinks, tags, and aliases.
-- **`related <path>`**: Traverse resolved Obsidian wikilinks and backlinks. Use `--depth 1-3` and `--direction outgoing|backlinks|both`.
-- **`meta`**: Filter/project frontmatter metadata and tag counts.
-- **`changes --since <timestamp>`**: Return added, modified, and deleted notes.
-- **`lint [check]`**: Surface graph health issues: `all`, `orphans`, `broken-links`, `dangling-refs`, `unreferenced`.
-- **`status`**: Report index readiness, active note count, chunk count, vector dimensions, and scope summary.
-
-## Search Syntax
-
-Search accepts normal text plus lightweight Obsidian-native filters inside the query string:
-
-- `#fermentation` or `tag:fermentation` restricts results to notes with that tag.
-- `heading:Targets` or `h:Targets` restricts results to notes with a matching indexed heading path.
-- Scope selection is not query syntax; use the scope flags below.
-
-Examples:
+Use normal search first:
 
 ```bash
-talon --agent search "#fermentation hot sauce"
-talon --agent search "tag:fermentation heading:Targets hot sauce"
-talon --agent search "hot sauce" --mode fulltext
+talon --agent search "<natural language query>"
 ```
 
-## Reading Notes
+Search defaults to hybrid retrieval. It combines lexical matching, semantic/vector search, title and alias matching, query expansion, reranking, and scope-aware ranking when the configured sidecar is available. A good natural-language query is usually the highest-value call.
 
-`read` accepts vault paths and Obsidian-style references:
+Only switch modes when there is a reason:
 
-- `talon --agent read wiki/Hot Sauce Formulation.md`
-- `talon --agent read "[[Hot Sauce Formulation]]"`
-- `talon --agent read "[[Hot Sauce Formulation#Search Boundaries]]"`
-- `talon --agent read "Hot Sauce Formulation#Search Boundaries"`
+- `--mode fulltext` for exact wording, command names, IDs, or when semantic search is over-broad.
+- `--mode title` when you are looking for a note by title or alias.
+- `--mode semantic` when wording may differ strongly from the user's phrasing.
+- `--fast` only when you explicitly need lexical-only speed and can skip embeddings/rerank.
+
+## Optional Query Narrowing
+
+Do not overuse tag and heading syntax. Add it only when the user gives an explicit tag/section constraint, or when an initial natural-language search is too broad.
+
+- `#tag` or `tag:name` restricts results to notes with that tag.
+- `heading:name` or `h:name` restricts results to notes with a matching indexed heading path.
+- Scope is not query syntax; use scope flags.
+
+```bash
+talon --agent search "<natural language query> #<tag>"
+talon --agent search "<natural language query> heading:<section>"
+```
+
+## Reading
+
+Use `read` after search when you need source text, exact wording, or the body of a result.
+
+`read` accepts vault paths and Obsidian references:
+
+```bash
+talon --agent read "<vault/path.md>"
+talon --agent read "[[Note Title]]"
+talon --agent read "[[Note Title#Heading]]"
+talon --agent read "Note Title#Heading"
+```
 
 When a heading is provided, Talon returns only that section. The result includes `section.heading`, `section.fromLine`, `section.toLine`, and `section.obsidianRef`.
 
-Use `--raw` to keep frontmatter. Use `--from-line N --max-lines M` for line slicing.
+Use `--raw` only when frontmatter must be preserved. Use `--from-line N --max-lines M` for line slicing.
+
+## Graph Navigation
+
+Search and read results expose resolved Obsidian graph metadata. Use it instead of scraping markdown links.
+
+- Search hits may include `citations`, `links`, `backlinks`, `tags`, and `aliases`.
+- Read results include `links`, `backlinks`, `tags`, and `aliases`.
+- Use `related` for graph traversal from a known note.
+
+```bash
+talon --agent related "<vault/path.md>" --direction both --depth 1
+talon --agent related "<vault/path.md>" --direction outgoing --depth 2
+talon --agent related "<vault/path.md>" --direction backlinks --depth 1
+```
+
+## Recall
+
+Use `recall` when you are about to answer a user and want Talon to supply compact vault context for that user request.
+
+Pass the actual current user request, not a generic meta-prompt about what context might be useful.
+
+```bash
+talon --agent recall "<current user request>"
+```
+
+Recall returns active notes plus graph-neighborhood linked context when evidence is strong enough.
 
 ## Scope Flags
 
-`search`, `recall`, `related`, `meta`, `changes`, and `lint` honor the shared scope-selection surface. Scopes are named in `~/.config/talon/config.toml` under `[scopes.<name>]` and have `default = true|false`.
+Configured scopes decide which parts of the vault are searched by default. Scopes with `default = false` are excluded entirely unless explicitly included.
 
-- **No flag**: query covers only scopes with `default = true`. Scopes with `default = false` are excluded entirely, not merely down-ranked.
-- **`-s NAME` / `--scope NAME`**: re-include a named scope on top of the default pool. This is required to surface a `default = false` scope.
-- **`--scope-only NAME`**: replace the pool with the named scope or scopes.
-- **`--scope-all`**: cover every configured scope, overriding `default`.
+- No scope flag: search only default scopes.
+- `--scope NAME`: include one additional named scope.
+- `--scope-only NAME`: search only the named scope or scopes.
+- `--scope-all`: include every configured scope.
 
-These forms are mutually exclusive. Unknown scope names error with the configured-name list.
-
-## Agent Output
-
-Use `--agent` for compact JSON.
-
-Search hits include:
-
-- `path`, `title`, `snippet`, `score`
-- `isIndex` for index/overview pages
-- `citations` from resolved `sources:` frontmatter
-- `links` for outgoing resolved Obsidian links
-- `backlinks` for incoming resolved Obsidian links
-- `tags` and `aliases` when present
-
-Read results include:
-
-- `path`, `title`, `content`
-- `section` when reading a heading
-- `links`, `backlinks`, `tags`, `aliases`
-
-Related results include `path`, `title`, `relation`, and `linkText`.
-
-Use `--json` when you need the full envelope metadata such as `meta.scope_set`, result `scope`, `mtime`, and related-result `count`.
-
-## Useful Patterns
+Use scope flags when the user explicitly asks for a private/archive/raw area or when a default-scope search misses something you have reason to believe is outside the default pool.
 
 ```bash
-talon sync                                      # full index + embeddings
-talon sync --fast                               # lexical-only refresh
-talon --agent search "zettelkasten atomic notes"
-talon --agent search "#fermentation hot sauce"
-talon --agent search "heading:Targets hot sauce"
-talon --agent search "lease renewal" --scope private
-talon --agent search "fermented hot sauce" --scope-only wiki
-talon --agent read "[[Hot Sauce Formulation#Search Boundaries]]"
-talon --agent related "wiki/Hot Sauce Formulation.md" --depth 2 --direction both
-talon --agent recall "what should I know before answering this?"
-talon --json meta --where status=archived --select title --select status
-talon --json meta --tag-counts
-talon --json changes --since 2024-01-01T00:00:00Z
-talon lint broken-links
-talon status --json
-talon --skill
+talon --agent search "<query>" --scope <scope>
+talon --agent search "<query>" --scope-only <scope>
+talon --agent search "<query>" --scope-all
 ```
+
+## Other Commands
+
+- `talon --agent sync`: full index and embedding sync. Use before judging semantic search quality.
+- `talon --agent sync --fast`: lexical/index refresh only. Do not use when testing embeddings.
+- `talon --agent meta --where <field><op><value> --select <field>`: inspect frontmatter metadata.
+- `talon --agent meta --tag-counts`: inspect tag distribution.
+- `talon --agent changes --since 7d`: inspect recent added/modified/deleted notes. `--since` accepts relative durations such as `7d`/`3h`, ISO 8601 timestamps, dates, or epoch milliseconds.
+- `talon --agent lint broken-links`: inspect graph health.
+- `talon --agent status`: inspect index readiness.
+
+## Result Contract
+
+Search hits include `path`, `title`, `snippet`, and `score`. They may also include:
+
+- `isIndex`: index/overview page signal.
+- `citations`: resolved notes from `sources:` frontmatter.
+- `links`: outgoing resolved Obsidian links.
+- `backlinks`: incoming resolved Obsidian links.
+- `tags`: indexed tags.
+- `aliases`: indexed aliases.
+
+Read results include `path`, `title`, `content`, `links`, `backlinks`, `tags`, and `aliases`. Heading reads also include `section`.
+
+Related results include `path`, `title`, `relation`, and `linkText`.
