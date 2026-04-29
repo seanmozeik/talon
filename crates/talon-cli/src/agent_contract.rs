@@ -9,8 +9,8 @@ pub struct AgentToolContract {
 
 pub const SEARCH: AgentToolContract = AgentToolContract {
     name: "talon_search",
-    description: "Search the Obsidian vault for notes relevant to a query. Use for broad lookup when automatic recall is insufficient. Returns compact agent JSON with ranked results.",
-    when_to_use: "When you need to find notes by topic, keyword, or semantic meaning.",
+    description: "Search the Obsidian vault for notes relevant to a query. Use for explicit lookup beyond what automatic recall already surfaces. Returns compact agent JSON with ranked results.",
+    when_to_use: "When you need to find notes by topic, keyword, or semantic meaning that auto-recall did not cover.",
     when_not_to_use: "When you already have the exact path — use talon_read instead.",
 };
 
@@ -26,4 +26,11 @@ pub const RELATED: AgentToolContract = AgentToolContract {
     description: "Traverse the vault graph from a known note to find outgoing links, backlinks, or both. Use for deliberate graph traversal.",
     when_to_use: "When you want to explore what a note links to or what links to it.",
     when_not_to_use: "When you want a broad topic search — use talon_search instead.",
+};
+
+pub const RECALL_HOOK: AgentToolContract = AgentToolContract {
+    name: "talon_hook_recall",
+    description: "Hook-only tool that injects vault recall context before each agent turn. Managed automatically by the session lifecycle — do not call manually.",
+    when_to_use: "Never — this is managed by Claude Code hooks automatically.",
+    when_not_to_use: "Always. Do not call this tool directly.",
 };
