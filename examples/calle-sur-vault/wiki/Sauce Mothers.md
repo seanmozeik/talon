@@ -52,6 +52,10 @@ Example: roasted lamb sauce = dark stock + red wine reduction + fermented spring
 > [!tip]
 > Don't add ferment early; heat kills the bacteria and volatilizes some aroma. Add at the very end, or splash into the plated sauce so the flavors stay distinct.
 
+This article is broad sauce theory. It is related to fermented hot sauce, but it
+is not the active product plan. For launch status, co-packer decisions, and the
+current retail line, use [[Fermented Hot Sauce Line]] and [[Launch Readiness]].
+
 ## Pan Sauces (Ad Hoc)
 
 After searing, fond (browned bits) stays in the pan. Deglaze with wine or stock, scrape, reduce by half, finish with cold butter and herbs. 60 seconds, and you have a sauce rich with [[Maillard Reaction]] depth. This is sauce-making distilled: build flavor, not ingredients.
@@ -82,5 +86,7 @@ Keep mothers in labeled containers, dated. Taste before service—fermented batc
 - [[Stock Theory]] — foundations
 - [[Salt Acid Fat Heat]] — balance principles
 - [[Maillard Reaction]] — fond and pan sauces
+- [[Hot Sauce Formulation]] — bottled sauce formulation
+- [[Launch Readiness]] — current hot sauce launch work
 - [[Costing Fundamentals]] — sauce cost modeling
 - [[Service Flow Theory]] — sauce logistics in service

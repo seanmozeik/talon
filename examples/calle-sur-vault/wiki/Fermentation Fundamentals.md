@@ -63,6 +63,7 @@ You taste these stages; each one is useful. We harvest some ferments young (brig
 - **Vegetables** — [[Lacto-Fermentation]] (carrots, cabbage, green tomatoes, spring onions)
 - **Grains** — [[Koji and Aspergillus]] (miso, koji rice), [[Bread and Doughs]] (sourdough levain)
 - **Hot sauce** — [[Fermented Hot Sauce Line]] blends bacteria + time + heat
+- **Hot sauce formulation** — [[Hot Sauce Formulation]] tracks salt, acidity, texture, and pepper mix
 - **Stocks and sauces** — Aged [[Sauce Mothers]] develop via slow bacterial action
 - **Fish and meat** — Garum, miso paste, salted ferments (advanced, specialty equipment needed)
 
@@ -94,6 +95,7 @@ Lactobacilli are lazy in the cold; they slow to near-dormancy, which halts flavo
 ## Links
 
 - [[Lacto-Fermentation]] — salt-and-time vegetable method
+- [[Hot Sauce Formulation]] — bottled fermented sauce formulation
 - [[Koji and Aspergillus]] — mold-based enzymatic fermentation
 - [[Fermented Hot Sauce Line]] — project bridging fermentation and product
 - [[Salt Acid Fat Heat]] — salt's chemical role

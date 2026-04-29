@@ -22,6 +22,7 @@ Hand-curated map of the Calle Sur vault. Start here to find the most important n
 **Foundational:**
 - [[Fermentation Fundamentals]] — Core fermentation science, applications.
 - [[Lacto-Fermentation]] — Lactobacillus, salt ratios, timelines.
+- [[Hot Sauce Formulation]] — Pepper sauce salt, acidity, texture, and packaging.
 - [[Koji and Aspergillus]] — Koji production, rice koji, applications.
 - [[Maillard Reaction]] — Browning science, temperature, depth.
 - [[Sauce Mothers]] — Mother sauces, Calle Sur variants, emulsions.
@@ -51,6 +52,7 @@ Hand-curated map of the Calle Sur vault. Start here to find the most important n
 - [[Equipment List]] — Kitchen equipment inventory, maintenance.
 - [[Layout Sketches]] — Kitchen layout, flow diagrams.
 - [[Fermented Hot Sauce Line]] — Hot sauce production, bottling, distribution.
+- [[Launch Readiness]] — Active launch blockers and next actions.
 - [[Recipe v3]] — Current hot sauce recipe, iterations.
 - [[Co-Packer Research]] — Co-packer evaluation, suppliers.
 - [[Foraging Program]] — Foraged ingredients, suppliers, seasonality.
@@ -85,6 +87,7 @@ Hand-curated map of the Calle Sur vault. Start here to find the most important n
 ## Meta
 
 - [[schema]] — Vault structure, frontmatter, tags.
+- [[retrieval-calibration]] — Search dogfood queries and scope-shout probes.
 - [[last-garden-pass]] — Most recent maintenance pass, notes, links fixed.
 - [[lint-report]] — Lint scan results, orphans, violations.
 

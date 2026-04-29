@@ -4,7 +4,7 @@ Material for hands-on dogfooding, demos, and reproducing the investigations in `
 
 | Path                  | What it is |
 |-----------------------|------------|
-| `calle-sur-vault/`    | A 73-note synthetic Obsidian vault built around a fictional chef-restaurateur. Karpathy LLM-Wiki layout (`wiki/`, `projects/`, `artifacts/`, `daily/`, `raw/`, `private/`, `archive/`, `_meta/`). |
+| `calle-sur-vault/`    | A 78-note synthetic Obsidian vault built around a fictional chef-restaurateur. Karpathy LLM-Wiki layout (`wiki/`, `projects/`, `artifacts/`, `daily/`, `raw/`, `private/`, `archive/`, `_meta/`). |
 | `config.toml`         | Talon config with the Karpathy scopes preset wired up, pointing at `calle-sur-vault/` out of the box. Copy to `~/.config/talon/config.toml` (or use directly with `talon -c examples/config.toml ...`). |
 | `recall-output.xml`   | Sample `talon recall --format prompt-xml` output for reference. |
 
@@ -22,14 +22,14 @@ Karpathy's LLM Wiki layout, mapped to Talon's `ScopePriority` tiers:
 
 | Directory     | Files | Role                                  | Talon scope priority | `default` |
 |---------------|------:|----------------------------------------|----------------------|-----------|
-| `wiki/`       |    15 | Compiled, agent-curated knowledge      | `boosted` (3.0×)     | `true`    |
-| `projects/`   |    13 | Active workspaces                      | `elevated` (1.5×)    | `true`    |
+| `wiki/`       |    18 | Compiled, agent-curated knowledge      | `boosted` (3.0×)     | `true`    |
+| `projects/`   |    14 | Active workspaces                      | `elevated` (1.5×)    | `true`    |
 | `artifacts/`  |     4 | Agent outputs for the user             | `normal` (1.0×)      | `true`    |
 | `daily/`      |    20 | Ephemeral daily notes                  | `muted` (0.3×)       | `false`   |
 | `raw/`        |    10 | Untreated source material              | `muted` (0.3×)       | `false`   |
 | `archive/`    |     3 | Completed/closed projects              | `buried` (0.05×)     | `false`   |
 | `private/`    |     4 | Sensitive (lease, payroll, financial)  | `buried` (0.05×)     | `false`   |
-| `_meta/`      |     4 | Vault infrastructure                   | `buried` (0.05×)     | `false`   |
+| `_meta/`      |     5 | Vault infrastructure                   | `buried` (0.05×)     | `false`   |
 
 `_meta/schema.md` documents the vault's own conventions.
 
@@ -51,6 +51,7 @@ Five Haiku subagents in parallel, each owning a directory or pair of directories
 # Use the example config directly via -c.
 talon -c examples/config.toml sync
 talon -c examples/config.toml --agent search "fermented hot sauce"
+talon -c examples/config.toml --agent search "hot sauce launch readiness"
 talon -c examples/config.toml --agent recall "what's the lamb dish for spring"
 talon -c examples/config.toml --agent lint
 talon -c examples/config.toml --agent related "wiki/Lacto-Fermentation.md"
@@ -58,7 +59,7 @@ talon -c examples/config.toml --agent related "wiki/Lacto-Fermentation.md"
 
 Or copy `config.toml` to `~/.config/talon/config.toml` and drop the `-c` flag.
 
-Indexing takes ~37 seconds end-to-end on the configured TEI sidecar (73 files, 183 chunks, 1024-dim embeddings).
+Indexing takes ~37 seconds end-to-end on the configured TEI sidecar (78 files, 1024-dim embeddings).
 
 The reports in `docs/2026-04-27-*.md` were generated against a copy of this vault at `/tmp/talon-dogfood-vault/`. The findings reproduce against `examples/calle-sur-vault/` since it's the same vault.
 

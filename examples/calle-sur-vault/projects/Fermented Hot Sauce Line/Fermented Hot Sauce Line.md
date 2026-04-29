@@ -8,6 +8,8 @@ last_updated: 2026-04-24
 tags: [project, ferment, retail, hot-sauce]
 related:
   - "[[Lacto-Fermentation]]"
+  - "[[Hot Sauce Formulation]]"
+  - "[[Launch Readiness]]"
   - "[[Koji and Aspergillus]]"
   - "[[Recipe v3]]"
   - "[[Co-Packer Research]]"
@@ -120,6 +122,8 @@ See [[Email - Distributor Quote Hot Sauce Co-Pack]] for co-packer's regulatory d
 
 ## See Also
 
+- [[Launch Readiness]] — active launch checklist and blockers
+- [[Hot Sauce Formulation]] — reusable formulation knowledge
 - [[Recipe v3]] — final recipe spec & iteration history
 - [[Co-Packer Research]] — vendor evaluation
 - [[Lacto-Fermentation]] — fermentation science
