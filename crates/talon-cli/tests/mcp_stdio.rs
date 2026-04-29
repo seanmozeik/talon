@@ -6,8 +6,12 @@ use serde_json::Value;
 
 #[test]
 fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
+    let config = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/config.toml");
     let mut child = Command::new(env!("CARGO_BIN_EXE_talon"))
-        .arg("mcp")
+        .args(["--config", config, "mcp"])
+        // TALON_CONFIG_FILE lets the stateless action-union dispatch (status, etc.)
+        // find the same config without requiring full state threading.
+        .env("TALON_CONFIG_FILE", config)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
