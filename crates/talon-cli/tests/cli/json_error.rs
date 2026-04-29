@@ -22,12 +22,12 @@ fn json_error_envelope_lint_config_missing() {
 }
 
 #[test]
-fn json_error_envelope_search_config_missing() {
+fn json_error_envelope_read_config_missing() {
+    // `search` silently falls back when config is absent; `read` propagates the error.
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
         .args([
-            "search",
-            "hello",
-            "--fast",
+            "read",
+            "some/note.md",
             "--json",
             "--config",
             "/nonexistent/path/config.toml",
@@ -36,7 +36,7 @@ fn json_error_envelope_search_config_missing() {
         .unwrap_or_else(|e| panic!("spawn talon: {e}"));
     assert!(!out.status.success(), "should exit nonzero");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let v = assert_error_envelope(&stdout, "search");
+    let v = assert_error_envelope(&stdout, "read");
     assert!(
         v["error"]["message"].is_string(),
         "error.message should be a string"
@@ -45,11 +45,11 @@ fn json_error_envelope_search_config_missing() {
 
 #[test]
 fn agent_error_output_wins_over_json_flag() {
+    // `read` propagates config-missing errors; `search` does not.
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
         .args([
-            "search",
-            "hello",
-            "--fast",
+            "read",
+            "some/note.md",
             "--agent",
             "--json",
             "--config",
