@@ -76,6 +76,15 @@ pub struct SearchResult {
     /// File modification time as RFC 3339 / ISO 8601 (`"2026-04-25T10:23:00Z"`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mtime: Option<String>,
+    /// True when this result looks like an index/overview page.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub is_index: bool,
+    /// Source paths listed in this note's `sources:` frontmatter.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub citations: Vec<String>,
+    /// Notes that link to this result.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub backlinks: Vec<String>,
     /// Per-result match anchors (populated when `SearchInput.anchors == true`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub preview_anchors: Option<Vec<MatchAnchor>>,

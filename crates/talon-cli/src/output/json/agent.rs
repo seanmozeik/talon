@@ -53,8 +53,6 @@ impl<'a> From<&'a talon_core::ErrorEnvelope> for AgentError<'a> {
     }
 }
 
-// ── Search ────────────────────────────────────────────────────────────────────
-
 #[derive(Debug, Serialize)]
 struct AgentSearchResponse<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -77,6 +75,12 @@ struct AgentSearchHit<'a> {
     title: &'a str,
     snippet: &'a str,
     score: f64,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    is_index: bool,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    citations: Vec<&'a str>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    backlinks: Vec<&'a str>,
 }
 
 impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {
@@ -86,6 +90,9 @@ impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {
             title: &result.title,
             snippet: &result.snippet,
             score: round_score(result.score),
+            is_index: result.is_index,
+            citations: result.citations.iter().map(String::as_str).collect(),
+            backlinks: result.backlinks.iter().map(String::as_str).collect(),
         }
     }
 }
@@ -93,8 +100,6 @@ impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {
 fn round_score(score: f64) -> f64 {
     (score * 100.0).round() / 100.0
 }
-
-// ── Sync ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -134,8 +139,6 @@ impl<'a> From<&'a SyncResponse> for AgentSync<'a> {
 const fn non_zero(value: u32) -> Option<u32> {
     if value == 0 { None } else { Some(value) }
 }
-
-// ── Status ────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]

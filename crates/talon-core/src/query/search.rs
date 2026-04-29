@@ -18,13 +18,16 @@ use crate::search::anchor::{build_anchors, maybe_expand_bm25_snippet, resolve_sn
 use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
 use crate::search::{MatchKind, SearchInput, SearchMode, SearchResponse, SearchResult};
 
+use super::search_affordances::{
+    apply_index_page_preference, is_index_page, query_backlinks, query_citations,
+};
 use super::search_hybrid::{empty_hybrid_response, infer_hybrid_match_kind};
 use super::search_retrieval::{RetrievalOutcome, retrieve_raw_results};
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::types::RawSearchResult;
 
-struct ScoredRawSearchResult {
-    raw: RawSearchResult,
+pub(super) struct ScoredRawSearchResult {
+    pub(super) raw: RawSearchResult,
     raw_score: f64,
 }
 
@@ -124,6 +127,7 @@ fn run_search_inner(
 
     // Step 2: scope priority multiplication (score modifier, not filter).
     let mut scored = apply_scope_priority(raw_results, config, &input.scope);
+    apply_index_page_preference(&mut scored);
     scored.sort_by(|a, b| b.raw.score.total_cmp(&a.raw.score));
 
     // Step 6: total is post-filter, pre-truncate.
@@ -231,6 +235,9 @@ fn raw_to_search_result(
         .and_then(|cfg| cfg.resolve_scope_name(std::path::Path::new(&raw.path)))
         .map(str::to_string);
     let mtime = super::mtime::local_mtime_for_path(conn, &raw.path);
+    let note_id = get_note_id_by_path(conn, &raw.path);
+    let citations = note_id.map_or_else(Vec::new, |id| query_citations(conn, id));
+    let backlinks = query_backlinks(conn, &raw.path);
 
     Some(SearchResult {
         vault_path: VaultPath::parse(&raw.path).ok()?,
@@ -241,6 +248,9 @@ fn raw_to_search_result(
         match_kind,
         scope,
         mtime,
+        is_index: is_index_page(&raw.path),
+        citations,
+        backlinks,
         preview_anchors,
     })
 }
@@ -290,6 +300,9 @@ fn get_note_id_by_path(conn: &Connection, vault_path: &str) -> Option<i64> {
     .ok()
 }
 
+#[cfg(test)]
+#[path = "search_affordances_tests.rs"]
+mod affordances_tests;
 #[cfg(test)]
 #[path = "search_tests.rs"]
 mod tests;
