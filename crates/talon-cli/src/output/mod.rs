@@ -1,5 +1,6 @@
 //! Stdout emission for CLI responses.
 
+mod ask;
 mod human;
 pub(crate) mod json;
 mod obsidian;
@@ -12,6 +13,7 @@ use eyre::Result;
 use std::io::{self, Write};
 use talon_core::TalonEnvelope;
 
+pub use ask::format_ask_human;
 pub use human::{format_lint_human, format_status_human, format_sync_human};
 pub use recall::{format_recall_human, format_recall_prompt_xml};
 pub use search::format_search_human;
@@ -34,6 +36,8 @@ pub struct RenderOptions {
     pub width: u16,
     /// Whether ANSI color codes should be emitted.
     pub colors: bool,
+    /// Show compact one-liner cards (title + path + score only, no snippet).
+    pub compact: bool,
 }
 
 impl RenderOptions {
@@ -45,6 +49,7 @@ impl RenderOptions {
         Self {
             width,
             colors: crate::platform::stdout_is_tty() && crate::platform::user_accepts_ansi_color(),
+            compact: false,
         }
     }
 }

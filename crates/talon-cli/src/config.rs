@@ -88,6 +88,12 @@ model = "gemma-smol"
 # Optional total completion cap. Leave unset for thinking models.
 # max_tokens = 768
 
+[ask]
+# Optional larger model for `talon ask`. Reuses the [expansion] endpoint.
+# model = "qwen3-32b"
+# planning_reasoning_effort = "none"
+# synthesis_reasoning_effort = "medium"
+
 # ── Scopes ─────────────────────────────────────────────────────────────────
 # Named vault partitions with priority-based ranking.
 # See docs/CONFIG.md for full reference.
@@ -223,6 +229,7 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
             model: "gemma-smol".to_string(),
             max_tokens: None,
         },
+        ask: talon_core::AskConfig::default(),
         scopes: default_karpathy_scopes(),
         search: talon_core::SearchConfig::default(),
         lint: talon_core::LintConfig::default(),

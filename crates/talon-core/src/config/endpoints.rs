@@ -1,6 +1,10 @@
 //! TEI/OpenAI-compatible endpoint configuration types.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
+
+use crate::llm::ReasoningEffort;
 
 /// TEI-compatible inference endpoint configuration.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,4 +100,54 @@ pub struct ExpansionConfig {
     /// servers count hidden reasoning tokens against this budget.
     #[serde(default)]
     pub max_tokens: Option<u32>,
+}
+
+/// Ask-command chat model override.
+///
+/// Transport settings are shared with `[expansion]`; this table only selects
+/// the model and reasoning behavior used by `talon ask`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AskConfig {
+    /// Ask planner/synthesis model name. Falls back to `[expansion].model`.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Provider-specific Qwen-style thinking toggle for query planning.
+    ///
+    /// When set, Talon sends `chat_template_kwargs.enable_thinking` in the
+    /// OpenAI-compatible planning request body. Servers that do not support
+    /// this field may ignore it.
+    #[serde(default)]
+    pub planning_enable_thinking: Option<bool>,
+    /// Provider-specific Qwen-style thinking toggle for answer synthesis.
+    ///
+    /// When set, Talon sends `chat_template_kwargs.enable_thinking` in the
+    /// OpenAI-compatible synthesis request body. Leave unset to use the
+    /// provider default.
+    #[serde(default)]
+    pub synthesis_enable_thinking: Option<bool>,
+    /// OpenAI-compatible reasoning effort for query planning.
+    ///
+    /// Serialized as `reasoning_effort` on chat-completions requests. The
+    /// value `"off"` is accepted as a config alias for `"none"`.
+    #[serde(default)]
+    pub planning_reasoning_effort: Option<ReasoningEffort>,
+    /// OpenAI-compatible reasoning effort for answer synthesis.
+    ///
+    /// Serialized as `reasoning_effort` on chat-completions requests. The
+    /// value `"off"` is accepted as a config alias for `"none"`.
+    #[serde(default)]
+    pub synthesis_reasoning_effort: Option<ReasoningEffort>,
+    /// Extra provider-specific `chat_template_kwargs` for query planning.
+    ///
+    /// These are merged with `planning_enable_thinking`; explicit keys in this
+    /// map win over the shorthand boolean.
+    #[serde(default)]
+    pub planning_chat_template_kwargs: Option<BTreeMap<String, serde_json::Value>>,
+    /// Extra provider-specific `chat_template_kwargs` for answer synthesis.
+    ///
+    /// These are merged with `synthesis_enable_thinking`; explicit keys in this
+    /// map win over the shorthand boolean.
+    #[serde(default)]
+    pub synthesis_chat_template_kwargs: Option<BTreeMap<String, serde_json::Value>>,
 }

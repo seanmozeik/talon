@@ -1,5 +1,8 @@
 //! Command dispatch for the Talon CLI scaffold.
 
+mod ask;
+mod ask_client;
+mod ask_sources;
 mod changes;
 mod init;
 mod lint;
@@ -67,6 +70,7 @@ pub async fn run(cli: &Cli) -> Result<()> {
         }
         Commands::Init(args) => init::emit(args),
         Commands::Search(args) => search::emit(args, cli).await,
+        Commands::Ask(args) => ask::emit(args, cli).await,
         Commands::Read(args) => read::emit(args, cli).await,
         Commands::Sync(args) => sync::emit(args, cli).await,
         Commands::Related(args) => related::emit(args, cli).await,

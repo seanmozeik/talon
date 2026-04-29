@@ -51,6 +51,12 @@ model = "bonsai"
 # Optional total completion cap. Leave unset for thinking models.
 # max_tokens = 768
 
+[ask]
+# Optional larger model for `talon ask`. Reuses the [expansion] endpoint.
+model = "qwen-smol"
+planning_reasoning_effort = "none"
+synthesis_reasoning_effort = "medium"
+
 # ── Scopes ─────────────────────────────────────────────────────────────────
 # Karpathy LLM-Wiki preset. Rationale per directory:
 #   wiki/      compiled, agent-curated knowledge — top signal

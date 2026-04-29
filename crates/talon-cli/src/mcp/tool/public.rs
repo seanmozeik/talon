@@ -42,7 +42,7 @@ pub(super) fn dispatch_named(
 }
 
 fn dispatch_search(arguments: Value) -> Result<TalonEnvelope, ToolError> {
-    // Map named tool fields to action-union shape
+    // Reuse the existing typed dispatcher behind the named MCP surface.
     let mut args = arguments;
     inject_action(&mut args, "search");
     dispatch_input(agent_contract::SEARCH.name, args)

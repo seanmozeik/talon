@@ -43,6 +43,7 @@ fn config_with(scopes: Vec<(&str, Scope)>) -> TalonConfig {
             model: "expand".to_string(),
             max_tokens: Some(256),
         },
+        ask: crate::config::AskConfig::default(),
         scopes: map,
         search: SearchConfig::default(),
         lint: crate::config::LintConfig::default(),

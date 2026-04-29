@@ -6,6 +6,7 @@ use talon_core::{
     SyncResponse, TalonEnvelope, TalonResponseData, TombstoneEntry,
 };
 
+mod ask;
 mod lint;
 mod read;
 mod recall;
@@ -17,6 +18,9 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
     match envelope.data.as_ref() {
         Some(TalonResponseData::Search(search)) => {
             super::emit_compact(&search::AgentSearchResponse::from(search))
+        }
+        Some(TalonResponseData::Ask(resp)) => {
+            super::emit_compact(&ask::AgentAskResponse::from(resp))
         }
         Some(TalonResponseData::Sync(sync)) => super::emit_compact(&AgentSync::from(sync)),
         Some(TalonResponseData::Status(status)) => super::emit_compact(&AgentStatus::from(status)),
@@ -48,6 +52,7 @@ pub fn to_agent_value(envelope: &TalonEnvelope) -> Option<serde_json::Value> {
         TalonResponseData::Search(s) => {
             serde_json::to_value(search::AgentSearchResponse::from(s)).ok()
         }
+        TalonResponseData::Ask(a) => serde_json::to_value(ask::AgentAskResponse::from(a)).ok(),
         TalonResponseData::Read(r) => serde_json::to_value(read::AgentReadResponse::from(r)).ok(),
         TalonResponseData::Related(r) => serde_json::to_value(AgentRelatedResponse::from(r)).ok(),
         TalonResponseData::Recall(r) => serde_json::to_value(recall::AgentRecall::from(r)).ok(),

@@ -9,8 +9,7 @@ fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
     let config = concat!(env!("CARGO_MANIFEST_DIR"), "/../../examples/config.toml");
     let mut child = Command::new(env!("CARGO_BIN_EXE_talon"))
         .args(["--config", config, "mcp"])
-        // TALON_CONFIG_FILE lets the stateless action-union dispatch (status, etc.)
-        // find the same config without requiring full state threading.
+        // TALON_CONFIG_FILE lets MCP tool handlers resolve the same config.
         .env("TALON_CONFIG_FILE", config)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -51,38 +50,27 @@ fn mcp_stdio_process_round_trips_lifecycle_and_tool_call() -> Result<()> {
     assert_eq!(responses[0]["id"], 1);
     assert_eq!(responses[0]["result"]["serverInfo"]["name"], "talon");
     assert_eq!(responses[1]["id"], 2);
-    assert_eq!(responses[1]["result"]["tools"][0]["name"], "talon");
-    let actions: Vec<&str> =
-        responses[1]["result"]["tools"][0]["inputSchema"]["properties"]["action"]["enum"]
-            .as_array()
-            .unwrap_or_else(|| panic!("action enum should be an array"))
-            .iter()
-            .map(|v| v.as_str().unwrap_or(""))
-            .collect();
-    assert_eq!(
-        actions.len(),
-        9,
-        "tools/list should advertise exactly 9 actions"
-    );
-    // Decision 10: embed is not a public MCP action; it runs inside talon sync.
-    assert!(
-        !actions.contains(&"embed"),
-        "tools/list must not advertise an embed action (Decision 10)"
-    );
-    for expected in &[
-        "search", "read", "sync", "status", "related", "meta", "changes", "lint", "recall",
-    ] {
+    let tool_names: Vec<&str> = responses[1]["result"]["tools"]
+        .as_array()
+        .unwrap_or_else(|| panic!("tools should be an array"))
+        .iter()
+        .map(|tool| tool["name"].as_str().unwrap_or(""))
+        .collect();
+    for expected in &["talon_search", "talon_read", "talon_related"] {
         assert!(
-            actions.contains(expected),
-            "tools/list missing expected action: {expected}"
+            tool_names.contains(expected),
+            "tools/list missing expected tool: {expected}"
         );
     }
+    assert!(!tool_names.contains(&"talon"));
+    assert!(!tool_names.contains(&"talon_ask"));
     assert_eq!(responses[2]["id"], 3);
     assert_eq!(
         responses[2]["result"]["structuredContent"]["action"],
-        "status"
+        "talon"
     );
-    assert_eq!(responses[2]["result"]["structuredContent"]["ok"], true);
+    assert_eq!(responses[2]["result"]["structuredContent"]["ok"], false);
+    assert_eq!(responses[2]["result"]["isError"], true);
     assert_eq!(responses[3]["id"], 4);
     assert_eq!(responses[3]["result"], Value::Null);
     Ok(())

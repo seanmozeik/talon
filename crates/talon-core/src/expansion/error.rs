@@ -2,6 +2,8 @@
 
 use thiserror::Error;
 
+use crate::llm::ChatError;
+
 /// Errors returned by [`ExpansionClient`].
 ///
 /// JSON decode failures are treated as graceful degradation (empty result)
@@ -29,4 +31,17 @@ pub enum ExpansionError {
         /// Redacted detail (URL or response body snippet).
         message: String,
     },
+}
+
+impl From<ChatError> for ExpansionError {
+    fn from(value: ChatError) -> Self {
+        match value {
+            ChatError::Build { message } => Self::Build { message },
+            ChatError::Http { status, message } => Self::Http { status, message },
+            ChatError::MalformedResponse => Self::Http {
+                status: None,
+                message: "malformed chat response".to_string(),
+            },
+        }
+    }
 }

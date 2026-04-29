@@ -3,6 +3,7 @@
 //! The scaffold keeps parsing, configuration, constants, and response contracts
 //! in the library so the CLI remains a thin process boundary.
 
+pub mod ask;
 pub mod cache;
 pub mod config;
 pub mod constants;
@@ -14,6 +15,7 @@ pub mod indexer;
 pub mod indexing;
 pub mod inference;
 pub mod links;
+pub mod llm;
 mod numeric;
 pub mod query;
 pub mod search;
@@ -22,10 +24,11 @@ pub mod sync;
 pub mod text;
 pub mod vec_ext;
 
+pub use ask::{AskClient, AskError, AskPlan, AskSynthesis};
 pub use config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
-    RerankRequestShape, RerankScoreScale, Scope, ScopeFilter, ScopeGlob, ScopePriority,
-    ScopeResolution, ScopesConfig, SearchConfig, TalonConfig,
+    AskConfig, ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig,
+    RerankConfig, RerankRequestShape, RerankScoreScale, Scope, ScopeFilter, ScopeGlob,
+    ScopePriority, ScopeResolution, ScopesConfig, SearchConfig, TalonConfig,
 };
 pub use contracts::{
     ContainerPath, ErrorEnvelope, PositiveCount, ResponseMeta, TalonEnvelope, TalonInput,
@@ -53,7 +56,9 @@ pub use links::{
     LinkEdge, LinkGraphStats, NoteReference, ResolvedLink, build_link_edges, compute_backlinks,
     compute_link_stats, find_unresolved_links, resolve_wiki_link_target, resolve_wiki_links,
 };
+pub use llm::{ChatClient, ChatError, ChatMessage, ReasoningEffort};
 pub use query::{
+    AskDiagnostics, AskLlmStageDiagnostics, AskResponse, AskSearchDiagnostics, AskSource,
     ChangeEntry, ChangesInput, ChangesResponse, LinkedNote, MetaEntry, MetaInput, MetaResponse,
     NoteExcerpt, ReadInput, ReadResponse, ReadResult, ReadSection, RecallFormat, RecallInput,
     RecallResponse, RelatedInput, RelatedResponse, RelatedResult, RelationKind, TombstoneEntry,

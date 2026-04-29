@@ -1,6 +1,28 @@
 use std::fmt::Write as _;
 use std::path::Path;
 
+/// Wraps `label` in an OSC 8 hyperlink that opens the note in Obsidian, or
+/// returns `label` unchanged when colors are disabled or no vault path is known.
+pub(super) fn title_ref(
+    vault: Option<&str>,
+    vault_path: &str,
+    label: &str,
+    clickable: bool,
+) -> String {
+    if !clickable {
+        return label.to_string();
+    }
+    let Some(vault) = vault else {
+        return label.to_string();
+    };
+    let absolute = Path::new(vault).join(vault_path);
+    let uri = format!(
+        "obsidian://open?path={}",
+        percent_encode(&absolute.display().to_string())
+    );
+    format!("\u{1b}]8;;{uri}\u{1b}\\{label}\u{1b}]8;;\u{1b}\\")
+}
+
 pub(super) fn format_ref(
     vault: Option<&str>,
     vault_path: &str,

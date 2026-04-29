@@ -1,6 +1,6 @@
 ---
 name: talon
-description: Agent-facing contract for Obsidian vault search, read, sync, recall, related, meta, changes, lint, and status.
+description: Agent-facing contract for Obsidian vault search, ask, read, sync, recall, related, meta, changes, lint, and status.
 ---
 
 # Talon
@@ -8,6 +8,8 @@ description: Agent-facing contract for Obsidian vault search, read, sync, recall
 Use Talon to search and inspect an indexed Obsidian vault. Talon is optimized for agents: start with natural-language search, inspect compact navigation metadata, follow the graph when useful, then read exact notes or sections.
 
 > **Claude Code**: vault recall is injected automatically before each turn — no recall tool call needed. Use the MCP tools below for explicit queries only.
+>
+> **MCP** exposes `talon_search`, `talon_read`, and `talon_related`. It intentionally does not expose `talon_ask`; agents should use search/read and synthesize with their own model. If you truly need Talon's built-in synthesis, call the CLI.
 
 Always pass `--agent` on every command. The examples below are the pattern to follow.
 
@@ -40,6 +42,16 @@ Do not overuse tag and heading syntax. Add it only when the user gives an explic
 talon --agent search "<natural language query> #<tag>"
 talon --agent search "<natural language query> heading:<section>"
 ```
+
+## Ask (CLI Fallback)
+
+Use `ask` sparingly. It is mainly a human CLI convenience for quick vault-grounded answers:
+
+```bash
+talon --agent ask "<broad vault question>"
+```
+
+For agents, prefer `search` plus `read`: you can plan searches and synthesize better with your own model. `ask` is useful only when you need Talon to do the synthesis in one CLI call.
 
 ## Reading
 
@@ -127,3 +139,5 @@ Search hits include `path`, `title`, `snippet`, and `score`. They may also inclu
 Read results include `path`, `title`, `content`, `links`, `backlinks`, `tags`, and `aliases`. Heading reads also include `section`.
 
 Related results include `path`, `title`, `relation`, and `linkText`.
+
+Ask results include `answer`, `queries`, and `sources`. Sources use plain vault paths; they are not Obsidian wikilinks.

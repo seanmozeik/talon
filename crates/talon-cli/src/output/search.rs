@@ -1,12 +1,14 @@
 use super::RenderOptions;
-use super::obsidian::format_ref;
-use super::style::{cs, wrap_words};
+use super::obsidian::title_ref;
+use super::style::{cs, wrap_prefixed_words, wrap_words};
 use anstyle::{AnsiColor, Effects, Style};
 use eyre::Result;
 use std::io::Write;
 use talon_core::{SearchDiagnostics, SearchResult};
 
-/// Formats search results as compact cards for human reading.
+/// Formats search results as cards for human reading.
+///
+/// `warnings` are printed as dim notices at the top of the output (e.g. "sync skipped").
 ///
 /// # Errors
 ///
@@ -15,6 +17,7 @@ pub fn format_search_human(
     w: &mut impl Write,
     resp: &talon_core::SearchResponse,
     opts: RenderOptions,
+    warnings: &[String],
 ) -> Result<()> {
     let heading = cs(
         opts.colors,
@@ -22,6 +25,10 @@ pub fn format_search_human(
     );
     let bold = cs(opts.colors, Style::new().effects(Effects::BOLD));
     let dim = cs(opts.colors, Style::new().effects(Effects::DIMMED));
+
+    for msg in warnings {
+        writeln!(w, "{dim}~ {msg}{dim:#}")?;
+    }
 
     let q = resp.query.as_deref().unwrap_or("(empty)");
     let mode_str = format!("{:?}", resp.mode).to_lowercase();
@@ -44,16 +51,19 @@ pub fn format_search_human(
         resp.total
     )?;
     if !resp.expanded_queries.is_empty() {
-        writeln!(
-            w,
-            "  {dim}expanded: {}{dim:#}",
-            resp.expanded_queries.join("  ·  ")
-        )?;
+        let width = (opts.width as usize).saturating_sub(2);
+        for line in wrap_prefixed_words("expanded: ", &resp.expanded_queries.join("  ·  "), width)
+        {
+            writeln!(w, "  {dim}{line}{dim:#}")?;
+        }
     }
     if let Some(diag) = resp.diagnostics.as_ref()
         && let Some(line) = format_diagnostics_line(diag)
     {
-        writeln!(w, "  {dim}{line}{dim:#}")?;
+        let width = (opts.width as usize).saturating_sub(2);
+        for line in wrap_words(&line, width) {
+            writeln!(w, "  {dim}{line}{dim:#}")?;
+        }
     }
 
     if resp.results.is_empty() {
@@ -108,7 +118,20 @@ fn format_search_card(
     dim: &Style,
 ) -> Result<()> {
     let path = r.vault_path.as_str();
-    let path_ref = format_ref(vault, path, Some(&r.title), None, opts.colors);
+    let title_link = title_ref(vault, path, &r.title, opts.colors);
+
+    writeln!(w, " {bold}{rank:>2}{bold:#}  {bold}{title_link}{bold:#}")?;
+
+    if opts.compact {
+        let scope_part = r
+            .scope
+            .as_deref()
+            .map_or_else(String::new, |s| format!("  ·  {s}"));
+        writeln!(w, "     {dim}{path}{scope_part}  ·  {:.3}{dim:#}", r.score)?;
+        writeln!(w)?;
+        return Ok(());
+    }
+
     let kind_str = match r.match_kind {
         talon_core::MatchKind::Fulltext => "fulltext",
         talon_core::MatchKind::Semantic => "semantic",
@@ -116,17 +139,17 @@ fn format_search_card(
         talon_core::MatchKind::Alias => "alias",
         talon_core::MatchKind::Related => "related",
     };
-
     let scope_suffix = r
         .scope
         .as_deref()
         .map_or_else(String::new, |s| format!("  ·  {s}"));
+
+    writeln!(w, "     {dim}{path}{dim:#}")?;
     writeln!(
         w,
-        " {bold}{rank:>2}{bold:#}  {bold}{path_ref}{bold:#}{dim}{scope_suffix}{dim:#}"
+        "     {dim}{kind_str}  ·  {:.3}{scope_suffix}{dim:#}",
+        r.score
     )?;
-
-    writeln!(w, "     {dim}{kind_str}  ·  {:.3}{dim:#}", r.score)?;
 
     let indent = "     ";
     let available = (opts.width as usize).saturating_sub(indent.len());

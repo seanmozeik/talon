@@ -45,6 +45,7 @@ pub fn should_clear_fancy_prelude(cli: &Cli) -> bool {
         cli.command.as_ref(),
         Some(
             Commands::Search(_)
+                | Commands::Ask(_)
                 | Commands::Read(_)
                 | Commands::Sync(_)
                 | Commands::Related(_)

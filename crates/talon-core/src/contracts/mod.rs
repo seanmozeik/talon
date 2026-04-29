@@ -182,6 +182,8 @@ use crate::search::SearchResponse;
 pub enum TalonResponseData {
     /// Search response.
     Search(SearchResponse),
+    /// Vault-grounded natural-language answer response.
+    Ask(crate::query::AskResponse),
     /// Read response.
     Read(ReadResponse),
     /// Sync response.

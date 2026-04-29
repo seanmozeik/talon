@@ -14,7 +14,7 @@ use defaults::{
 
 pub use chunker::ChunkerConfig;
 pub use endpoints::{
-    ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, RerankRequestShape,
+    AskConfig, ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, RerankRequestShape,
     RerankScoreScale,
 };
 pub use scope_filter::ScopeFilter;
@@ -175,6 +175,9 @@ pub struct TalonConfig {
     pub inference: InferenceConfig,
     /// Query expansion endpoint configuration.
     pub expansion: ExpansionConfig,
+    /// Ask-command model override.
+    #[serde(default)]
+    pub ask: AskConfig,
     /// Named scopes for vault partitioning and ranking.
     #[serde(default)]
     pub scopes: ScopesConfig,

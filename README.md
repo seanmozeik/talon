@@ -1,24 +1,22 @@
 # Talon
 
-Talon is a standalone Rust binary for Obsidian vault search, read, sync, related-note traversal, status, and MCP-over-stdio integration.
-
-This repository is currently scaffolded from `2026-04-25-talon-extraction-design.md`. The major architecture questions in that design are resolved; implementation is intentionally skeletal while the Rust port is built out.
+Talon is a standalone Rust binary for Obsidian vault search, grounded answers, read, sync, related-note traversal, status, recall, and MCP-over-stdio integration.
 
 ## Layout
 
-- `crates/talon-core`: typed contracts, config, constants, and future core search/indexing modules.
-- `crates/talon-cli`: `bpaf` CLI, `--agent`, `--skill`, banner/spinner scaffolding, `--mcp` entry point, config loading, and process wiring.
-- `skill/SKILL.md`: agent-facing contract copied from the reference implementation.
+- `crates/talon-core`: typed contracts, config, search/indexing/query logic, shared LLM clients, and output types.
+- `crates/talon-cli`: `clap` CLI, `--agent`, `--skill`, human output, `--mcp` entry point, config loading, and process wiring.
+- `skill/SKILL.md`: agent-facing contract printed by `talon --skill`.
 - `ts/`: thin npm wrapper skeleton for binary resolution and MCP child specs.
 
 ## CLI UX Direction
 
-Human output is a product surface. The scaffold uses `anstyle`/`anstream` for terminal styling, `rattles` for indeterminate spinners, and reserves `indicatif` for future sync/embed progress bars. Tables/result cards are intentionally deferred until real search output lands.
+Human output is a product surface. Talon uses `anstyle`/`anstream` for terminal styling, `rattles` for indeterminate spinners, and compact cards for search/read/ask results. Agent output is separate: `--agent` emits compact JSON with plain vault paths and no envelope metadata.
 
 ## Development
 
 ```bash
-just verify
+just check
 cargo run -p talon-cli -- --help
 cargo run -p talon-cli -- init
 cargo run -p talon-cli -- --skill
@@ -27,6 +25,28 @@ cargo run -p talon-cli -- --skill
 ## Standalone Embedder
 
 Set `inference.base_url` in `~/.config/talon/config.toml` to a local HTTP TEI-compatible endpoint. Good defaults are Hugging Face `text-embeddings-inference`, Infinity, or ultraclaw's local sidecar if you are running one. Talon only expects `/embed`, `/embed-chunked`, and `/rerank` endpoints with the shapes described in the design doc.
+
+## Ask
+
+`talon ask` is a human-facing way to get a compact answer grounded in the vault:
+
+```bash
+talon ask "what do my notes say about cooking lamb"
+talon --fast ask "summarize my notes on knife skills"
+```
+
+Ask uses the configured ask model to plan search queries, runs Talon's normal search stack, expands the matched notes into the most relevant source chunks, and asks the model to synthesize an answer. Unlike `search`, ask may feed multiple snippets from the same document to the synthesis model when several chunks are relevant.
+
+Configure the ask model under `[ask]`; it reuses the OpenAI-compatible `[expansion]` endpoint:
+
+```toml
+[ask]
+model = "qwen-smol"
+planning_reasoning_effort = "none"
+synthesis_reasoning_effort = "medium"
+```
+
+Non-fast ask does not cap output tokens. `--fast` forces both ask stages to `reasoning_effort = "none"`, sends `chat_template_kwargs.enable_thinking = false`, caps completion output at 2048 tokens, and runs the retrieval stage in fast lexical mode.
 
 ## Scopes
 
@@ -111,4 +131,5 @@ The text-splitter/tokenx chunker strips frontmatter from BM25 and embedding text
 
 ## Integrations
 
+- `talon mcp` exposes public MCP tools for agents: `talon_search`, `talon_read`, and `talon_related`. It intentionally does **not** expose `talon_ask`; agents are better served by searching/reading the vault and synthesizing with their own model.
 - [`integrations/hermes-talon-recall/`](integrations/hermes-talon-recall/README.md) — Hermes Agent Memory Provider plugin that wraps `talon recall --format prompt-xml` to inject vault-native context on every agent turn. Recall-only; agent host handles vault writes.

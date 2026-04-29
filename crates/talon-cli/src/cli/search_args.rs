@@ -42,6 +42,13 @@ pub struct SearchArgs {
     /// Search query (space-separated words).
     pub query: Vec<String>,
 
+    #[command(flatten)]
+    pub shared: SharedSearchArgs,
+}
+
+/// Search-related flags shared by `search` and `ask`.
+#[derive(Debug, Clone, Args)]
+pub struct SharedSearchArgs {
     #[arg(long, value_enum, ignore_case = true)]
     pub mode: Option<CliSearchMode>,
 
@@ -65,6 +72,10 @@ pub struct SearchArgs {
     /// Include per-result match anchors (BM25 + semantic) in the response.
     #[arg(long)]
     pub anchors: bool,
+
+    /// Show only title, path, and score — no snippets or extra metadata.
+    #[arg(long)]
+    pub compact: bool,
 
     #[command(flatten)]
     pub scope: SharedScopeArgs,

@@ -8,6 +8,77 @@ use crate::contracts::{ContainerPath, VaultPath};
 
 use super::related::RelationKind;
 
+/// Source snippet used to synthesize an ask answer.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskSource {
+    /// Vault-relative path.
+    pub vault_path: VaultPath,
+    /// Display title.
+    pub title: String,
+    /// Snippet supplied to the answer model.
+    pub snippet: String,
+    /// Search score after rerank and scope weighting.
+    pub score: f64,
+}
+
+/// Verbose `talon ask` stage diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskDiagnostics {
+    /// Chat-completions endpoint used for planning and synthesis.
+    pub endpoint: String,
+    /// Ask model used for planning and synthesis.
+    pub model: String,
+    /// Query-planning stage diagnostics.
+    pub planning: AskLlmStageDiagnostics,
+    /// Search stage diagnostics.
+    pub search: AskSearchDiagnostics,
+    /// Synthesis stage diagnostics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub synthesis: Option<AskLlmStageDiagnostics>,
+}
+
+/// Verbose diagnostics for an LLM call.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskLlmStageDiagnostics {
+    /// Stage duration in milliseconds.
+    pub duration_ms: u64,
+    /// Visible content returned by the chat model.
+    pub content: String,
+}
+
+/// Verbose diagnostics for the retrieval stage.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskSearchDiagnostics {
+    /// Stage duration in milliseconds.
+    pub duration_ms: u64,
+    /// Total search results before final truncation.
+    pub total: u32,
+}
+
+/// Vault-grounded natural-language answer response.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AskResponse {
+    /// Vault root (absolute container path).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vault: Option<ContainerPath>,
+    /// User question.
+    pub question: String,
+    /// Synthesized answer.
+    pub answer: String,
+    /// Search queries planned for retrieval.
+    pub queries: Vec<String>,
+    /// Ranked source snippets used for synthesis.
+    pub sources: Vec<AskSource>,
+    /// Verbose stage diagnostics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<AskDiagnostics>,
+}
+
 /// Read result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -16,6 +16,7 @@ const fn opts() -> RenderOptions {
     RenderOptions {
         width: 80,
         colors: false,
+        compact: false,
     }
 }
 
@@ -45,7 +46,7 @@ fn snapshot_search_empty() -> Result<()> {
         diagnostics: None,
     };
     let mut buf = Vec::new();
-    format_search_human(&mut buf, &resp, opts())?;
+    format_search_human(&mut buf, &resp, opts(), &[])?;
     insta::assert_snapshot!(String::from_utf8(buf)?);
     Ok(())
 }
@@ -105,7 +106,7 @@ fn snapshot_search_results() -> Result<()> {
         diagnostics: None,
     };
     let mut buf = Vec::new();
-    format_search_human(&mut buf, &resp, opts())?;
+    format_search_human(&mut buf, &resp, opts(), &[])?;
     insta::assert_snapshot!(String::from_utf8(buf)?);
     Ok(())
 }
@@ -147,7 +148,7 @@ fn snapshot_search_verbose_diagnostics() -> Result<()> {
         }),
     };
     let mut buf = Vec::new();
-    format_search_human(&mut buf, &resp, opts())?;
+    format_search_human(&mut buf, &resp, opts(), &[])?;
     insta::assert_snapshot!(String::from_utf8(buf)?);
     Ok(())
 }
@@ -173,7 +174,7 @@ fn snapshot_search_verbose_strong_signal() -> Result<()> {
         }),
     };
     let mut buf = Vec::new();
-    format_search_human(&mut buf, &resp, opts())?;
+    format_search_human(&mut buf, &resp, opts(), &[])?;
     insta::assert_snapshot!(String::from_utf8(buf)?);
     Ok(())
 }

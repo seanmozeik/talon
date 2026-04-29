@@ -1,4 +1,5 @@
 use super::RenderOptions;
+use super::ask::format_ask_human;
 use super::obsidian::format_ref;
 use super::recall::format_recall_human;
 use super::search::format_search_human;
@@ -13,7 +14,18 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
     let opts = RenderOptions::for_terminal();
     match envelope.data.as_ref() {
         Some(TalonResponseData::Search(resp)) => {
-            format_search_human(&mut io::stdout(), resp, opts)?;
+            let warnings = envelope
+                .meta
+                .as_ref()
+                .map_or(&[][..], |m| m.warnings.as_slice());
+            format_search_human(&mut io::stdout(), resp, opts, warnings)?;
+        }
+        Some(TalonResponseData::Ask(resp)) => {
+            let warnings = envelope
+                .meta
+                .as_ref()
+                .map_or(&[][..], |m| m.warnings.as_slice());
+            format_ask_human(&mut io::stdout(), resp, opts, warnings)?;
         }
         Some(TalonResponseData::Sync(resp)) => format_sync_human(&mut io::stdout(), resp)?,
         Some(TalonResponseData::Status(resp)) => {

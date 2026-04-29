@@ -30,4 +30,15 @@ The minimal request shape is:
 `POST /rerank { query, texts, return_text } -> [{ index, score }]`.
 Scores should be normalized to `[0, 1]` unless `score_scale = "logits"`.
 
+`[ask]` optionally selects a larger chat model for `talon ask`. It reuses the
+OpenAI-compatible `[expansion]` endpoint, so only ask-specific model and
+reasoning overrides live here.
+
+```toml
+[ask]
+model = "qwen-smol"
+planning_reasoning_effort = "none"
+synthesis_reasoning_effort = "medium"
+```
+
 Ultraclaw does not inject, adapt, or validate Talon config.

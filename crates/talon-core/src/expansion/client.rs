@@ -12,13 +12,11 @@
 use std::collections::HashSet;
 use std::time::Duration;
 
-use reqwest::blocking::Client as HttpClient;
-
-use crate::inference::redact;
+use crate::llm::{ChatClient, ChatError, ChatMessage, strip_code_fences};
 use crate::text::nfd;
 
 use super::error::ExpansionError;
-use super::types::{ChatCompletionRequest, ChatCompletionResponse, ChatMessage, ExpansionBody};
+use super::types::ExpansionBody;
 
 /// Default HTTP timeout for LLM expansion calls.
 ///
@@ -52,10 +50,7 @@ const SYSTEM_PROMPT: &str = "Return only valid JSON of the form \
 /// [`InferenceClient`]: crate::inference::InferenceClient
 #[derive(Debug, Clone)]
 pub struct ExpansionClient {
-    base_url: String,
-    model: String,
-    max_tokens: Option<u32>,
-    http: HttpClient,
+    chat: ChatClient,
 }
 
 impl ExpansionClient {
@@ -109,18 +104,9 @@ impl ExpansionClient {
         timeout: Duration,
         max_tokens: Option<u32>,
     ) -> Result<Self, ExpansionError> {
-        let http = HttpClient::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|err| ExpansionError::Build {
-                message: redact(&err.to_string()),
-            })?;
-        Ok(Self {
-            base_url: base_url.into(),
-            model: model.into(),
-            max_tokens,
-            http,
-        })
+        let chat = ChatClient::with_timeout_and_max_tokens(base_url, model, timeout, max_tokens)
+            .map_err(ExpansionError::from)?;
+        Ok(Self { chat })
     }
 
     /// Requests up to `n_variants` search reformulations for `query`.
@@ -155,59 +141,17 @@ impl ExpansionClient {
         intent: Option<&str>,
         n_variants: u8,
     ) -> Result<Vec<String>, ExpansionError> {
-        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
         let user_content = build_user_message(query, intent);
-        let body = ChatCompletionRequest {
-            model: self.model.clone(),
-            messages: vec![
-                ChatMessage {
-                    role: "system".to_owned(),
-                    content: SYSTEM_PROMPT.to_owned(),
-                },
-                ChatMessage {
-                    role: "user".to_owned(),
-                    content: user_content,
-                },
-            ],
-            max_tokens: self.max_tokens,
-            temperature: EXPANSION_TEMPERATURE,
+        let messages = vec![
+            ChatMessage::new("system", SYSTEM_PROMPT),
+            ChatMessage::new("user", user_content),
+        ];
+        let content = match self.chat.complete(messages, EXPANSION_TEMPERATURE) {
+            Ok(content) => content,
+            Err(ChatError::MalformedResponse) => return Ok(vec![]),
+            Err(err) => return Err(ExpansionError::from(err)),
         };
-
-        let response =
-            self.http
-                .post(&url)
-                .json(&body)
-                .send()
-                .map_err(|err| ExpansionError::Http {
-                    status: None,
-                    message: redact(&err.to_string()),
-                })?;
-
-        let status = response.status();
-        if !status.is_success() {
-            let snippet = response.text().unwrap_or_default();
-            return Err(ExpansionError::Http {
-                status: Some(status.as_u16()),
-                message: redact(&snippet),
-            });
-        }
-
-        // All failures below are LLM-response quality issues → graceful empty.
-        let Ok(text) = response.text() else {
-            return Ok(vec![]);
-        };
-        let completion: ChatCompletionResponse = match serde_json::from_str(&text) {
-            Ok(c) => c,
-            Err(_) => return Ok(vec![]),
-        };
-        let Some(content) = completion
-            .choices
-            .first()
-            .and_then(|c| c.message.content.as_deref())
-        else {
-            return Ok(vec![]);
-        };
-        let cleaned = strip_code_fences(content);
+        let cleaned = strip_code_fences(&content);
         let expansion: ExpansionBody = match serde_json::from_str(&cleaned) {
             Ok(e) => e,
             Err(_) => return Ok(vec![]),
@@ -228,22 +172,6 @@ fn build_user_message(query: &str, intent: Option<&str>) -> String {
         || format!("Query: {query}"),
         |intent| format!("Query: {query}\nQuery intent: {intent}"),
     )
-}
-
-/// Strips Markdown code fences and extracts the JSON object substring.
-///
-/// Ports `stripCodeFences` from `clients/sidecar-llm/local-llm.ts`.
-fn strip_code_fences(content: &str) -> String {
-    let stripped = content
-        .trim()
-        .trim_start_matches("```json")
-        .trim_start_matches("```")
-        .trim_end_matches("```")
-        .trim();
-    match (stripped.find('{'), stripped.rfind('}')) {
-        (Some(start), Some(end)) if end > start => stripped[start..=end].to_owned(),
-        _ => stripped.to_owned(),
-    }
 }
 
 /// Deduplicates and caps expansion queries, excluding the original query.

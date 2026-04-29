@@ -181,8 +181,6 @@ fn run_search_inner(
 
 /// Converts a [`RawSearchResult`] to a [`SearchResult`] for the response.
 ///
-/// - Prepends a heading breadcrumb to the snippet unconditionally when one
-///   can be resolved (ports searcher.ts:265-273).
 /// - Populates `preview_anchors` when `anchors_requested` is true.
 ///
 /// Returns `None` if the path stored in the database cannot be parsed (corrupt data).
@@ -212,12 +210,11 @@ fn raw_to_search_result(
         snippet = fallback;
     }
 
-    // Heading breadcrumb prepended unconditionally (independent of anchors flag).
     let heading = resolve_snippet_heading(conn, raw, &snippet);
-    if let Some(ref h) = heading
-        && !h.is_empty()
+    if let Some(ref heading) = heading
+        && !heading.is_empty()
     {
-        snippet = format!("{h}\n{snippet}");
+        snippet = format!("{heading}\n{snippet}");
     }
 
     // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — searcher.ts:1209.

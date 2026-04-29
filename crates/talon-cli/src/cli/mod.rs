@@ -1,5 +1,6 @@
 //! CLI argument parsing via `clap` derive.
 
+mod ask_args;
 mod changes_args;
 mod init_args;
 mod lint_args;
@@ -15,6 +16,7 @@ mod where_clause;
 
 pub use where_clause::parse_where_clause;
 
+pub use ask_args::AskArgs;
 pub use changes_args::ChangesArgs;
 use clap::{Parser, Subcommand};
 pub use init_args::InitArgs;
@@ -25,7 +27,7 @@ pub use read_args::ReadArgs;
 pub use recall_args::RecallArgs;
 pub use related_args::RelatedArgs;
 pub use scope::SharedScopeArgs;
-pub use search_args::{CliSearchMode, SearchArgs};
+pub use search_args::{CliSearchMode, SearchArgs, SharedSearchArgs};
 pub use status_args::StatusArgs;
 pub use sync_args::SyncArgs;
 
@@ -88,6 +90,9 @@ pub enum Commands {
 
     #[command(about = "Search your Obsidian vault using hybrid ranking.")]
     Search(SearchArgs),
+
+    #[command(about = "Ask a vault-grounded question.")]
+    Ask(AskArgs),
 
     #[command(about = "Read a note from your vault.")]
     Read(ReadArgs),

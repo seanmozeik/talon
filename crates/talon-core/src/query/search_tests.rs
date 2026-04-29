@@ -97,6 +97,7 @@ fn config_with_wiki_scope() -> TalonConfig {
             model: "expansion".to_string(),
             max_tokens: None,
         },
+        ask: crate::config::AskConfig::default(),
         scopes,
         search: SearchConfig::default(),
         lint: LintConfig::default(),

@@ -132,6 +132,7 @@ fn minimal_config(vault: &std::path::Path) -> TalonConfig {
             model: "test".to_string(),
             max_tokens: None,
         },
+        ask: talon_core::AskConfig::default(),
         scopes: ScopesConfig::default(),
         search: talon_core::SearchConfig::default(),
         lint: talon_core::LintConfig::default(),

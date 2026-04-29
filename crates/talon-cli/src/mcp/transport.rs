@@ -158,13 +158,16 @@ mod tests {
         assert_eq!(responses[0]["id"], 1);
         assert_eq!(responses[0]["result"]["serverInfo"]["name"], "talon");
         assert_eq!(responses[1]["id"], "tools");
-        // The tools list now includes the deprecated talon tool plus the three named tools.
-        assert!(
-            responses[1]["result"]["tools"]
-                .as_array()
-                .map_or(0, Vec::len)
-                >= 4
-        );
+        let tool_names: Vec<&str> = responses[1]["result"]["tools"]
+            .as_array()
+            .unwrap_or_else(|| panic!("tools should be an array"))
+            .iter()
+            .map(|tool| tool["name"].as_str().unwrap_or(""))
+            .collect();
+        assert!(tool_names.contains(&"talon_search"));
+        assert!(tool_names.contains(&"talon_read"));
+        assert!(tool_names.contains(&"talon_related"));
+        assert!(!tool_names.contains(&"talon"));
         assert_eq!(responses[2]["id"], 2);
         Ok(())
     }

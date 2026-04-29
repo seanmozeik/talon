@@ -25,6 +25,7 @@ pub use input::{ChangesInput, MetaInput, ReadInput, RecallFormat, RecallInput};
 pub use lint::query_lint;
 pub use meta::query_meta;
 pub use output::{
+    AskDiagnostics, AskLlmStageDiagnostics, AskResponse, AskSearchDiagnostics, AskSource,
     ChangeEntry, ChangesResponse, LinkedNote, MetaEntry, MetaResponse, NoteExcerpt, ReadResponse,
     ReadResult, ReadSection, RecallResponse, TombstoneEntry, VaultRecall,
 };

@@ -1,7 +1,7 @@
 //! Accessor impls for `TalonResponseData` and `TalonResponseTrait`.
 
 use crate::indexing::{LintResponse, StatusResponse, SyncResponse};
-use crate::query::{ChangesResponse, MetaResponse, ReadResponse, RelatedResponse};
+use crate::query::{AskResponse, ChangesResponse, MetaResponse, ReadResponse, RelatedResponse};
 use crate::search::SearchResponse;
 
 use super::{TalonResponseData, TalonResponseTrait};
@@ -10,6 +10,7 @@ impl TalonResponseTrait for TalonResponseData {
     fn action(&self) -> &str {
         match self {
             Self::Search(_) => "search",
+            Self::Ask(_) => "ask",
             Self::Read(_) => "read",
             Self::Sync(_) => "sync",
             Self::Status(_) => "status",
@@ -30,6 +31,15 @@ impl TalonResponseData {
     pub const fn as_search(&self) -> Option<&SearchResponse> {
         match self {
             Self::Search(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the inner `AskResponse`, if present.
+    #[must_use]
+    pub const fn as_ask(&self) -> Option<&AskResponse> {
+        match self {
+            Self::Ask(r) => Some(r),
             _ => None,
         }
     }

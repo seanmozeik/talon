@@ -86,6 +86,7 @@ fn scoped_config() -> TalonConfig {
             model: "expansion".to_string(),
             max_tokens: None,
         },
+        ask: crate::config::AskConfig::default(),
         scopes,
         search: SearchConfig::default(),
         lint: LintConfig::default(),

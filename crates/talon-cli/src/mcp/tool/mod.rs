@@ -3,7 +3,6 @@ mod error;
 pub(super) mod hook;
 mod hook_recall;
 mod public;
-mod schema;
 mod status;
 mod sync;
 
@@ -14,13 +13,9 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 use serde_json::{Value, json};
-use talon_core::{ErrorCode, TalonEnvelope, TalonInput};
+use talon_core::{ErrorCode, TalonEnvelope};
 
 use self::error::ToolError;
-
-const TOOL_NAME: &str = "talon";
-// DEPRECATED: use talon_search, talon_read, or talon_related instead.
-const TOOL_DESCRIPTION: &str = "DEPRECATED: use talon_search, talon_read, or talon_related instead. Run one stateless Talon action against the configured vault.";
 
 #[derive(Debug, Deserialize)]
 struct ToolCallParams {
@@ -32,12 +27,7 @@ struct ToolCallParams {
 /// Returns the MCP `tools/list` payload.
 #[must_use]
 pub fn tools_list_result() -> Value {
-    let mut tools = vec![json!({
-        "name": TOOL_NAME,
-        "description": TOOL_DESCRIPTION,
-        "inputSchema": schema::input_schema()
-    })];
-    tools.extend(public::tools_list_entries());
+    let mut tools = public::tools_list_entries();
     tools.extend(hook::hook_tools_list_entries());
     json!({ "tools": tools })
 }
@@ -60,27 +50,12 @@ pub fn tools_call_result_with_state(
     }
 
     // Try named public tools next.
-    if let Some(result) = public::dispatch_named(&name, arguments.clone()) {
+    if let Some(result) = public::dispatch_named(&name, arguments) {
         let envelope = result.unwrap_or_else(ToolError::envelope);
         return public::named_content_result(&envelope);
     }
 
-    // Fall through to legacy action-union tool.
-    if name != TOOL_NAME {
-        let error = ToolError::with_detail(
-            "talon",
-            ErrorCode::Internal,
-            format!("unknown tool '{name}'"),
-            json!({ "expected": TOOL_NAME }),
-        );
-        return content_result(&error.envelope());
-    }
-
-    let envelope = match dispatch_arguments(arguments) {
-        Ok(envelope) => envelope,
-        Err(error) => error.envelope(),
-    };
-    content_result(&envelope)
+    content_result(&unknown_tool_error(&name).envelope())
 }
 
 /// Executes one MCP `tools/call` request.
@@ -92,28 +67,13 @@ pub fn tools_call_result(params: Option<Value>) -> Value {
         Err(error) => return content_result(&error.envelope()),
     };
 
-    // Try named tools first.
-    if let Some(result) = public::dispatch_named(&name, arguments.clone()) {
+    // Try named tools.
+    if let Some(result) = public::dispatch_named(&name, arguments) {
         let envelope = result.unwrap_or_else(ToolError::envelope);
         return public::named_content_result(&envelope);
     }
 
-    // Fall through to legacy action-union tool.
-    if name != TOOL_NAME {
-        let error = ToolError::with_detail(
-            "talon",
-            ErrorCode::Internal,
-            format!("unknown tool '{name}'"),
-            json!({ "expected": TOOL_NAME }),
-        );
-        return content_result(&error.envelope());
-    }
-
-    let envelope = match dispatch_arguments(arguments) {
-        Ok(envelope) => envelope,
-        Err(error) => error.envelope(),
-    };
-    content_result(&envelope)
+    content_result(&unknown_tool_error(&name).envelope())
 }
 
 fn parse_name_and_arguments(params: Option<Value>) -> Result<(String, Value), ToolError> {
@@ -135,49 +95,13 @@ fn parse_name_and_arguments(params: Option<Value>) -> Result<(String, Value), To
     Ok((call.name, call.arguments))
 }
 
-fn dispatch_arguments(arguments: Value) -> Result<TalonEnvelope, ToolError> {
-    let action = action_from_arguments(&arguments);
-    let input: TalonInput = serde_json::from_value(arguments).map_err(|error| {
-        ToolError::with_detail(
-            action.unwrap_or("talon"),
-            ErrorCode::Internal,
-            "invalid talon tool arguments",
-            json!({ "message": error.to_string() }),
-        )
-    })?;
-    let action = action_name(&input);
-    dispatch::dispatch_input(input)
-        .map_err(|error| ToolError::new(action, ErrorCode::Internal, format!("{error:#}")))
-}
-
-fn action_from_arguments(arguments: &Value) -> Option<&'static str> {
-    let action = arguments.get("action")?.as_str()?;
-    match action {
-        "search" => Some("search"),
-        "read" => Some("read"),
-        "sync" => Some("sync"),
-        "status" => Some("status"),
-        "related" => Some("related"),
-        "meta" => Some("meta"),
-        "changes" => Some("changes"),
-        "lint" => Some("lint"),
-        "recall" => Some("recall"),
-        _ => Some("talon"),
-    }
-}
-
-const fn action_name(input: &TalonInput) -> &'static str {
-    match input {
-        TalonInput::Search(_) => "search",
-        TalonInput::Read(_) => "read",
-        TalonInput::Sync(_) => "sync",
-        TalonInput::Status(_) => "status",
-        TalonInput::Related(_) => "related",
-        TalonInput::Meta(_) => "meta",
-        TalonInput::Changes(_) => "changes",
-        TalonInput::Lint(_) => "lint",
-        TalonInput::Recall(_) => "recall",
-    }
+fn unknown_tool_error(name: &str) -> ToolError {
+    ToolError::with_detail(
+        "talon",
+        ErrorCode::Internal,
+        format!("unknown tool '{name}'"),
+        json!({ "expected": ["talon_search", "talon_read", "talon_related"] }),
+    )
 }
 
 fn content_result(envelope: &TalonEnvelope) -> Value {

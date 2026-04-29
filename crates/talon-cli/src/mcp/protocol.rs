@@ -260,7 +260,7 @@ mod tests {
     }
 
     #[test]
-    fn handle_request_dispatches_talon_status_tool_call() -> Result<()> {
+    fn handle_request_rejects_generic_talon_tool_call() -> Result<()> {
         let request: JsonRpcRequest = serde_json::from_value(json!({
             "jsonrpc": "2.0",
             "id": "call",
@@ -273,16 +273,12 @@ mod tests {
 
         let (response, disposition) = handle_request(request);
         let response = serde_json::to_value(response)?;
-        let text = response["result"]["content"][0]["text"]
-            .as_str()
-            .ok_or_else(|| color_eyre::eyre::eyre!("missing tool result text"))?;
-        let envelope: Value = serde_json::from_str(text)?;
 
         assert_eq!(disposition, MethodDisposition::Continue);
         assert_eq!(response["id"], "call");
-        assert_eq!(envelope["action"], "status");
-        assert_eq!(envelope["ok"], true);
-        assert_eq!(envelope["data"]["action"], "status");
+        assert_eq!(response["result"]["structuredContent"]["action"], "talon");
+        assert_eq!(response["result"]["structuredContent"]["ok"], false);
+        assert_eq!(response["result"]["isError"], true);
         Ok(())
     }
 }

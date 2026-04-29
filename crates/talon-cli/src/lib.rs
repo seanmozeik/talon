@@ -40,6 +40,7 @@ pub async fn run() -> u8 {
                     cli::Commands::Sync(_) => "sync",
                     cli::Commands::Status(_) => "status",
                     cli::Commands::Search(_) => "search",
+                    cli::Commands::Ask(_) => "ask",
                     cli::Commands::Read(_) => "read",
                     cli::Commands::Related(_) => "related",
                     cli::Commands::Meta(_) => "meta",
