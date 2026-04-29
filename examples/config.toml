@@ -54,8 +54,9 @@ model = "bonsai"
 #   _meta/     vault infrastructure — only via --scope meta
 #
 # Three knobs per scope:
-#   priority   ranking multiplier — boosted=3.0, elevated=1.5, normal=1.0,
-#              muted=0.3, buried=0.05
+#   priority   scope label for filtering, lint behavior, and ranking
+#              experiments. Current multipliers are neutral (1.0) while
+#              retrieval is being calibrated from an equal baseline.
 #   default    if false, the scope is excluded from default queries entirely
 #              (not just down-ranked); re-include via --scope NAME or --scope-all
 #   lint       if false, files in this scope don't appear in `talon lint`

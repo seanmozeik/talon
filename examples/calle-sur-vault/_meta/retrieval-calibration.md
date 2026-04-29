@@ -14,15 +14,17 @@ behavior visible while tuning search.
 
 ## Scope Shape
 
-- `wiki/` is boosted because compiled knowledge should surface quickly.
-- `projects/` is elevated because active work should win when the query is about
-  current execution.
+- `wiki/` is labeled boosted because compiled knowledge should be easy to find.
+- `projects/` is labeled elevated because active work should win when the query
+  is about current execution.
+- All ranking multipliers are temporarily neutral (`1.0`) so search can be
+  calibrated from equality instead of fighting old magic numbers.
 - `raw/`, `daily/`, `archive/`, `private/`, and `_meta/` are excluded from the
   default search pool by `examples/config.toml`.
 
 ## Shouts Probe
 
-The important failure mode is a broad boosted wiki article outranking a more
+The important failure mode is a broad wiki article outranking a more
 specific active project note. In this vault, [[Sauce Mothers]] is the broad wiki
 trap: it mentions fermented finishes and sauce foundations, but it is not the
 current hot sauce launch plan.
@@ -53,7 +55,7 @@ talon -c examples/config.toml --agent search "lease renewal landlord" --scope pr
 
 ## Tuning Notes
 
-When inspecting results, compare `score` and `rawScore`. `score` includes scope
-priority. `rawScore` is the pre-scope retrieval score. A shout usually looks like
-a low `rawScore` result with a high final `score` because the boosted wiki
-multiplier fired too early.
+When inspecting results, compare `score` and `rawScore`. During the neutral
+baseline they should match. If future multipliers are reintroduced, a shout will
+look like a lower `rawScore` result with a high final `score` because scope
+priority fired too early.

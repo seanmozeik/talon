@@ -20,31 +20,28 @@ pub use scope_filter::ScopeFilter;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ScopePriority {
-    /// Strong promotion (3.0x multiplier).
+    /// Compiled knowledge scope.
     Boosted,
-    /// Mild promotion (1.5x multiplier).
+    /// Active-work scope.
     Elevated,
     /// Neutral (1.0x multiplier).
     #[default]
     Normal,
-    /// Mild demotion (0.3x multiplier).
+    /// Low-priority scope.
     Muted,
-    /// Strong demotion (0.05x multiplier).
+    /// Explicit-opt-in scope.
     Buried,
 }
 
 impl ScopePriority {
-    /// Returns the calibrated post-rerank score multiplier.
+    /// Returns the post-rerank score multiplier.
     ///
-    /// Multipliers are not user-tunable.
+    /// Scope labels are preserved for filtering, lint behavior, and future
+    /// calibration, but current ranking dogfood starts from a neutral baseline.
     #[must_use]
     pub const fn multiplier(self) -> f64 {
         match self {
-            Self::Boosted => 3.0,
-            Self::Elevated => 1.5,
-            Self::Normal => 1.0,
-            Self::Muted => 0.3,
-            Self::Buried => 0.05,
+            Self::Boosted | Self::Elevated | Self::Normal | Self::Muted | Self::Buried => 1.0,
         }
     }
 }

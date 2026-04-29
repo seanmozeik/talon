@@ -63,7 +63,7 @@ fn raw(path: &str, snippet: &str, bm25: bool, semantic_heading: Option<&str>) ->
     }
 }
 
-fn config_with_boosted_wiki_scope() -> TalonConfig {
+fn config_with_wiki_scope() -> TalonConfig {
     let mut scopes = ScopesConfig::new();
     scopes.insert(
         "wiki".to_string(),
@@ -142,13 +142,13 @@ fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
 
 #[test]
 fn apply_scope_priority_preserves_pre_multiplier_raw_score() {
-    let config = config_with_boosted_wiki_scope();
+    let config = config_with_wiki_scope();
     let raw = raw("wiki/shout.md", "shout", false, None);
     let scored = apply_scope_priority(vec![raw], Some(&config));
 
     assert_eq!(scored.len(), 1);
     assert_close(scored[0].raw_score, 0.9);
-    assert_close(scored[0].raw.score, 2.7);
+    assert_close(scored[0].raw.score, 0.9);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn raw_to_search_result_uses_supplied_pre_multiplier_raw_score() {
         Err(err) => panic!("failed to open temp db: {err}"),
     };
     let mut raw = raw("wiki/shout.md", "shout", false, None);
-    raw.score = 2.7;
+    raw.score = 0.9;
 
     let result = raw_to_search_result(
         &raw,
@@ -168,11 +168,11 @@ fn raw_to_search_result_uses_supplied_pre_multiplier_raw_score() {
         false,
         "",
         0.9,
-        Some(&config_with_boosted_wiki_scope()),
+        Some(&config_with_wiki_scope()),
     )
     .unwrap_or_else(|| panic!("raw result should convert"));
 
-    assert_close(result.score, 2.7);
+    assert_close(result.score, 0.9);
     assert_eq!(result.raw_score, Some(0.9));
     assert_eq!(result.scope.as_deref(), Some("wiki"));
     drop(conn);

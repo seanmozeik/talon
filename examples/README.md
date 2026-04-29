@@ -18,18 +18,19 @@ The vault is meant to feel tended for ~14 months — extensive cross-linking, co
 
 ## Structure
 
-Karpathy's LLM Wiki layout, mapped to Talon's `ScopePriority` tiers:
+Karpathy's LLM Wiki layout, mapped to Talon's `ScopePriority` labels. The labels
+are currently neutral for ranking while retrieval is calibrated from equality:
 
 | Directory     | Files | Role                                  | Talon scope priority | `default` |
 |---------------|------:|----------------------------------------|----------------------|-----------|
-| `wiki/`       |    18 | Compiled, agent-curated knowledge      | `boosted` (3.0×)     | `true`    |
-| `projects/`   |    14 | Active workspaces                      | `elevated` (1.5×)    | `true`    |
+| `wiki/`       |    18 | Compiled, agent-curated knowledge      | `boosted` (1.0×)     | `true`    |
+| `projects/`   |    14 | Active workspaces                      | `elevated` (1.0×)    | `true`    |
 | `artifacts/`  |     4 | Agent outputs for the user             | `normal` (1.0×)      | `true`    |
-| `daily/`      |    20 | Ephemeral daily notes                  | `muted` (0.3×)       | `false`   |
-| `raw/`        |    10 | Untreated source material              | `muted` (0.3×)       | `false`   |
-| `archive/`    |     3 | Completed/closed projects              | `buried` (0.05×)     | `false`   |
-| `private/`    |     4 | Sensitive (lease, payroll, financial)  | `buried` (0.05×)     | `false`   |
-| `_meta/`      |     5 | Vault infrastructure                   | `buried` (0.05×)     | `false`   |
+| `daily/`      |    20 | Ephemeral daily notes                  | `muted` (1.0×)       | `false`   |
+| `raw/`        |    10 | Untreated source material              | `muted` (1.0×)       | `false`   |
+| `archive/`    |     3 | Completed/closed projects              | `buried` (1.0×)      | `false`   |
+| `private/`    |     4 | Sensitive (lease, payroll, financial)  | `buried` (1.0×)      | `false`   |
+| `_meta/`      |     5 | Vault infrastructure                   | `buried` (1.0×)      | `false`   |
 
 `_meta/schema.md` documents the vault's own conventions.
 
