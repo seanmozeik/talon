@@ -10,6 +10,8 @@ mod lint;
 mod read;
 mod recall;
 mod search;
+#[cfg(test)]
+mod tests;
 
 pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
     match envelope.data.as_ref() {
@@ -36,6 +38,21 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
             || super::emit_compact(envelope),
             |e| super::emit_compact(&AgentError::from(e)),
         ),
+    }
+}
+
+/// Returns the compact agent JSON value for an envelope, or `None` if the
+/// response type has no agent representation or serialization fails.
+#[allow(dead_code)]
+pub fn to_agent_value(envelope: &TalonEnvelope) -> Option<serde_json::Value> {
+    match envelope.data.as_ref()? {
+        TalonResponseData::Search(s) => {
+            serde_json::to_value(search::AgentSearchResponse::from(s)).ok()
+        }
+        TalonResponseData::Read(r) => serde_json::to_value(read::AgentReadResponse::from(r)).ok(),
+        TalonResponseData::Related(r) => serde_json::to_value(AgentRelatedResponse::from(r)).ok(),
+        TalonResponseData::Recall(r) => serde_json::to_value(recall::AgentRecall::from(r)).ok(),
+        _ => None,
     }
 }
 
