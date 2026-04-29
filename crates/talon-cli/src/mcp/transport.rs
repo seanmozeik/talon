@@ -102,9 +102,12 @@ mod tests {
         assert_eq!(responses[0]["id"], 1);
         assert_eq!(responses[0]["result"]["serverInfo"]["name"], "talon");
         assert_eq!(responses[1]["id"], "tools");
-        assert_eq!(
-            responses[1]["result"]["tools"].as_array().map(Vec::len),
-            Some(1)
+        // The tools list now includes the deprecated talon tool plus the three named tools.
+        assert!(
+            responses[1]["result"]["tools"]
+                .as_array()
+                .map_or(0, Vec::len)
+                >= 4
         );
         assert_eq!(responses[2]["id"], 2);
         Ok(())

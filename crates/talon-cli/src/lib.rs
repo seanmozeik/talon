@@ -1,5 +1,6 @@
 //! CLI process boundary for Talon.
 
+pub mod agent_contract;
 mod banner;
 pub mod cli;
 pub mod command;

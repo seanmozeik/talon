@@ -3,14 +3,55 @@ use serde_json::{Value, json};
 use super::{tools_call_result, tools_list_result};
 
 #[test]
-fn tools_list_returns_single_talon_tool_with_expected_actions() {
+fn tools_list_includes_named_tools() {
     let result = tools_list_result();
     let Some(tools) = result["tools"].as_array() else {
         panic!("tools array missing");
     };
-    assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0]["name"], "talon");
-    let Some(actions) = tools[0]["inputSchema"]["properties"]["action"]["enum"].as_array() else {
+    let names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(names.contains(&"talon_search"), "missing talon_search");
+    assert!(names.contains(&"talon_read"), "missing talon_read");
+    assert!(names.contains(&"talon_related"), "missing talon_related");
+    // Legacy tool still present.
+    assert!(names.contains(&"talon"), "missing deprecated talon tool");
+}
+
+#[test]
+fn named_tool_call_search_missing_vault_returns_error_shape() {
+    let result = tools_call_result(Some(json!({
+        "name": "talon_search",
+        "arguments": { "query": "test" }
+    })));
+
+    // Verify the response has the standard MCP shape.
+    assert!(result.is_object());
+    assert!(result["content"].is_array());
+    assert_eq!(result["content"][0]["type"], "text");
+    assert!(result["content"][0]["text"].is_string());
+
+    // Verify the structured content is a TalonEnvelope with error state.
+    assert!(result["structuredContent"].is_object());
+    assert_eq!(result["structuredContent"]["ok"], false);
+    assert!(result["structuredContent"]["error"].is_object());
+    assert!(result["structuredContent"]["error"]["code"].is_string());
+    assert!(result["structuredContent"]["error"]["message"].is_string());
+
+    // Verify error is propagated to top-level isError.
+    assert_eq!(result["isError"], true);
+}
+
+#[test]
+fn tools_list_returns_talon_tool_with_expected_actions() {
+    let result = tools_list_result();
+    let Some(tools) = result["tools"].as_array() else {
+        panic!("tools array missing");
+    };
+    // Should have the deprecated talon tool plus the three named tools.
+    assert!(tools.len() >= 4);
+    let Some(talon_tool) = tools.iter().find(|t| t["name"] == "talon") else {
+        panic!("deprecated talon tool missing");
+    };
+    let Some(actions) = talon_tool["inputSchema"]["properties"]["action"]["enum"].as_array() else {
         panic!("action enum missing");
     };
     assert_eq!(actions.len(), 9);

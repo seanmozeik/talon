@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::io::{self, Write};
 use talon_core::TalonEnvelope;
 
-mod agent;
+pub mod agent;
 
 pub(super) fn emit_pretty(envelope: &TalonEnvelope) -> Result<()> {
     let stdout = io::stdout();

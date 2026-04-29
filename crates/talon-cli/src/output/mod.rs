@@ -1,7 +1,7 @@
 //! Stdout emission for CLI responses.
 
 mod human;
-mod json;
+pub(crate) mod json;
 mod obsidian;
 mod recall;
 mod search;

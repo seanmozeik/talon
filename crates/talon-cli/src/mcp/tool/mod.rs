@@ -1,5 +1,6 @@
 mod dispatch;
 mod error;
+mod public;
 mod schema;
 mod status;
 mod sync;
@@ -14,11 +15,8 @@ use talon_core::{ErrorCode, TalonEnvelope, TalonInput};
 use self::error::ToolError;
 
 const TOOL_NAME: &str = "talon";
-// DEPRECATED: This action-union tool is deprecated and will be replaced by named tools in Phase 1.
-// Individual tool actions (search, read, recall, sync, status, related, meta, changes, lint)
-// will become first-class named tools with dedicated schemas, improving IDE support and
-// client clarity. This tool remains functional for backward compatibility during transition.
-const TOOL_DESCRIPTION: &str = "Run one stateless Talon action against the configured vault.";
+// DEPRECATED: use talon_search, talon_read, or talon_related instead.
+const TOOL_DESCRIPTION: &str = "DEPRECATED: use talon_search, talon_read, or talon_related instead. Run one stateless Talon action against the configured vault.";
 
 #[derive(Debug, Deserialize)]
 struct ToolCallParams {
@@ -30,28 +28,49 @@ struct ToolCallParams {
 /// Returns the MCP `tools/list` payload.
 #[must_use]
 pub fn tools_list_result() -> Value {
-    json!({
-        "tools": [
-            {
-                "name": TOOL_NAME,
-                "description": TOOL_DESCRIPTION,
-                "inputSchema": schema::input_schema()
-            }
-        ]
-    })
+    let mut tools = vec![json!({
+        "name": TOOL_NAME,
+        "description": TOOL_DESCRIPTION,
+        "inputSchema": schema::input_schema()
+    })];
+    tools.extend(public::tools_list_entries());
+    json!({ "tools": tools })
 }
 
 /// Executes one MCP `tools/call` request.
 #[must_use]
 pub fn tools_call_result(params: Option<Value>) -> Value {
-    let envelope = match parse_call_params(params).and_then(dispatch_arguments) {
+    // Parse params enough to extract name and arguments.
+    let (name, arguments) = match parse_name_and_arguments(params) {
+        Ok(pair) => pair,
+        Err(error) => return content_result(&error.envelope()),
+    };
+
+    // Try named tools first.
+    if let Some(result) = public::dispatch_named(&name, arguments.clone()) {
+        let envelope = result.unwrap_or_else(ToolError::envelope);
+        return public::named_content_result(&envelope);
+    }
+
+    // Fall through to legacy action-union tool.
+    if name != TOOL_NAME {
+        let error = ToolError::with_detail(
+            "talon",
+            ErrorCode::Internal,
+            format!("unknown tool '{name}'"),
+            json!({ "expected": TOOL_NAME }),
+        );
+        return content_result(&error.envelope());
+    }
+
+    let envelope = match dispatch_arguments(arguments) {
         Ok(envelope) => envelope,
         Err(error) => error.envelope(),
     };
     content_result(&envelope)
 }
 
-fn parse_call_params(params: Option<Value>) -> Result<Value, ToolError> {
+fn parse_name_and_arguments(params: Option<Value>) -> Result<(String, Value), ToolError> {
     let params = params.ok_or_else(|| {
         ToolError::new(
             "talon",
@@ -67,15 +86,7 @@ fn parse_call_params(params: Option<Value>) -> Result<Value, ToolError> {
             json!({ "message": error.to_string() }),
         )
     })?;
-    if call.name != TOOL_NAME {
-        return Err(ToolError::with_detail(
-            "talon",
-            ErrorCode::Internal,
-            format!("unknown tool '{}'", call.name),
-            json!({ "expected": TOOL_NAME }),
-        ));
-    }
-    Ok(call.arguments)
+    Ok((call.name, call.arguments))
 }
 
 fn dispatch_arguments(arguments: Value) -> Result<TalonEnvelope, ToolError> {

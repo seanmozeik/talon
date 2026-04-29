@@ -43,8 +43,6 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
 
 /// Returns the compact agent JSON value for an envelope, or `None` if the
 /// response type has no agent representation or serialization fails.
-// Removed in Phase 2 once MCP dispatch wires this up.
-#[allow(dead_code)]
 pub fn to_agent_value(envelope: &TalonEnvelope) -> Option<serde_json::Value> {
     match envelope.data.as_ref()? {
         TalonResponseData::Search(s) => {
