@@ -68,7 +68,8 @@ pub use search::{
 pub use store::{open_database, open_database_read_only};
 pub use sync::{
     SyncError, SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process,
-    refresh_index, relink_unresolved, run_sync, run_sync_with_chunker,
+    refresh_index, refresh_index_locked, relink_unresolved, run_sync, run_sync_with_chunker,
+    run_sync_with_chunker_locked,
 };
 pub use text::chunker::{
     NoteChunk, build_embedding_text, build_heading_path, chunk_markdown, make_chunk_hash,

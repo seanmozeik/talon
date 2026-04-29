@@ -4,8 +4,8 @@ use std::time::Instant;
 use color_eyre::eyre::{Result, WrapErr as _};
 use talon_core::{
     IndexerConfig, ResponseMeta, SyncInput, SyncResponse, SyncStatus, TalonConfig, TalonEnvelope,
-    TalonResponseData, embed::EmbedPassOptions, inference::InferenceClient, open_database,
-    vec_ext::register_sqlite_vec,
+    TalonResponseData, acquire_sync_lock, embed::EmbedPassOptions, inference::InferenceClient,
+    open_database, vec_ext::register_sqlite_vec,
 };
 
 use crate::config;
@@ -26,17 +26,18 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
     };
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
+    let lock = acquire_sync_lock(&lock_path).wrap_err("acquiring sync lock")?;
     let mut conn = open_database(&db_path)
         .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
     let (embed_opts, inference) = embed_options(&config, input)?;
-    let (stats, embed_stats) = talon_core::run_sync_with_chunker(
+    let (stats, embed_stats) = talon_core::run_sync_with_chunker_locked(
         &mut conn,
         &vault_path,
-        &lock_path,
         &indexer_config,
         embed_opts,
         inference.as_ref(),
         &config.chunker,
+        lock,
     )
     .wrap_err("sync failed")?;
     let (embedded, embed_failed, dimension_mismatch, embed_remediation, embed_diagnostics) =

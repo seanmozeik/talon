@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     IndexerConfig, ResponseMeta, SyncInput, SyncResponse, SyncStatus, TalonEnvelope,
-    TalonResponseData, embed::EmbedPassOptions, inference::InferenceClient, open_database,
-    vec_ext::register_sqlite_vec,
+    TalonResponseData, acquire_sync_lock, embed::EmbedPassOptions, inference::InferenceClient,
+    open_database, vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &SyncArgs, cli: &Cli) -> Result<()> {
@@ -36,6 +36,7 @@ pub(super) async fn emit(args: &SyncArgs, cli: &Cli) -> Result<()> {
         let path_count = count_u32(input.paths.len());
         let result = tokio::task::spawn_blocking(move || -> Result<SyncResponse> {
             register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
+            let lock = acquire_sync_lock(&lock_path).wrap_err("acquiring sync lock")?;
             let mut conn = open_database(&db_path)
                 .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
 
@@ -53,14 +54,14 @@ pub(super) async fn emit(args: &SyncArgs, cli: &Cli) -> Result<()> {
                 (Some(opts), Some(client))
             };
 
-            let (stats, embed_stats) = talon_core::run_sync_with_chunker(
+            let (stats, embed_stats) = talon_core::run_sync_with_chunker_locked(
                 &mut conn,
                 &vault_path,
-                &lock_path,
                 &indexer_config,
                 embed_opts,
                 inference.as_ref(),
                 &config.chunker,
+                lock,
             )
             .wrap_err("sync failed")?;
 

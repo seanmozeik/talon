@@ -277,73 +277,17 @@ fn expand_tilde(path: PathBuf) -> PathBuf {
 }
 
 mod karpathy;
+mod refresh;
 use karpathy::default_karpathy_scopes;
+pub use refresh::{
+    RefreshLockPolicy, refresh_index_if_needed, refresh_index_with_lock, sync_lock_path,
+};
 
 /// Converts the configured vault path to a [`ContainerPath`], or `None` when
 /// config is absent (e.g. when running without a config file).
 #[must_use]
 pub fn vault_container_path(config: Option<&TalonConfig>) -> Option<ContainerPath> {
     config.and_then(|c| ContainerPath::parse(c.vault_path.to_string_lossy().as_ref()).ok())
-}
-
-/// Controls how auto-refresh handles an already-running sync.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefreshLockPolicy {
-    /// Return an error when another Talon process owns the sync lock.
-    ErrorIfBusy,
-    /// Leave the existing index untouched and continue with a read query.
-    SkipIfBusy,
-}
-
-/// Returns the advisory sync lock path for a configured database.
-#[must_use]
-pub fn sync_lock_path(config: &TalonConfig) -> PathBuf {
-    config
-        .db_path
-        .parent()
-        .map_or_else(|| PathBuf::from("sync.lock"), |p| p.join("sync.lock"))
-}
-
-/// Auto-refresh the index against on-disk state before running a query.
-///
-/// Mirrors `talon sync` minus the embed pass — recently-edited files become
-/// searchable via BM25 immediately; their semantic embeddings catch up on
-/// the next explicit `talon sync`.
-///
-/// Skipped when `--fast` is set (the user opted into "skip the slow stuff",
-/// which includes the small refresh cost).
-///
-/// # Errors
-///
-/// Returns an error if the underlying [`talon_core::refresh_index`] fails. When
-/// `policy` is [`RefreshLockPolicy::SkipIfBusy`], a live sync lock is treated
-/// as a no-op because another process is already moving the index forward.
-pub fn refresh_index_if_needed(
-    config: &TalonConfig,
-    conn: &mut talon_core::Connection,
-    fast: bool,
-    policy: RefreshLockPolicy,
-) -> eyre::Result<()> {
-    if fast {
-        return Ok(());
-    }
-    let lock_path = sync_lock_path(config);
-    let indexer_config = talon_core::IndexerConfig {
-        include_patterns: config.include_patterns.clone(),
-        ignore_patterns: config.ignore_patterns.clone(),
-    };
-    match talon_core::refresh_index(
-        conn,
-        &config.vault_path,
-        &lock_path,
-        &indexer_config,
-        &config.chunker,
-    ) {
-        Ok(_) => {}
-        Err(talon_core::SyncError::LockBusy) if policy == RefreshLockPolicy::SkipIfBusy => {}
-        Err(e) => return Err(eyre::eyre!("auto-refresh failed: {e}")),
-    }
-    Ok(())
 }
 
 #[cfg(test)]

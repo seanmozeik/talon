@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::{Cli, SearchArgs, parse_where_clause};
-use crate::config::{self, RefreshLockPolicy, vault_container_path};
+use crate::config::{self, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::elapsed_ms;
@@ -8,9 +8,9 @@ use eyre::{Result, WrapErr as _, bail};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, ResponseMeta, ScopeFilter, SearchInput, SearchMode, TalonEnvelope,
-    TalonResponseData, inference::InferenceClient, is_sync_lock_held_by_live_process,
-    open_database, open_database_read_only, run_search, run_search_with_expanded_queries,
+    ExpansionClient, ResponseMeta, ScopeFilter, SearchInput, SearchMode, SyncLockError,
+    TalonEnvelope, TalonResponseData, acquire_sync_lock, inference::InferenceClient, open_database,
+    open_database_read_only, run_search, run_search_with_expanded_queries,
     vec_ext::register_sqlite_vec,
 };
 
@@ -92,24 +92,12 @@ fn execute_search(
         .map_or_else(crate::config::default_db_path, |c| c.db_path.clone());
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let skip_refresh_for_live_sync = config
-        .is_some_and(|cfg| is_sync_lock_held_by_live_process(&crate::config::sync_lock_path(cfg)));
-    let mut conn = if fast || skip_refresh_for_live_sync {
-        open_database_read_only(&db_path)
+    let conn = if let Some(cfg) = config {
+        open_search_database(cfg, &db_path, fast)?
     } else {
-        open_database(&db_path)
-    }
-    .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-    if let Some(cfg) = config
-        && !skip_refresh_for_live_sync
-    {
-        crate::config::refresh_index_if_needed(
-            cfg,
-            &mut conn,
-            fast,
-            RefreshLockPolicy::SkipIfBusy,
-        )?;
-    }
+        open_database_read_only(&db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?
+    };
 
     let (inference, expansion) =
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
@@ -184,4 +172,29 @@ fn execute_search(
         TalonResponseData::Search(response),
         meta,
     ))
+}
+
+fn open_search_database(
+    config: &talon_core::TalonConfig,
+    db_path: &std::path::Path,
+    fast: bool,
+) -> Result<talon_core::Connection> {
+    if fast {
+        return open_database_read_only(db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display()));
+    }
+
+    let lock_path = crate::config::sync_lock_path(config);
+    match acquire_sync_lock(&lock_path) {
+        Ok(lock) => {
+            let mut conn = open_database(db_path)
+                .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+            crate::config::refresh_index_with_lock(config, &mut conn, lock)?;
+            Ok(conn)
+        }
+        Err(SyncLockError::Busy) => open_database_read_only(db_path)
+            .wrap_err_with(|| format!("opening index at {}", db_path.display())),
+        Err(SyncLockError::Io(err)) => Err(err).wrap_err("acquiring sync lock for search"),
+        Err(err) => Err(eyre::eyre!("acquiring sync lock for search: {err}")),
+    }
 }

@@ -52,6 +52,26 @@ pub fn refresh_index(
     Ok(stats)
 }
 
+/// Like [`refresh_index`] when the caller already owns the sync lock.
+///
+/// This is useful for process entry points that need to serialize database
+/// migrations before opening a write-capable connection.
+///
+/// # Errors
+///
+/// Same as [`refresh_index`], except lock acquisition has already happened.
+pub fn refresh_index_locked(
+    conn: &mut Connection,
+    vault_root: &Path,
+    config: &IndexerConfig,
+    chunker: &ChunkerConfig,
+    lock: SyncLock,
+) -> Result<IndexerStats, SyncError> {
+    let (stats, _embed) =
+        run_sync_with_chunker_locked(conn, vault_root, config, None, None, chunker, lock)?;
+    Ok(stats)
+}
+
 /// One-shot sync over a vault.
 ///
 /// Holds [`SyncLock`] for the duration of the call so concurrent Talon
@@ -102,7 +122,32 @@ pub fn run_sync_with_chunker(
     inference: Option<&InferenceClient>,
     chunker_config: &ChunkerConfig,
 ) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
-    let _lock = acquire_sync_lock(lock_path).map_err(SyncError::from_lock)?;
+    let lock = acquire_sync_lock(lock_path).map_err(SyncError::from_lock)?;
+    run_sync_with_chunker_locked(
+        conn,
+        vault_root,
+        config,
+        embed_config,
+        inference,
+        chunker_config,
+        lock,
+    )
+}
+
+/// Like [`run_sync_with_chunker`] when the caller already owns the sync lock.
+///
+/// # Errors
+///
+/// See [`run_sync`] for non-lock error variants.
+pub fn run_sync_with_chunker_locked(
+    conn: &mut Connection,
+    vault_root: &Path,
+    config: &IndexerConfig,
+    embed_config: Option<EmbedPassOptions>,
+    inference: Option<&InferenceClient>,
+    chunker_config: &ChunkerConfig,
+    _lock: SyncLock,
+) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
     let mut stats = run_full_scan_with_chunker(conn, vault_root, config, chunker_config)
         .map_err(SyncError::Indexer)?;
     let deleted = reconcile_deletions(conn, vault_root).map_err(SyncError::Indexer)?;

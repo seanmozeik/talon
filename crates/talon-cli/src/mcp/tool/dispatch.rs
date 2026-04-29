@@ -3,8 +3,8 @@ use std::time::Instant;
 use color_eyre::eyre::{Result, WrapErr as _};
 use talon_core::{
     ChangesInput, ExpansionClient, LintInput, MetaInput, ReadInput, RecallInput, RelatedInput,
-    ResponseMeta, SearchInput, SearchMode, TalonEnvelope, TalonInput, TalonResponseData,
-    find_related, inference::InferenceClient, is_sync_lock_held_by_live_process, open_database,
+    ResponseMeta, SearchInput, SearchMode, SyncLockError, TalonEnvelope, TalonInput,
+    TalonResponseData, acquire_sync_lock, find_related, inference::InferenceClient, open_database,
     open_database_read_only, query_changes, query_lint, query_meta, run_read, run_recall,
     run_search, vec_ext::register_sqlite_vec,
 };
@@ -30,24 +30,9 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let skip_refresh_for_live_sync =
-        is_sync_lock_held_by_live_process(&config::sync_lock_path(&config));
-    let mut conn = if input.fast || skip_refresh_for_live_sync {
-        open_database_read_only(&config.db_path)
-    } else {
-        open_database(&config.db_path)
-    }
-    .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let mode = input.mode;
     let fast = input.fast;
-    if !skip_refresh_for_live_sync {
-        crate::config::refresh_index_if_needed(
-            &config,
-            &mut conn,
-            fast,
-            RefreshLockPolicy::SkipIfBusy,
-        )?;
-    }
+    let conn = open_search_database(&config, fast)?;
     let (inference, expansion) =
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
             (None, None)
@@ -87,6 +72,32 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
         TalonResponseData::Search(response),
         meta,
     ))
+}
+
+fn open_search_database(
+    config: &talon_core::TalonConfig,
+    fast: bool,
+) -> Result<talon_core::Connection> {
+    if fast {
+        return open_database_read_only(&config.db_path)
+            .wrap_err_with(|| format!("opening index at {}", config.db_path.display()));
+    }
+
+    let lock_path = config::sync_lock_path(config);
+    match acquire_sync_lock(&lock_path) {
+        Ok(lock) => {
+            let mut conn = open_database(&config.db_path)
+                .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
+            crate::config::refresh_index_with_lock(config, &mut conn, lock)?;
+            Ok(conn)
+        }
+        Err(SyncLockError::Busy) => open_database_read_only(&config.db_path)
+            .wrap_err_with(|| format!("opening index at {}", config.db_path.display())),
+        Err(SyncLockError::Io(err)) => Err(err).wrap_err("acquiring sync lock for search"),
+        Err(err) => Err(color_eyre::eyre::eyre!(
+            "acquiring sync lock for search: {err}"
+        )),
+    }
 }
 
 fn dispatch_read(input: &ReadInput) -> Result<TalonEnvelope> {
