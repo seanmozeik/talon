@@ -1,4 +1,5 @@
 use std::io::{BufRead, Write};
+use std::sync::Arc;
 
 use color_eyre::eyre::{Result, WrapErr};
 use serde_json::json;
@@ -57,6 +58,27 @@ where
 
         write_response(&mut writer, &response)?;
     }
+}
+
+/// Forward-compatibility stub that accepts process-local server state.
+///
+/// The `state` parameter is currently unused; it will be threaded through
+/// `handle_request` in Phase 4 when hook tools require it.
+///
+/// # Errors
+///
+/// Returns an error if reading from the input stream or writing to the output
+/// stream fails. See [`run_jsonrpc_loop`] for the full error contract.
+pub fn run_jsonrpc_loop_with_state<R, W>(
+    reader: R,
+    writer: W,
+    _state: Arc<crate::mcp::state::McpServerState>,
+) -> Result<TransportOutcome>
+where
+    R: BufRead,
+    W: Write,
+{
+    run_jsonrpc_loop(reader, writer)
 }
 
 fn write_response<W, T>(writer: &mut W, response: &T) -> Result<()>

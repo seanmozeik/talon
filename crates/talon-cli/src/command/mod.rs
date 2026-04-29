@@ -12,7 +12,8 @@ mod status;
 mod sync;
 
 use crate::cli::{Cli, Commands};
-use crate::mcp::transport::run_jsonrpc_loop;
+use crate::mcp::state::{ConfigState, McpServerState};
+use crate::mcp::transport::run_jsonrpc_loop_with_state;
 use crate::output::OutputMode;
 use eyre::{Result, bail};
 use std::io::{self, BufReader};
@@ -35,9 +36,21 @@ pub async fn run(cli: &Cli) -> Result<()> {
 
     match cmd {
         Commands::Mcp => {
+            let config = crate::config::load_config(cli.config_file.as_deref())?;
+            let vault_path = config.vault_path.clone();
+            let db_path = config.db_path.clone();
+            let config_path = config.config_file_path.clone();
+            let config_state = ConfigState {
+                config,
+                config_path,
+                vault_path,
+                db_path,
+            };
+            let state = McpServerState::new(config_state);
             let stdin = io::stdin();
             let stdout = io::stdout();
-            let outcome = run_jsonrpc_loop(BufReader::new(stdin.lock()), stdout.lock())?;
+            let outcome =
+                run_jsonrpc_loop_with_state(BufReader::new(stdin.lock()), stdout.lock(), state)?;
             let _ = outcome;
             Ok(())
         }
