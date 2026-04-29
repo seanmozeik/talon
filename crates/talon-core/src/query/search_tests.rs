@@ -145,11 +145,45 @@ fn raw_to_search_result_uses_body_fallback_for_short_bm25_snippets() {
 fn apply_scope_priority_preserves_pre_multiplier_raw_score() {
     let config = config_with_wiki_scope();
     let raw = raw("wiki/shout.md", "shout", false, None);
-    let scored = apply_scope_priority(vec![raw], Some(&config));
+    let scored = apply_scope_priority(vec![raw], Some(&config), &[]);
 
     assert_eq!(scored.len(), 1);
     assert_close(scored[0].raw_score, 0.9);
-    assert_close(scored[0].raw.score, 0.9);
+    assert_close(scored[0].raw.score, 1.08);
+}
+
+#[test]
+fn apply_scope_priority_gates_low_relevance_positive_boosts() {
+    let config = config_with_wiki_scope();
+    let mut raw = raw("wiki/shout.md", "shout", false, None);
+    raw.score = 0.39;
+    let scored = apply_scope_priority(vec![raw], Some(&config), &[]);
+
+    assert_eq!(scored.len(), 1);
+    assert_close(scored[0].raw_score, 0.39);
+    assert_close(scored[0].raw.score, 0.39);
+}
+
+#[test]
+fn additive_scope_request_neutralizes_requested_scope_penalty() {
+    let mut config = config_with_wiki_scope();
+    config.scopes.insert(
+        "raw".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("raw/**".to_string()),
+            priority: ScopePriority::Muted,
+            default: false,
+            lint: true,
+        },
+    );
+    let mut raw_email = raw("raw/email.md", "quote", false, None);
+    raw_email.score = 0.8;
+
+    let scored = apply_scope_priority(vec![raw_email], Some(&config), &["raw".to_string()]);
+
+    assert_eq!(scored[0].raw.path, "raw/email.md");
+    assert_close(scored[0].raw_score, 0.8);
+    assert_close(scored[0].raw.score, 0.8);
 }
 
 #[test]

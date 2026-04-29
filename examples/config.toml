@@ -65,8 +65,10 @@ model = "bonsai"
 #
 # Three knobs per scope:
 #   priority   scope label for filtering, lint behavior, and ranking
-#              experiments. Current multipliers are neutral (1.0) while
-#              retrieval is being calibrated from an equal baseline.
+#              weights. Positive boosts are gated by relevance so weak high-
+#              priority hits do not shout over stronger matches.
+#              Defaults: boosted=1.2, elevated=1.1, normal=1.0,
+#              muted=0.85, buried=0.5.
 #   default    if false, the scope is excluded from default queries entirely
 #              (not just down-ranked); re-include via --scope NAME or --scope-all
 #   lint       if false, files in this scope don't appear in `talon lint`
@@ -90,7 +92,7 @@ lint = true
 
 [scopes.artifacts]
 glob = ["artifacts/**"]
-priority = "normal"
+priority = "elevated"
 default = true
 lint = true
 

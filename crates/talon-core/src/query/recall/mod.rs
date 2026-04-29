@@ -10,10 +10,12 @@ use std::collections::HashSet;
 
 use rusqlite::Connection;
 
+use crate::ScopeFilter;
 use crate::config::TalonConfig;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
 use crate::query::{RecallInput, RecallResponse, VaultRecall};
+use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
 
 use super::recall_scoring::{EvidenceInputs, compute_evidence_score};
 
@@ -51,8 +53,30 @@ pub fn run_recall(
     let query = build_query(input);
     let limit: u32 = 20;
 
-    let raw = retrieve_pipeline_results(conn, inference, expansion, &query, limit, input.fast);
-    let raw = apply_scope_priority(raw, config);
+    let pre_filter = config.map_or_else(PreFilter::none, |cfg| {
+        let filter = ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .unwrap_or_else(|_| ScopeFilter::default_for(cfg));
+        PreFilter {
+            since_ms: None,
+            accepted_note_ids: scope_to_note_ids(conn, &filter),
+            where_clauses: Vec::new(),
+        }
+    });
+    if pre_filter.is_impossible() {
+        return make_skipped(0.0);
+    }
+
+    let raw = retrieve_pipeline_results(
+        conn,
+        inference,
+        expansion,
+        &query,
+        limit,
+        input.fast,
+        &pre_filter,
+    );
+    let mut raw = apply_scope_priority(raw, config, &input.scope);
+    raw.sort_by(|a, b| b.score.total_cmp(&a.score));
 
     let (pipeline_results, excluded_raw): (Vec<_>, Vec<_>) = raw
         .into_iter()

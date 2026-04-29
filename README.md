@@ -54,7 +54,7 @@ lint = false
 
 Scope iteration follows TOML declaration order — narrower or more sensitive scopes declared above broader ones win when their globs overlap.
 
-By default, queries (`search`, `recall`, `related`, `meta`, `changes`, `lint`) cover only scopes with `default = true`. Scopes with `default = false` are **excluded** entirely — not just down-ranked.
+By default, queries (`search`, `recall`, `related`, `meta`, `changes`, `lint`) cover only scopes with `default = true`. Scopes with `default = false` are **excluded** entirely — not just down-ranked. Scope priority weights are modest by default (`boosted=1.2`, `elevated=1.1`, `normal=1.0`, `muted=0.85`, `buried=0.5`) and positive boosts are gated by relevance so a weak high-priority hit cannot shout over a stronger match.
 
 To include a `default = false` scope, opt in explicitly:
 

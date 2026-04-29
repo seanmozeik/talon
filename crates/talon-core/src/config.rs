@@ -38,14 +38,49 @@ pub enum ScopePriority {
 
 impl ScopePriority {
     /// Returns the post-rerank score multiplier.
-    ///
-    /// Scope labels are preserved for filtering, lint behavior, and future
-    /// calibration, but current ranking dogfood starts from a neutral baseline.
     #[must_use]
     pub const fn multiplier(self) -> f64 {
         match self {
-            Self::Boosted | Self::Elevated | Self::Normal | Self::Muted | Self::Buried => 1.0,
+            Self::Boosted => 1.2,
+            Self::Elevated => 1.1,
+            Self::Normal => 1.0,
+            Self::Muted => 0.85,
+            Self::Buried => 0.5,
         }
+    }
+
+    /// Applies the multiplier only when it is allowed by the relevance gate.
+    ///
+    /// Positive priority boosts are gated so a weak match in a high-priority
+    /// scope cannot shout over a stronger match elsewhere. Negative weights
+    /// still apply below the floor because muted/buried scopes are provenance
+    /// signals, not relevance claims.
+    #[must_use]
+    pub fn apply_to_score(self, score: f64) -> f64 {
+        apply_scope_multiplier(score, self.multiplier())
+    }
+
+    /// Applies scope priority while honoring an explicit user-selected scope.
+    ///
+    /// `--scope NAME` is an additive request: default scopes remain in play,
+    /// but matches from the requested scope should not be muted below neutral.
+    #[must_use]
+    pub fn apply_to_score_with_explicit(self, score: f64, explicitly_requested: bool) -> f64 {
+        let multiplier = if explicitly_requested {
+            self.multiplier().max(Self::Normal.multiplier())
+        } else {
+            self.multiplier()
+        };
+        apply_scope_multiplier(score, multiplier)
+    }
+}
+
+fn apply_scope_multiplier(score: f64, multiplier: f64) -> f64 {
+    const POSITIVE_BOOST_RELEVANCE_FLOOR: f64 = 0.4;
+    if multiplier > 1.0 && score < POSITIVE_BOOST_RELEVANCE_FLOOR {
+        score
+    } else {
+        score * multiplier
     }
 }
 

@@ -2,9 +2,14 @@ use rusqlite::{Connection, params};
 
 use super::budget::trim_to_budget;
 use super::*;
+use crate::config::{
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
+    Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
+};
 use crate::contracts::VaultPath;
 use crate::indexing::migrations::run_migrations;
 use crate::query::{LinkedNote, NoteExcerpt};
+use std::path::PathBuf;
 
 fn fresh_db() -> Connection {
     let mut conn = Connection::open_in_memory().unwrap();
@@ -38,6 +43,56 @@ fn recall_input(message: &str) -> RecallInput {
     }
 }
 
+fn scoped_config() -> TalonConfig {
+    let mut scopes = ScopesConfig::new();
+    scopes.insert(
+        "wiki".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("wiki/**".to_string()),
+            priority: ScopePriority::Boosted,
+            default: true,
+            lint: true,
+        },
+    );
+    scopes.insert(
+        "private".to_string(),
+        Scope {
+            glob: ScopeGlob::Single("private/**".to_string()),
+            priority: ScopePriority::Buried,
+            default: false,
+            lint: false,
+        },
+    );
+
+    TalonConfig {
+        vault_path: PathBuf::from("/tmp/vault"),
+        db_path: PathBuf::from("/tmp/vault/idx.sqlite"),
+        config_file_path: None,
+        include_patterns: Vec::new(),
+        ignore_patterns: Vec::new(),
+        inference: InferenceConfig {
+            base_url: "http://localhost".to_string(),
+            models: InferenceModels {
+                query_embedding: "query".to_string(),
+                document_embedding: "document".to_string(),
+                chunk_embedding: "chunk".to_string(),
+                reranker: "reranker".to_string(),
+            },
+            rerank: RerankConfig::default(),
+        },
+        expansion: ExpansionConfig {
+            provider: "openai-compatible".to_string(),
+            base_url: "http://localhost".to_string(),
+            model: "expansion".to_string(),
+            max_tokens: None,
+        },
+        scopes,
+        search: SearchConfig::default(),
+        lint: LintConfig::default(),
+        chunker: ChunkerConfig::default(),
+    }
+}
+
 #[test]
 fn empty_message_returns_skipped() {
     let conn = fresh_db();
@@ -51,6 +106,39 @@ fn no_results_returns_skipped() {
     let conn = fresh_db();
     let result = run_recall(&conn, None, None, &recall_input("nothing here"), None);
     assert!(result.skipped);
+}
+
+#[test]
+fn default_false_scopes_are_excluded_from_recall_unless_scoped_in() {
+    let conn = fresh_db();
+    let config = scoped_config();
+    insert_note(&conn, "wiki/Lease.md", "Lease Public");
+    insert_note(&conn, "private/Lease.md", "Lease Private");
+
+    let default_result = run_recall(&conn, None, None, &recall_input("Lease"), Some(&config));
+    let default_paths: Vec<String> = default_result
+        .vault_recall
+        .as_ref()
+        .into_iter()
+        .flat_map(|recall| recall.active_notes.iter())
+        .map(|note| note.vault_path.as_str().to_string())
+        .collect();
+    assert!(default_paths.iter().any(|path| path == "wiki/Lease.md"));
+    assert!(!default_paths.iter().any(|path| path == "private/Lease.md"));
+
+    let input = RecallInput {
+        scope: vec!["private".to_string()],
+        ..recall_input("Lease")
+    };
+    let scoped_result = run_recall(&conn, None, None, &input, Some(&config));
+    let scoped_paths: Vec<String> = scoped_result
+        .vault_recall
+        .as_ref()
+        .into_iter()
+        .flat_map(|recall| recall.active_notes.iter())
+        .map(|note| note.vault_path.as_str().to_string())
+        .collect();
+    assert!(scoped_paths.iter().any(|path| path == "private/Lease.md"));
 }
 
 #[test]

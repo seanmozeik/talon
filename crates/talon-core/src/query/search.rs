@@ -123,12 +123,12 @@ fn run_search_inner(
     };
 
     // Step 2: scope priority multiplication (score modifier, not filter).
-    let scored = apply_scope_priority(raw_results, config);
+    let mut scored = apply_scope_priority(raw_results, config, &input.scope);
+    scored.sort_by(|a, b| b.raw.score.total_cmp(&a.raw.score));
 
     // Step 6: total is post-filter, pre-truncate.
     let total = count_u32(scored.len());
     // Step 7: final output trim.
-    let mut scored = scored;
     scored.truncate(limit as usize);
 
     let expanded = (expansion.is_some() || !input.queries.is_empty())
@@ -245,13 +245,14 @@ fn raw_to_search_result(
     })
 }
 
-/// Multiplies each result's score by the scope priority multiplier.
+/// Applies each result's gated scope priority multiplier.
 ///
 /// Uses the `TalonConfig` to resolve the scope for each vault path.
 /// Falls back to normal (1.0x) when no config is provided.
 fn apply_scope_priority(
     results: Vec<RawSearchResult>,
     config: Option<&TalonConfig>,
+    requested_scopes: &[String],
 ) -> Vec<ScoredRawSearchResult> {
     let Some(cfg) = config else {
         return results
@@ -268,8 +269,12 @@ fn apply_scope_priority(
         .map(|mut raw| {
             let raw_score = raw.score;
             let resolution = cfg.resolve_scope(std::path::Path::new(&raw.path));
-            let multiplier = resolution.priority.multiplier();
-            raw.score *= multiplier;
+            let explicitly_requested = cfg
+                .resolve_scope_name(std::path::Path::new(&raw.path))
+                .is_some_and(|name| requested_scopes.iter().any(|requested| requested == name));
+            raw.score = resolution
+                .priority
+                .apply_to_score_with_explicit(raw.score, explicitly_requested);
             ScoredRawSearchResult { raw, raw_score }
         })
         .collect()

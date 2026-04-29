@@ -29,6 +29,7 @@ pub(super) fn retrieve_pipeline_results(
     query: &str,
     limit: u32,
     fast: bool,
+    pre_filter: &PreFilter,
 ) -> Vec<RawSearchResult> {
     let opts = HybridPipelineOptions {
         limit,
@@ -37,10 +38,10 @@ pub(super) fn retrieve_pipeline_results(
         queries: Vec::new(),
         intent: None,
         hooks: crate::search::SearchHooks::default(),
-        pre_filter: PreFilter::none(),
+        pre_filter: pre_filter.clone(),
     };
     inference.map_or_else(
-        || run_fast_bm25_title(conn, query, limit),
+        || run_fast_bm25_title(conn, query, limit, pre_filter),
         |inf| run_hybrid_pipeline(conn, inf, expansion, query, &opts),
     )
 }
@@ -48,6 +49,7 @@ pub(super) fn retrieve_pipeline_results(
 pub(super) fn apply_scope_priority(
     results: Vec<RawSearchResult>,
     config: Option<&TalonConfig>,
+    requested_scopes: &[String],
 ) -> Vec<RawSearchResult> {
     let Some(cfg) = config else {
         return results;
@@ -56,20 +58,26 @@ pub(super) fn apply_scope_priority(
         .into_iter()
         .map(|mut r| {
             let resolution = cfg.resolve_scope(std::path::Path::new(&r.path));
-            r.score *= resolution.priority.multiplier();
+            let mut score = resolution.priority.apply_to_score(r.score);
+            if cfg
+                .resolve_scope_name(std::path::Path::new(&r.path))
+                .is_some_and(|name| requested_scopes.iter().any(|requested| requested == name))
+            {
+                score = score.max(r.score);
+            }
+            r.score = score;
             r
         })
         .collect()
 }
-fn run_fast_bm25_title(conn: &Connection, query: &str, limit: u32) -> Vec<RawSearchResult> {
-    let bm25 = search_bm25(
-        conn,
-        query,
-        limit,
-        DEFAULT_SNIPPET_LENGTH,
-        &PreFilter::none(),
-    );
-    let title_parts = search_title_parts(conn, query, limit, &PreFilter::none());
+fn run_fast_bm25_title(
+    conn: &Connection,
+    query: &str,
+    limit: u32,
+    pre_filter: &PreFilter,
+) -> Vec<RawSearchResult> {
+    let bm25 = search_bm25(conn, query, limit, DEFAULT_SNIPPET_LENGTH, pre_filter);
+    let title_parts = search_title_parts(conn, query, limit, pre_filter);
     let mut all_title = title_parts.exact_alias;
     all_title.extend(title_parts.fuzzy);
     fuse_hybrid_result_lists(
