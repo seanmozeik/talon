@@ -139,7 +139,9 @@ pub(super) async fn emit(args: &RecallArgs, cli: &Cli) -> Result<()> {
     };
 
     if prompt_xml {
-        format_recall_prompt_xml(&mut std::io::stdout(), &recall_resp, &vault)?;
+        crate::banner::clear_fancy_prelude();
+        let mut stdout = std::io::stdout().lock();
+        format_recall_prompt_xml(&mut stdout, &recall_resp, &vault)?;
         return Ok(());
     }
 

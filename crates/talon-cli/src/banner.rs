@@ -24,17 +24,25 @@ pub fn eprint_fancy_prelude_for_run(cli: &Cli) {
     eprint_figlet_indented(LINE_INDENT);
 }
 
+/// Clears the banner area if the human TTY prelude was shown.
+pub fn clear_fancy_prelude() {
+    if !human_tty_for_cli_arts() {
+        return;
+    }
+
+    let mut stdout = std::io::stdout().lock();
+    let _ = write!(stdout, "{}", clear_fancy_prelude_escape());
+    let _ = stdout.flush();
+}
+
 /// Returns the colored banner string for clap `before_help`.
-/// Only emits colors when stderr is a TTY that accepts ANSI codes.
+/// Only emits colors when stdout is a TTY that accepts ANSI codes.
 pub fn help_banner_colored() -> String {
     if !std::io::stdout().is_terminal() || !crate::platform::user_accepts_ansi_color() {
         return String::new();
     }
 
-    let lines: Vec<&str> = BANNER_TALON
-        .lines()
-        .filter(|line| !line.is_empty())
-        .collect();
+    let lines = banner_lines();
     let width = lines
         .iter()
         .map(|line| line.chars().count())
@@ -65,10 +73,7 @@ fn human_tty_for_cli_arts() -> bool {
 }
 
 fn eprint_figlet_indented(indent: &str) {
-    let lines: Vec<&str> = BANNER_TALON
-        .lines()
-        .filter(|line| !line.is_empty())
-        .collect();
+    let lines = banner_lines();
     let width = lines
         .iter()
         .map(|line| line.chars().count())
@@ -90,6 +95,17 @@ fn eprint_figlet_indented(indent: &str) {
     }
     let _ = std::io::stderr().flush();
     eprintln!();
+}
+
+fn banner_lines() -> Vec<&'static str> {
+    BANNER_TALON
+        .lines()
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
+fn clear_fancy_prelude_escape() -> String {
+    format!("\x1b[{}F\x1b[J", banner_lines().len().saturating_add(1))
 }
 
 fn gradient_rgb(index: usize, denominator: usize) -> (u8, u8, u8) {
@@ -116,4 +132,19 @@ fn gradient_rgb(index: usize, denominator: usize) -> (u8, u8, u8) {
         blend(left_g, right_g),
         blend(left_b, right_b),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn banner_line_count_includes_trailing_blank_line() {
+        let figlet_line_count = BANNER_TALON.lines().filter(|line| !line.is_empty()).count();
+        assert_eq!(banner_lines().len(), figlet_line_count);
+        assert_eq!(
+            clear_fancy_prelude_escape(),
+            format!("\x1b[{}F\x1b[J", figlet_line_count + 1)
+        );
+    }
 }

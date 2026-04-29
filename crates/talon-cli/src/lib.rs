@@ -61,6 +61,7 @@ pub async fn run() -> u8 {
                 };
                 let _ = output::emit_response(&envelope, mode);
             } else {
+                banner::clear_fancy_prelude();
                 eprintln!("Error: {error:#}");
             }
             exit_codes::GENERIC_ERROR

@@ -66,6 +66,10 @@ pub fn write_stdout_bytes(bytes: &[u8]) -> u8 {
 ///
 /// Returns an error if serialization or stdout writes fail.
 pub fn emit_response(envelope: &TalonEnvelope, mode: OutputMode) -> Result<()> {
+    if matches!(mode, OutputMode::Human) {
+        crate::banner::clear_fancy_prelude();
+    }
+
     match mode {
         OutputMode::Human => human::emit(envelope),
         OutputMode::JsonPretty => json::emit_pretty(envelope),
