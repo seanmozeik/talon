@@ -14,6 +14,10 @@ use talon_core::{ErrorCode, TalonEnvelope, TalonInput};
 use self::error::ToolError;
 
 const TOOL_NAME: &str = "talon";
+// DEPRECATED: This action-union tool is deprecated and will be replaced by named tools in Phase 1.
+// Individual tool actions (search, read, recall, sync, status, related, meta, changes, lint)
+// will become first-class named tools with dedicated schemas, improving IDE support and
+// client clarity. This tool remains functional for backward compatibility during transition.
 const TOOL_DESCRIPTION: &str = "Run one stateless Talon action against the configured vault.";
 
 #[derive(Debug, Deserialize)]

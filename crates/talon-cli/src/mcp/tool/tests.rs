@@ -42,3 +42,87 @@ fn tools_call_wraps_invalid_arguments_in_error_envelope() {
     assert_eq!(result["structuredContent"]["ok"], false);
     assert_eq!(result["structuredContent"]["action"], "talon");
 }
+
+#[test]
+fn tools_call_search_missing_vault_returns_error_with_expected_shape() {
+    // Test that calling search without a valid vault config returns an error
+    // with the expected MCP response structure.
+    let result = tools_call_result(Some(json!({
+        "name": "talon",
+        "arguments": { "action": "search", "query": "test" }
+    })));
+
+    // Verify the response has the standard MCP shape.
+    assert!(result.is_object());
+    assert!(result["content"].is_array());
+    assert!(result["content"][0].is_object());
+    assert_eq!(result["content"][0]["type"], "text");
+    assert!(result["content"][0]["text"].is_string());
+
+    // Verify the structured content is a TalonEnvelope with error state.
+    assert!(result["structuredContent"].is_object());
+    assert_eq!(result["structuredContent"]["ok"], false);
+    assert_eq!(result["structuredContent"]["action"], "search");
+    assert!(result["structuredContent"]["error"].is_object());
+    assert!(result["structuredContent"]["error"]["code"].is_string());
+    assert!(result["structuredContent"]["error"]["message"].is_string());
+
+    // Verify error is propagated to top-level isError.
+    assert_eq!(result["isError"], true);
+}
+
+#[test]
+fn tools_call_recall_missing_vault_returns_error_with_expected_shape() {
+    // Test that calling recall without a valid vault config returns an error
+    // with the expected MCP response structure.
+    let result = tools_call_result(Some(json!({
+        "name": "talon",
+        "arguments": { "action": "recall", "message": "test" }
+    })));
+
+    // Verify the response has the standard MCP shape.
+    assert!(result.is_object());
+    assert!(result["content"].is_array());
+    assert!(result["content"][0].is_object());
+    assert_eq!(result["content"][0]["type"], "text");
+    assert!(result["content"][0]["text"].is_string());
+
+    // Verify the structured content is a TalonEnvelope with error state.
+    assert!(result["structuredContent"].is_object());
+    assert_eq!(result["structuredContent"]["ok"], false);
+    assert_eq!(result["structuredContent"]["action"], "recall");
+    assert!(result["structuredContent"]["error"].is_object());
+    assert!(result["structuredContent"]["error"]["code"].is_string());
+    assert!(result["structuredContent"]["error"]["message"].is_string());
+
+    // Verify error is propagated to top-level isError.
+    assert_eq!(result["isError"], true);
+}
+
+#[test]
+fn tools_call_read_missing_vault_returns_error_with_expected_shape() {
+    // Test that calling read without a valid vault config returns an error
+    // with the expected MCP response structure.
+    let result = tools_call_result(Some(json!({
+        "name": "talon",
+        "arguments": { "action": "read", "path": "test.md" }
+    })));
+
+    // Verify the response has the standard MCP shape.
+    assert!(result.is_object());
+    assert!(result["content"].is_array());
+    assert!(result["content"][0].is_object());
+    assert_eq!(result["content"][0]["type"], "text");
+    assert!(result["content"][0]["text"].is_string());
+
+    // Verify the structured content is a TalonEnvelope with error state.
+    assert!(result["structuredContent"].is_object());
+    assert_eq!(result["structuredContent"]["ok"], false);
+    assert_eq!(result["structuredContent"]["action"], "read");
+    assert!(result["structuredContent"]["error"].is_object());
+    assert!(result["structuredContent"]["error"]["code"].is_string());
+    assert!(result["structuredContent"]["error"]["message"].is_string());
+
+    // Verify error is propagated to top-level isError.
+    assert_eq!(result["isError"], true);
+}
