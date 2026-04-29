@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::{Cli, LintArgs, LintCheck};
-use crate::config::{self, refresh_index_if_needed, vault_container_path};
+use crate::config::{self, RefreshLockPolicy, refresh_index_if_needed, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
@@ -38,7 +38,7 @@ pub(super) async fn emit(args: &LintArgs, cli: &Cli) -> Result<()> {
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
         // Lint always refreshes — findings must reflect current vault state.
         // `false` for `fast`: lint never opts out of refresh.
-        refresh_index_if_needed(&config, &mut conn, false)?;
+        refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::ErrorIfBusy)?;
 
         let mut response = query_lint(&conn, &input, Some(&config));
         response.vault = vault;

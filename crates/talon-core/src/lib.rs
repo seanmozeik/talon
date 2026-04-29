@@ -65,10 +65,10 @@ pub use search::{
     AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchDiagnostics,
     SearchHooks, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause, WhereOperator,
 };
-pub use store::open_database;
+pub use store::{open_database, open_database_read_only};
 pub use sync::{
-    SyncError, SyncLock, SyncLockError, acquire_sync_lock, refresh_index, relink_unresolved,
-    run_sync, run_sync_with_chunker,
+    SyncError, SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process,
+    refresh_index, relink_unresolved, run_sync, run_sync_with_chunker,
 };
 pub use text::chunker::{
     NoteChunk, build_embedding_text, build_heading_path, chunk_markdown, make_chunk_hash,

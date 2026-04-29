@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     ExpansionClient, RecallInput, RecallResponse, ResponseMeta, ScopeFilter, TalonEnvelope,
-    TalonResponseData, inference::InferenceClient, open_database, run_recall,
+    TalonResponseData, inference::InferenceClient, open_database_read_only, run_recall,
     vec_ext::register_sqlite_vec,
 };
 
@@ -85,7 +85,7 @@ pub(super) async fn emit(args: &RecallArgs, cli: &Cli) -> Result<()> {
                 .as_ref()
                 .map_or_else(crate::config::default_db_path, |c| c.db_path.clone());
             register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-            let conn = open_database(&db_path)
+            let conn = open_database_read_only(&db_path)
                 .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
 
             let (inference, expansion) = if fast {

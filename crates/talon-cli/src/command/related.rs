@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::{Cli, RelatedArgs};
-use crate::config::{self, vault_container_path};
+use crate::config::{self, RefreshLockPolicy, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     Direction, RelatedInput, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData,
-    find_related, open_database,
+    find_related, open_database, open_database_read_only,
 };
 
 pub(super) async fn emit(args: &RelatedArgs, cli: &Cli) -> Result<()> {
@@ -41,9 +41,18 @@ pub(super) async fn emit(args: &RelatedArgs, cli: &Cli) -> Result<()> {
     let fast = cli.fast;
     let started = Instant::now();
     let work = async move {
-        let mut conn = open_database(&db_path)
-            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-        crate::config::refresh_index_if_needed(&config, &mut conn, fast)?;
+        let mut conn = if fast {
+            open_database_read_only(&db_path)
+        } else {
+            open_database(&db_path)
+        }
+        .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+        crate::config::refresh_index_if_needed(
+            &config,
+            &mut conn,
+            fast,
+            RefreshLockPolicy::ErrorIfBusy,
+        )?;
 
         let mut response = find_related(&conn, &input, Some(&config));
         response.vault = vault;

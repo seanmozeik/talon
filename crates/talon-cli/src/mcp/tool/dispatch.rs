@@ -4,11 +4,12 @@ use color_eyre::eyre::{Result, WrapErr as _};
 use talon_core::{
     ChangesInput, ExpansionClient, LintInput, MetaInput, ReadInput, RecallInput, RelatedInput,
     ResponseMeta, SearchInput, SearchMode, TalonEnvelope, TalonInput, TalonResponseData,
-    find_related, inference::InferenceClient, open_database, query_changes, query_lint, query_meta,
-    run_read, run_recall, run_search, vec_ext::register_sqlite_vec,
+    find_related, inference::InferenceClient, is_sync_lock_held_by_live_process, open_database,
+    open_database_read_only, query_changes, query_lint, query_meta, run_read, run_recall,
+    run_search, vec_ext::register_sqlite_vec,
 };
 
-use crate::config;
+use crate::config::{self, RefreshLockPolicy};
 use crate::telemetry::{count_u32, elapsed_ms};
 
 pub(super) fn dispatch_input(input: TalonInput) -> Result<TalonEnvelope> {
@@ -29,11 +30,24 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let mut conn = open_database(&config.db_path)
-        .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
+    let skip_refresh_for_live_sync =
+        is_sync_lock_held_by_live_process(&config::sync_lock_path(&config));
+    let mut conn = if input.fast || skip_refresh_for_live_sync {
+        open_database_read_only(&config.db_path)
+    } else {
+        open_database(&config.db_path)
+    }
+    .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let mode = input.mode;
     let fast = input.fast;
-    crate::config::refresh_index_if_needed(&config, &mut conn, fast)?;
+    if !skip_refresh_for_live_sync {
+        crate::config::refresh_index_if_needed(
+            &config,
+            &mut conn,
+            fast,
+            RefreshLockPolicy::SkipIfBusy,
+        )?;
+    }
     let (inference, expansion) =
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
             (None, None)
@@ -78,7 +92,7 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
 fn dispatch_read(input: &ReadInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
-    let conn = open_database(&config.db_path)
+    let conn = open_database_read_only(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let response = run_read(&conn, &config.vault_path, input);
     let result_count = response
@@ -105,7 +119,12 @@ fn dispatch_related(input: &RelatedInput) -> Result<TalonEnvelope> {
     let config = config::load_config(None)?;
     let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
-    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
+    crate::config::refresh_index_if_needed(
+        &config,
+        &mut conn,
+        false,
+        RefreshLockPolicy::ErrorIfBusy,
+    )?;
     let response = find_related(&conn, input, Some(&config));
     let result_count = count_u32(response.results.len());
     let meta = ResponseMeta {
@@ -127,7 +146,12 @@ fn dispatch_meta(input: &MetaInput) -> Result<TalonEnvelope> {
     let config = config::load_config(None)?;
     let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
-    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
+    crate::config::refresh_index_if_needed(
+        &config,
+        &mut conn,
+        false,
+        RefreshLockPolicy::ErrorIfBusy,
+    )?;
     let since = input.since.clone();
     let response = query_meta(&conn, input, Some(&config));
     let result_count = count_u32(response.entries.len());
@@ -150,7 +174,12 @@ fn dispatch_changes(input: &ChangesInput) -> Result<TalonEnvelope> {
     let config = config::load_config(None)?;
     let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
-    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
+    crate::config::refresh_index_if_needed(
+        &config,
+        &mut conn,
+        false,
+        RefreshLockPolicy::ErrorIfBusy,
+    )?;
     let since = input.since.clone();
     let response = query_changes(&conn, input, Some(&config));
     let result_count =
@@ -176,7 +205,12 @@ fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
     let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     // Lint always refreshes — findings must reflect current vault state.
-    crate::config::refresh_index_if_needed(&config, &mut conn, false)?;
+    crate::config::refresh_index_if_needed(
+        &config,
+        &mut conn,
+        false,
+        RefreshLockPolicy::ErrorIfBusy,
+    )?;
 
     let response = query_lint(&conn, input, Some(&config));
     let result_count = count_u32(response.findings.len());
@@ -198,7 +232,7 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let conn = open_database(&config.db_path)
+    let conn = open_database_read_only(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let fast = input.fast;
     let (inference, expansion) = if fast {

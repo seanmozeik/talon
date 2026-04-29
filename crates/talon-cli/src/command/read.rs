@@ -8,8 +8,8 @@ use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    PositiveCount, ReadInput, ResponseMeta, TalonEnvelope, TalonResponseData, open_database,
-    run_read,
+    PositiveCount, ReadInput, ResponseMeta, TalonEnvelope, TalonResponseData,
+    open_database_read_only, run_read,
 };
 
 pub(super) async fn emit(args: &ReadArgs, cli: &Cli) -> Result<()> {
@@ -38,7 +38,7 @@ pub(super) async fn emit(args: &ReadArgs, cli: &Cli) -> Result<()> {
 
     let started = Instant::now();
     let work = async move {
-        let conn = open_database(&db_path)
+        let conn = open_database_read_only(&db_path)
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
 
         let mut response = run_read(&conn, &vault_root, &input);

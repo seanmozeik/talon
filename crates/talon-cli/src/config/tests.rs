@@ -1,9 +1,13 @@
-use super::{CONFIG_TEMPLATE, load_config_file};
+use super::{CONFIG_TEMPLATE, RefreshLockPolicy, load_config_file};
 use eyre::Result;
 use std::path::PathBuf;
 
 fn temp_config_path(label: &str) -> PathBuf {
     std::env::temp_dir().join(format!("talon-{label}-{}.toml", std::process::id()))
+}
+
+fn temp_dir_path(label: &str) -> PathBuf {
+    std::env::temp_dir().join(format!("talon-{label}-{}", std::process::id()))
 }
 
 #[test]
@@ -224,4 +228,53 @@ model = "gemma-smol"
         };
         assert!(err.to_string().contains("failed to parse config file"));
     }
+}
+
+#[test]
+fn refresh_index_if_needed_skips_when_lock_is_busy_and_policy_allows_it() {
+    let root = temp_dir_path("skip-busy-refresh");
+    let vault = root.join("vault");
+    fs_err::create_dir_all(&vault).unwrap_or_else(|err| panic!("create vault: {err}"));
+    let db = root.join("index.sqlite");
+    let mut config = super::default_config_for_vault(vault);
+    config.db_path = db.clone();
+    let lock_path = super::sync_lock_path(&config);
+    let _lock =
+        talon_core::acquire_sync_lock(&lock_path).unwrap_or_else(|err| panic!("lock: {err}"));
+    let mut conn =
+        talon_core::open_database(&db).unwrap_or_else(|err| panic!("open database: {err}"));
+
+    super::refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::SkipIfBusy)
+        .unwrap_or_else(|err| panic!("busy refresh should be skipped: {err}"));
+
+    drop(conn);
+    let _ = fs_err::remove_dir_all(root);
+}
+
+#[test]
+fn refresh_index_if_needed_errors_when_lock_is_busy_and_policy_requires_it() {
+    let root = temp_dir_path("error-busy-refresh");
+    let vault = root.join("vault");
+    fs_err::create_dir_all(&vault).unwrap_or_else(|err| panic!("create vault: {err}"));
+    let db = root.join("index.sqlite");
+    let mut config = super::default_config_for_vault(vault);
+    config.db_path = db.clone();
+    let lock_path = super::sync_lock_path(&config);
+    let _lock =
+        talon_core::acquire_sync_lock(&lock_path).unwrap_or_else(|err| panic!("lock: {err}"));
+    let mut conn =
+        talon_core::open_database(&db).unwrap_or_else(|err| panic!("open database: {err}"));
+
+    let Err(err) =
+        super::refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::ErrorIfBusy)
+    else {
+        panic!("busy refresh should fail when policy requires it");
+    };
+
+    assert!(
+        err.to_string().contains("auto-refresh failed"),
+        "unexpected error: {err}"
+    );
+    drop(conn);
+    let _ = fs_err::remove_dir_all(root);
 }

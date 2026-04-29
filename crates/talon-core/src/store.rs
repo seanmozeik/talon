@@ -10,7 +10,7 @@ use fs_err as fs;
 use rusqlite::{Connection, OpenFlags};
 
 use crate::TalonError;
-use crate::indexing::migrations::run_migrations;
+use crate::indexing::migrations::{TALON_SQLITE_BUSY_TIMEOUT_MS, run_migrations};
 
 /// Opens (or creates) the Talon index database at `path` with the standard
 /// PRAGMA configuration and applies all migrations.
@@ -47,6 +47,46 @@ pub fn open_database(path: &Path) -> Result<Connection, TalonError> {
     })?;
 
     run_migrations(&mut conn)?;
+    Ok(conn)
+}
+
+/// Opens an existing Talon index database for read-only query work.
+///
+/// Does not create parent directories and does not run migrations. Callers that
+/// need to create or refresh the index should use [`open_database`].
+///
+/// # Errors
+///
+/// Returns [`TalonError::Sqlite`] when the database cannot be opened read-only
+/// or the read-only connection PRAGMAs cannot be applied.
+pub fn open_database_read_only(path: &Path) -> Result<Connection, TalonError> {
+    let conn = Connection::open_with_flags(
+        path,
+        OpenFlags::SQLITE_OPEN_READ_ONLY
+            | OpenFlags::SQLITE_OPEN_NO_MUTEX
+            | OpenFlags::SQLITE_OPEN_URI,
+    )
+    .map_err(|source| TalonError::Sqlite {
+        context: "open database read-only",
+        source,
+    })?;
+
+    conn.pragma_update(None, "busy_timeout", TALON_SQLITE_BUSY_TIMEOUT_MS)
+        .map_err(|source| TalonError::Sqlite {
+            context: "set busy_timeout",
+            source,
+        })?;
+    conn.pragma_update(None, "foreign_keys", "ON")
+        .map_err(|source| TalonError::Sqlite {
+            context: "set foreign_keys",
+            source,
+        })?;
+    conn.pragma_update(None, "query_only", "ON")
+        .map_err(|source| TalonError::Sqlite {
+            context: "set query_only",
+            source,
+        })?;
+
     Ok(conn)
 }
 
@@ -140,5 +180,37 @@ mod tests {
         let _ = fs::remove_file(&path);
         let _ = fs::remove_file(path.with_extension("sqlite-wal"));
         let _ = fs::remove_file(path.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn open_database_read_only_opens_existing_database_without_writes() {
+        let path = unique_path("readonly");
+        let conn = open_database(&path).unwrap();
+        drop(conn);
+
+        let conn = open_database_read_only(&path).unwrap();
+        let result = conn.execute(
+            "INSERT INTO settings (key, value) VALUES ('readonly-test', '1')",
+            [],
+        );
+
+        assert!(result.is_err(), "read-only connection should reject writes");
+        drop(conn);
+        let _ = fs::remove_file(&path);
+        let _ = fs::remove_file(path.with_extension("sqlite-wal"));
+        let _ = fs::remove_file(path.with_extension("sqlite-shm"));
+    }
+
+    #[test]
+    fn open_database_read_only_does_not_create_missing_database() {
+        let path = unique_path("readonly-missing");
+
+        let result = open_database_read_only(&path);
+
+        assert!(
+            result.is_err(),
+            "read-only open should require an existing database"
+        );
+        assert!(!path.exists());
     }
 }

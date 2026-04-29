@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::{ChangesArgs, Cli};
-use crate::config::{self, vault_container_path};
+use crate::config::{self, RefreshLockPolicy, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     PositiveCount, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData, open_database,
-    query_changes,
+    open_database_read_only, query_changes,
 };
 
 pub(super) async fn emit(args: &ChangesArgs, cli: &Cli) -> Result<()> {
@@ -39,9 +39,18 @@ pub(super) async fn emit(args: &ChangesArgs, cli: &Cli) -> Result<()> {
     let fast = cli.fast;
     let started = Instant::now();
     let work = async move {
-        let mut conn = open_database(&db_path)
-            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-        crate::config::refresh_index_if_needed(&config, &mut conn, fast)?;
+        let mut conn = if fast {
+            open_database_read_only(&db_path)
+        } else {
+            open_database(&db_path)
+        }
+        .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+        crate::config::refresh_index_if_needed(
+            &config,
+            &mut conn,
+            fast,
+            RefreshLockPolicy::ErrorIfBusy,
+        )?;
         let mut response = query_changes(&conn, &input, Some(&config));
         response.vault = vault;
         let result_count =

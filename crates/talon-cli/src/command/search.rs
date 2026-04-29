@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::{Cli, SearchArgs, parse_where_clause};
-use crate::config::{self, vault_container_path};
+use crate::config::{self, RefreshLockPolicy, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::elapsed_ms;
@@ -9,8 +9,9 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     ExpansionClient, ResponseMeta, ScopeFilter, SearchInput, SearchMode, TalonEnvelope,
-    TalonResponseData, inference::InferenceClient, open_database, run_search,
-    run_search_with_expanded_queries, vec_ext::register_sqlite_vec,
+    TalonResponseData, inference::InferenceClient, is_sync_lock_held_by_live_process,
+    open_database, open_database_read_only, run_search, run_search_with_expanded_queries,
+    vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
@@ -91,10 +92,23 @@ fn execute_search(
         .map_or_else(crate::config::default_db_path, |c| c.db_path.clone());
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-    let mut conn = open_database(&db_path)
-        .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-    if let Some(cfg) = config {
-        crate::config::refresh_index_if_needed(cfg, &mut conn, fast)?;
+    let skip_refresh_for_live_sync = config
+        .is_some_and(|cfg| is_sync_lock_held_by_live_process(&crate::config::sync_lock_path(cfg)));
+    let mut conn = if fast || skip_refresh_for_live_sync {
+        open_database_read_only(&db_path)
+    } else {
+        open_database(&db_path)
+    }
+    .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+    if let Some(cfg) = config
+        && !skip_refresh_for_live_sync
+    {
+        crate::config::refresh_index_if_needed(
+            cfg,
+            &mut conn,
+            fast,
+            RefreshLockPolicy::SkipIfBusy,
+        )?;
     }
 
     let (inference, expansion) =
