@@ -111,7 +111,7 @@ fn intent_weighted_chunk_selection_prefers_intent_rich_chunk() {
         candidates: vec![make_candidate("chunked.md", 0.5)],
         top_k: 10,
         hooks: &SearchHooks::default(),
-        db_version: 100,
+        db_version: 101,
     });
 
     assert_eq!(result[0].snippet, "performance web page load paint metric");
@@ -151,7 +151,7 @@ fn chunk_selection_weights_intent_terms_above_query_terms() {
         candidates: vec![make_candidate("weighted.md", 0.5)],
         top_k: 10,
         hooks: &SearchHooks::default(),
-        db_version: 102,
+        db_version: 101,
     });
 
     assert_eq!(

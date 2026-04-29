@@ -15,7 +15,7 @@ use crate::cache::rerank as rerank_cache;
 use crate::inference::InferenceClient;
 use rusqlite::Connection;
 
-use super::fuse::{blend_rerank_probabilities, sigmoid};
+use super::fuse::blend_rerank_probabilities;
 use super::hooks::SearchHooks;
 use super::intent;
 use super::types::RawSearchResult;
@@ -194,7 +194,7 @@ fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
             let Some(original_index) = missing_indices.get(result.index as usize).copied() else {
                 continue;
             };
-            let score = sigmoid(f64::from(result.score));
+            let score = f64::from(result.score).clamp(0.0, 1.0);
             if let Some(slot) = scores.get_mut(original_index) {
                 *slot = Some(score);
             }

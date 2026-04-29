@@ -144,9 +144,9 @@ impl InferenceClient {
 
     /// Posts to `/rerank` and returns scored candidates.
     ///
-    /// Sequence-length truncation is enforced server-side using the sidecar's
-    /// default `max_length`; Talon keeps rerank texts small enough that no
-    /// request-side `max_length` field is sent.
+    /// Talon requests normalized scores from the sidecar. Server-side
+    /// truncation is enabled as a final guard; chunk selection should still
+    /// keep rerank texts well below the model window.
     ///
     /// # Errors
     ///
@@ -164,6 +164,8 @@ impl InferenceClient {
             let body = RerankRequest {
                 query: query.to_string(),
                 texts: batch.to_vec(),
+                raw_scores: false,
+                truncate: true,
                 return_text,
             };
             let mut batch_results: Vec<RerankResult> = self.post_json(&url, &body)?;

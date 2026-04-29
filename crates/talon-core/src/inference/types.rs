@@ -4,7 +4,7 @@
 //! The Python sidecar is the source of truth: `/embed` returns a bare
 //! `[[f32]]` array, `/embed-chunked` returns `{data: [{embeddings, index}], model}`,
 //! and `/rerank` returns `[{index, score}]` where the sidecar has already
-//! resolved any model-specific label layout into a single relevance score
+//! resolved any model-specific label layout into a single normalized relevance score
 //! (TEI client sends `return_text` even though the field is inert server-side).
 
 use serde::{Deserialize, Serialize};
@@ -50,14 +50,19 @@ pub struct EmbedChunkedResponse {
 
 /// `POST /rerank` request body.
 ///
-/// `return_text` is inert server-side but TEI clients send it, so we mirror
-/// that for shape compatibility.
+/// Talon requests normalized scores so reranker output remains comparable
+/// across TEI-compatible backends. `return_text` is inert server-side but TEI
+/// clients send it, so we mirror that for shape compatibility.
 #[derive(Debug, Clone, Serialize)]
 pub struct RerankRequest {
     /// Query text.
     pub query: String,
     /// Candidate texts to rerank.
     pub texts: Vec<String>,
+    /// Return normalized relevance probabilities instead of raw logits.
+    pub raw_scores: bool,
+    /// Allow server-side truncation if a candidate unexpectedly exceeds the model window.
+    pub truncate: bool,
     /// TEI compatibility flag (server returns index+score either way).
     pub return_text: bool,
 }

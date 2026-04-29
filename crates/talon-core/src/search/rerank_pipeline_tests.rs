@@ -1,5 +1,6 @@
 use super::*;
 use crate::inference::InferenceClient;
+use crate::search::fuse::sigmoid;
 use crate::search::types::SearchScores;
 use serde_json::json;
 use wiremock::matchers::{method, path};
@@ -109,8 +110,8 @@ fn blend_math_matches_ts_expectations_within_1e4() {
     );
     let a = result.iter().find(|r| r.path == "a.md").unwrap();
     let b = result.iter().find(|r| r.path == "b.md").unwrap();
-    let expected_a = 0.25_f64.mul_add(sigmoid(0.9_f64), 0.75_f64);
-    let expected_b = 0.25_f64 * sigmoid(0.1_f64);
+    let expected_a = 0.25_f64.mul_add(0.9_f64, 0.75_f64);
+    let expected_b = 0.25_f64 * 0.1_f64;
     assert!((a.score - expected_a).abs() < 1e-4);
     assert!((b.score - expected_b).abs() < 1e-4);
 }

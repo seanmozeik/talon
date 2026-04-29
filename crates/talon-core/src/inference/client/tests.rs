@@ -55,6 +55,8 @@ fn rerank_batches_inputs_and_offsets_indices() {
             .and(body_partial_json(json!({
                 "query": "query",
                 "texts": ["t0", "t1", "t2", "t3"],
+                "raw_scores": false,
+                "truncate": true,
                 "return_text": false
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([
@@ -69,6 +71,8 @@ fn rerank_batches_inputs_and_offsets_indices() {
             .and(body_partial_json(json!({
                 "query": "query",
                 "texts": ["t4", "t5"],
+                "raw_scores": false,
+                "truncate": true,
                 "return_text": false
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([
@@ -88,8 +92,10 @@ fn rerank_batches_inputs_and_offsets_indices() {
 
     let first: serde_json::Value = serde_json::from_slice(&requests[0].body).unwrap();
     let second: serde_json::Value = serde_json::from_slice(&requests[1].body).unwrap();
-    assert!(first.get("max_length").is_none());
-    assert!(second.get("max_length").is_none());
+    assert_eq!(first["raw_scores"], false);
+    assert_eq!(second["raw_scores"], false);
+    assert_eq!(first["truncate"], true);
+    assert_eq!(second["truncate"], true);
     assert_eq!(first["texts"].as_array().unwrap().len(), 4);
     assert_eq!(second["texts"].as_array().unwrap().len(), 2);
 }
@@ -104,6 +110,8 @@ fn rerank_reads_flat_score_payloads() {
             .and(body_partial_json(json!({
                 "query": "query",
                 "texts": ["t0"],
+                "raw_scores": false,
+                "truncate": true,
                 "return_text": false
             })))
             .respond_with(ResponseTemplate::new(200).set_body_json(json!([

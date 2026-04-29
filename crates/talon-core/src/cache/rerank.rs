@@ -15,7 +15,7 @@ pub struct RerankCacheKey {
     query_text_hash: u64,
 }
 
-/// LRU cache for sigmoid-normalized rerank scores.
+/// LRU cache for normalized rerank scores.
 #[derive(Debug)]
 pub struct RerankCache {
     entries: Option<LruCache<RerankCacheKey, f64>>,
@@ -33,13 +33,13 @@ impl RerankCache {
         }
     }
 
-    /// Returns a sigmoid-normalized score when `db_version` is still current.
+    /// Returns a normalized score when `db_version` is still current.
     pub fn get(&mut self, key: RerankCacheKey, db_version: u64) -> Option<f64> {
         self.invalidate_if_stale(db_version);
         self.entries.as_mut()?.get(&key).copied()
     }
 
-    /// Inserts a sigmoid-normalized score computed against `db_version`.
+    /// Inserts a normalized score computed against `db_version`.
     pub fn put(&mut self, key: RerankCacheKey, score: f64, db_version: u64) {
         self.invalidate_if_stale(db_version);
         let Some(entries) = self.entries.as_mut() else {
@@ -80,7 +80,7 @@ pub fn key_for(chunk_text: &str, query_text: &str) -> RerankCacheKey {
     }
 }
 
-/// Looks up a sigmoid-normalized score in the process-global rerank cache.
+/// Looks up a normalized score in the process-global rerank cache.
 pub fn lookup(chunk_text: &str, query_text: &str, db_version: u64) -> Option<f64> {
     let key = key_for(chunk_text, query_text);
     let Ok(mut cache) = RERANK_CACHE.lock() else {
@@ -89,7 +89,7 @@ pub fn lookup(chunk_text: &str, query_text: &str, db_version: u64) -> Option<f64
     cache.get(key, db_version)
 }
 
-/// Stores a sigmoid-normalized score in the process-global rerank cache.
+/// Stores a normalized score in the process-global rerank cache.
 pub fn store(chunk_text: &str, query_text: &str, score: f64, db_version: u64) {
     let key = key_for(chunk_text, query_text);
     let Ok(mut cache) = RERANK_CACHE.lock() else {
