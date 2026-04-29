@@ -5,6 +5,7 @@ use rusqlite::{Connection, params};
 use crate::config::TalonConfig;
 use crate::contracts::VaultPath;
 use crate::numeric::count_u32;
+use crate::query::related::RelationKind;
 use crate::query::related::find_related;
 use crate::query::{LinkedNote, NoteExcerpt, RecallInput, RelatedInput};
 use crate::search::Direction;
@@ -36,6 +37,20 @@ fn mtime_date(conn: &Connection, path: &str) -> String {
     .unwrap_or_default()
 }
 
+/// Minimum active-note score to contribute to linked context.
+/// Same as the suppression confidence gate — marginal active notes
+/// don't get to pollute the graph neighbourhood.
+const LINKED_CTX_MIN_SCORE: f64 = 0.55;
+
+/// Builds linked context by aggregating graph links from all active notes
+/// that score above [`LINKED_CTX_MIN_SCORE`].
+///
+/// Each linked note accumulates an `aggregated_score` (sum of source note
+/// scores) and a `source_notes` list. If two active notes point to the same
+/// linked note, that note receives a higher aggregated score and appears
+/// earlier in the output.  The MCP suppression layer uses `source_notes` to
+/// recompute scores after filtering suppressed active notes, then drops
+/// linked notes whose remaining score falls below its own (higher) threshold.
 pub(super) fn build_linked_context(
     conn: &Connection,
     pipeline_results: &[RawSearchResult],
@@ -43,32 +58,82 @@ pub(super) fn build_linked_context(
     excluded_set: &HashSet<String>,
     config: Option<&TalonConfig>,
 ) -> (Vec<LinkedNote>, u32) {
-    let Some(top_path) = pipeline_results.first().map(|r| r.path.clone()) else {
-        return (Vec::new(), 0);
-    };
-    let ri = RelatedInput {
-        path: top_path,
-        depth: input.depth.clamp(0, 3),
-        direction: Direction::Both,
-        scope: input.scope.clone(),
-        scope_only: input.scope_only.clone(),
-        scope_all: input.scope_all,
-    };
-    let rel = find_related(conn, &ri, config);
-    let link_count = count_u32(rel.results.len());
-    let notes: Vec<LinkedNote> = rel
-        .results
-        .into_iter()
-        .filter(|r| !excluded_set.contains(r.vault_path.as_str()))
-        .map(|r| LinkedNote {
-            vault_path: r.vault_path,
-            title: r.title,
-            link_text: r.link_text,
-            relation: r.relation,
+    use std::collections::HashMap;
+
+    struct Entry {
+        vault_path: VaultPath,
+        title: String,
+        link_text: String,
+        relation: RelationKind,
+        best_source_score: f64,
+        source_notes: Vec<(VaultPath, f64)>,
+    }
+
+    let mut by_path: HashMap<String, Entry> = HashMap::new();
+
+    for source in pipeline_results {
+        if source.score < LINKED_CTX_MIN_SCORE {
+            continue;
+        }
+        let Ok(source_vpath) = VaultPath::parse(&source.path) else {
+            continue;
+        };
+        let ri = RelatedInput {
+            path: source.path.clone(),
+            depth: input.depth.clamp(0, 3),
+            direction: Direction::Both,
+            scope: input.scope.clone(),
+            scope_only: input.scope_only.clone(),
+            scope_all: input.scope_all,
+        };
+        for r in find_related(conn, &ri, config).results {
+            if excluded_set.contains(r.vault_path.as_str()) {
+                continue;
+            }
+            let key = r.vault_path.as_str().to_owned();
+            let entry = by_path.entry(key).or_insert_with(|| Entry {
+                vault_path: r.vault_path.clone(),
+                title: r.title.clone(),
+                link_text: r.link_text.clone(),
+                relation: r.relation,
+                best_source_score: 0.0,
+                source_notes: Vec::new(),
+            });
+            // Outgoing takes precedence over Backlink when sources disagree.
+            if matches!(r.relation, RelationKind::Outgoing) {
+                entry.relation = RelationKind::Outgoing;
+            }
+            // Link text comes from the highest-scoring source.
+            if source.score > entry.best_source_score {
+                entry.best_source_score = source.score;
+                entry.link_text = r.link_text;
+            }
+            entry
+                .source_notes
+                .push((source_vpath.clone(), source.score));
+        }
+    }
+
+    let raw_count = count_u32(by_path.len());
+    let mut notes: Vec<LinkedNote> = by_path
+        .into_values()
+        .map(|e| LinkedNote {
+            vault_path: e.vault_path,
+            title: e.title,
+            link_text: e.link_text,
+            relation: e.relation,
             hops: 1,
+            aggregated_score: e.source_notes.iter().map(|(_, s)| s).sum(),
+            source_notes: e.source_notes,
         })
         .collect();
-    (notes, link_count)
+    // Sort by aggregated score so budget trimmer drops the weakest first.
+    notes.sort_by(|a, b| {
+        b.aggregated_score
+            .partial_cmp(&a.aggregated_score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    (notes, raw_count)
 }
 
 pub(super) fn to_note_excerpts(

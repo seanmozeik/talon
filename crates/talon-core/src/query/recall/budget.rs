@@ -14,7 +14,8 @@ pub(super) fn estimate_payload_tokens(
             + 10; // XML structure, mtime attr, score attr
     }
     for l in linked_context {
-        total += estimate_token_count(&l.title) + estimate_token_count(&l.link_text) + 8;
+        // path + relation attr + XML overhead (title/hops removed from output)
+        total += estimate_token_count(l.vault_path.as_str()) + 6;
     }
     total
 }

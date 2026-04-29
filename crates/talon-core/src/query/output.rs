@@ -104,19 +104,26 @@ pub struct NoteExcerpt {
 }
 
 /// A note reachable via the link graph returned in `recall.linked_context`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LinkedNote {
     /// Vault-relative path.
     pub vault_path: VaultPath,
     /// Display title.
     pub title: String,
-    /// Raw link text that created this edge.
+    /// Raw link text from the highest-scoring source note.
     pub link_text: String,
-    /// Direction relative to the source note(s).
+    /// Direction (Outgoing takes precedence over Backlink when mixed).
     pub relation: RelationKind,
-    /// Number of graph hops from the top `active_note`.
+    /// Number of graph hops from source notes (currently always 1).
     pub hops: u8,
+    /// Sum of scores from all active notes that link here, weighted
+    /// by source score. Higher = cited by more or higher-scoring active notes.
+    pub aggregated_score: f64,
+    /// Active notes that contributed this link: `(vault_path, score)` pairs.
+    /// Used by the MCP suppression layer to recompute `aggregated_score`
+    /// after filtering out suppressed source notes.
+    pub source_notes: Vec<(VaultPath, f64)>,
 }
 
 /// Vault-native context recall response.

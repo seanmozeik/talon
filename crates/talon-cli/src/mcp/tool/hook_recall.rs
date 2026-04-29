@@ -228,10 +228,30 @@ pub(super) fn apply_recall_suppression(
         return recall_response;
     }
 
-    // Filter active_notes to only injected paths.
     if let Some(vr) = recall_response.vault_recall.as_mut() {
+        // Linked notes require a higher gate than active notes: they lack snippets
+        // and are less immediately useful. Only inject linked notes whose sources
+        // were all injected and whose recomputed aggregate score clears this gate.
+        const LINKED_CTX_GATE: f64 = 0.70;
         vr.active_notes
             .retain(|note| injected_paths.contains(note.vault_path.as_str()));
+
+        vr.linked_context.retain_mut(|link| {
+            // Drop sources that were suppressed, recompute aggregate score.
+            link.source_notes
+                .retain(|(sn, _)| injected_paths.contains(sn.as_str()));
+            if link.source_notes.is_empty() {
+                return false;
+            }
+            link.aggregated_score = link.source_notes.iter().map(|(_, s)| s).sum();
+            link.aggregated_score >= LINKED_CTX_GATE
+        });
+        // Re-sort by recomputed score after suppression filtering.
+        vr.linked_context.sort_by(|a, b| {
+            b.aggregated_score
+                .partial_cmp(&a.aggregated_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
     }
 
     recall_response
