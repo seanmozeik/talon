@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use color_eyre::eyre::{Result, WrapErr as _};
 use serde_json::{Value, json};
 use talon_core::{
@@ -5,6 +7,11 @@ use talon_core::{
     vec_ext::register_sqlite_vec,
 };
 
+use crate::mcp::session::chunk_id::derive_chunk_id;
+use crate::mcp::session::fingerprint::QueryFingerprint;
+use crate::mcp::session::ledger::{InjectedChunk, TurnLedger, TurnRecord};
+use crate::mcp::session::suppression::{RecallCandidate, apply_suppression};
+use crate::mcp::state::{McpServerState, SessionKey};
 use crate::output::format_recall_prompt_xml;
 
 /// Runs recall using a pre-loaded `TalonConfig`, mirroring the logic in
@@ -118,4 +125,104 @@ fn render_prompt_xml(recall_response: &RecallResponse, vault: &str) -> String {
     } else {
         String::new()
     }
+}
+
+/// Applies turn-aware suppression to a `RecallResponse`, records the turn in
+/// the session ledger, and returns a filtered response containing only the
+/// chunks that were not suppressed.
+pub(super) fn apply_recall_suppression(
+    mut recall_response: RecallResponse,
+    state: &Arc<McpServerState>,
+    key: &SessionKey,
+    message: &str,
+    turn_id: String,
+    budget_tokens: u32,
+) -> RecallResponse {
+    use std::collections::HashSet;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    // Build suppression candidates from active notes.
+    let candidates: Vec<RecallCandidate> = recall_response
+        .vault_recall
+        .as_ref()
+        .map(|vr| {
+            vr.active_notes
+                .iter()
+                .map(|note| {
+                    let rank = usize::try_from(note.rank).unwrap_or(0);
+                    let chunk_id = derive_chunk_id(note.vault_path.as_str(), rank, &note.snippet);
+                    RecallCandidate {
+                        chunk_id,
+                        path: note.vault_path.as_str().to_owned(),
+                        score: note.score,
+                        title: note.title.clone(),
+                        snippet: note.snippet.clone(),
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let fp = QueryFingerprint::from_message(message);
+
+    // Apply suppression against the session ledger (read lock).
+    let suppression_result = {
+        let store = state
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(session) = store.sessions.get(key) {
+            apply_suppression(candidates, &session.ledger, &fp, budget_tokens)
+        } else {
+            // No session found — inject everything, suppress nothing.
+            apply_suppression(candidates, &TurnLedger::new(), &fp, budget_tokens)
+        }
+    };
+
+    // Build ledger record from suppression result.
+    let injected_chunks: Vec<InjectedChunk> = suppression_result
+        .injected
+        .iter()
+        .map(|(c, _)| InjectedChunk {
+            chunk_id: c.chunk_id.clone(),
+            path: c.path.clone(),
+            score: c.score,
+        })
+        .collect();
+    let injected_paths: HashSet<String> = suppression_result
+        .injected
+        .iter()
+        .map(|(c, _)| c.path.clone())
+        .collect();
+
+    let turn_record = TurnRecord {
+        turn_id,
+        query_fingerprint: fp.normalized,
+        injected: injected_chunks,
+        suppressed: suppression_result.suppressed,
+        skipped: recall_response.skipped,
+    };
+
+    // Record turn to ledger (write lock).
+    let now_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
+    {
+        let mut store = state
+            .sessions
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(session) = store.sessions.get_mut(key) {
+            session.ledger.record_turn(turn_record);
+            session.last_seen_at_ms = now_ms;
+        }
+    }
+
+    // Filter active_notes to only injected paths.
+    if let Some(vr) = recall_response.vault_recall.as_mut() {
+        vr.active_notes
+            .retain(|note| injected_paths.contains(note.vault_path.as_str()));
+    }
+
+    recall_response
 }

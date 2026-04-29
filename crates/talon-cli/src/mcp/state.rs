@@ -1,6 +1,8 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use talon_core::TalonConfig;
+
+use crate::mcp::session::ledger::TurnLedger;
 
 /// Process-local state shared across all MCP request handlers in a single
 /// `talon mcp` process lifetime.
@@ -46,8 +48,8 @@ pub enum HostKind {
 pub struct SessionState {
     pub created_at_ms: i64,
     pub last_seen_at_ms: i64,
-    /// Placeholder for `TurnRecord` entries — populated in Phase 5.
-    pub turns: VecDeque<()>,
+    /// Turn history with suppression ledger for recall deduplication.
+    pub ledger: TurnLedger,
 }
 
 /// Lightweight diagnostics visible to health-check tooling.

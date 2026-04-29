@@ -1,1 +1,4 @@
-// Placeholder module — populated in Phases 4–5.
+pub mod chunk_id;
+pub mod fingerprint;
+pub mod ledger;
+pub mod suppression;

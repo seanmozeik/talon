@@ -4,6 +4,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde_json::{Value, json};
 use talon_core::RecallInput;
 
+use crate::mcp::session::ledger::TurnLedger;
 use crate::mcp::state::{HostKind, McpServerState, SessionKey, SessionState};
 
 /// Returns the MCP `tools/list` entries for all hook-only tools.
@@ -104,7 +105,7 @@ fn handle_session_start(arguments: &Value, state: &Arc<McpServerState>) -> Value
     let session = SessionState {
         created_at_ms: now_ms,
         last_seen_at_ms: now_ms,
-        turns: std::collections::VecDeque::new(),
+        ledger: TurnLedger::new(),
     };
 
     {
@@ -121,6 +122,7 @@ fn handle_session_start(arguments: &Value, state: &Arc<McpServerState>) -> Value
 fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
     let host = string_field(arguments, "host").unwrap_or_else(|| "unknown".to_owned());
     let session_id = string_field(arguments, "sessionId").unwrap_or_default();
+    let turn_id = string_field(arguments, "turnId").unwrap_or_else(|| "unknown".to_owned());
     let message = string_field(arguments, "message").unwrap_or_default();
     let budget_tokens = arguments
         .get("budgetTokens")
@@ -138,7 +140,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         .unwrap_or_default();
 
     let input = RecallInput {
-        message,
+        message: message.clone(),
         prior_messages: Vec::new(),
         budget_tokens,
         exclude: Vec::new(),
@@ -153,22 +155,28 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
 
     let config = &state.config.config;
     let vault = config.vault_path.to_string_lossy().to_string();
-
     let result = super::hook_recall::dispatch_recall_for_hook(&input, config);
 
-    // Update last_seen_at_ms for this session.
     let key = SessionKey {
         host: parse_host_kind(&host),
         session_id,
     };
-    touch_session(state, &key);
 
     match result {
         Ok(recall_response) => {
-            super::hook_recall::build_recall_output(&recall_response, &format, &vault)
+            let filtered = super::hook_recall::apply_recall_suppression(
+                recall_response,
+                state,
+                &key,
+                &message,
+                turn_id,
+                budget_tokens,
+            );
+            super::hook_recall::build_recall_output(&filtered, &format, &vault)
         }
         Err(err) => {
-            let text = format!("{{\"error\":{:?}}}", err.to_string());
+            touch_session(state, &key);
+            let text = format!("{{\"error\":{err:?}}}");
             json!({ "content": [{ "type": "text", "text": text }] })
         }
     }
