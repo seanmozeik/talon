@@ -1,5 +1,6 @@
 use super::*;
 use crate::inference::InferenceClient;
+use crate::search::intent_alignment::apply_intent_alignment_boost;
 use crate::search::types::SearchScores;
 use crate::store::open_database;
 use rusqlite::{Connection, params};
@@ -117,6 +118,87 @@ fn intent_weighted_chunk_selection_prefers_intent_rich_chunk() {
     assert_eq!(result[0].snippet, "performance web page load paint metric");
     drop(conn);
     cleanup(&db_path);
+}
+
+#[test]
+fn chunk_selection_weights_intent_terms_above_query_terms() {
+    let rt = runtime();
+    let server = rt.block_on(MockServer::start());
+    rt.block_on(
+        Mock::given(method("POST"))
+            .and(path("/rerank"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!([
+                {"index": 0, "score": 0.9},
+            ])))
+            .mount(&server),
+    );
+    let db_path = unique_db_path("chunk-selection-intent-weight");
+    let conn = open_database(&db_path).unwrap();
+    insert_note_with_chunks(
+        &conn,
+        "weighted.md",
+        &[
+            "performance latency throughput regression",
+            "performance launch blockers current actions",
+        ],
+    );
+
+    let inference = start_inference(server.uri());
+    let result = rerank_candidates_with_intent(IntentRerankOptions {
+        conn: &conn,
+        inference: &inference,
+        query: "performance latency throughput regression",
+        intent: Some("launch blockers current actions"),
+        candidates: vec![make_candidate("weighted.md", 0.5)],
+        top_k: 10,
+        hooks: &SearchHooks::default(),
+        db_version: 102,
+    });
+
+    assert_eq!(
+        result[0].snippet,
+        "performance launch blockers current actions"
+    );
+    drop(conn);
+    cleanup(&db_path);
+}
+
+#[test]
+fn intent_alignment_boost_promotes_candidate_matching_agent_intent() {
+    let results = apply_intent_alignment_boost(
+        vec![
+            RawSearchResult {
+                snippet: "general fermented sauce project notes".to_owned(),
+                ..make_candidate("wiki/formulation.md", 0.93)
+            },
+            RawSearchResult {
+                snippet: "active project status next actions checklist".to_owned(),
+                ..make_candidate("projects/launch-readiness.md", 0.74)
+            },
+        ],
+        &intent::extract_terms("active project status and next actions"),
+    );
+
+    assert_eq!(results[0].path, "projects/launch-readiness.md");
+}
+
+#[test]
+fn operational_intent_prefers_project_target_over_wiki_boundary_text() {
+    let results = apply_intent_alignment_boost(
+        vec![
+            RawSearchResult {
+                snippet: "use the active project status page for next actions".to_owned(),
+                ..make_candidate("wiki/hot-sauce-formulation.md", 0.93)
+            },
+            RawSearchResult {
+                snippet: "active project status next actions checklist".to_owned(),
+                ..make_candidate("projects/hot-sauce/launch-readiness.md", 0.74)
+            },
+        ],
+        &intent::extract_terms("active project status and next actions"),
+    );
+
+    assert_eq!(results[0].path, "projects/hot-sauce/launch-readiness.md");
 }
 
 #[test]

@@ -31,7 +31,7 @@ pub fn prefix_query(intent: Option<&str>, query: &str) -> String {
     let Some(intent) = intent.and_then(normalize) else {
         return query.to_owned();
     };
-    format!("{intent}\n\n{query}")
+    format!("Intent: {intent}\n\nQuery: {query}")
 }
 
 /// Trims and normalizes optional intent text.
@@ -66,7 +66,10 @@ mod tests {
 
     #[test]
     fn prefix_query_prepends_non_empty_intent() {
-        assert_eq!(prefix_query(Some("foo"), "bar"), "foo\n\nbar");
+        assert_eq!(
+            prefix_query(Some("foo"), "bar"),
+            "Intent: foo\n\nQuery: bar"
+        );
     }
 
     #[test]

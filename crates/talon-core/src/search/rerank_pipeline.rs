@@ -13,13 +13,16 @@ use std::time::Instant;
 
 use crate::cache::rerank as rerank_cache;
 use crate::inference::InferenceClient;
-use crate::text::nfd;
 use rusqlite::Connection;
 
 use super::fuse::{blend_rerank_probabilities, sigmoid};
 use super::hooks::SearchHooks;
 use super::intent;
+use super::intent_alignment::apply_intent_alignment_boost;
 use super::types::RawSearchResult;
+
+const CHUNK_QUERY_TERM_WEIGHT: u32 = 1;
+const CHUNK_INTENT_TERM_WEIGHT: u32 = 5;
 
 pub(crate) struct IntentRerankOptions<'a> {
     pub(crate) conn: &'a Connection,
@@ -203,9 +206,13 @@ fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
     }
 
     let blended = blend_rerank_probabilities(&active, &scores);
+    let final_results = match intent.map(intent::extract_terms) {
+        Some(terms) => apply_intent_alignment_boost(blended, &terms),
+        None => blended,
+    };
     let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     hooks.emit_rerank_end(elapsed_ms);
-    blended
+    final_results
 }
 
 fn select_best_chunks_for_rerank(
@@ -290,7 +297,7 @@ fn best_chunk_for_candidate(
 }
 
 fn chunk_term_score_units(text: &str, query_terms: &[String], intent_terms: &[String]) -> u32 {
-    let chunk = nfd::normalize(text).to_lowercase();
+    let chunk = crate::text::nfd::normalize(text).to_lowercase();
     let query_hits = query_terms
         .iter()
         .filter(|term| chunk.contains(term.as_str()))
@@ -299,7 +306,9 @@ fn chunk_term_score_units(text: &str, query_terms: &[String], intent_terms: &[St
         .iter()
         .filter(|term| chunk.contains(term.as_str()))
         .fold(0_u32, |count, _| count.saturating_add(1));
-    query_hits.saturating_mul(2).saturating_add(intent_hits)
+    query_hits
+        .saturating_mul(CHUNK_QUERY_TERM_WEIGHT)
+        .saturating_add(intent_hits.saturating_mul(CHUNK_INTENT_TERM_WEIGHT))
 }
 
 #[cfg(test)]
