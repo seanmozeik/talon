@@ -53,6 +53,7 @@ pub async fn run(cli: &Cli) -> Result<()> {
                 vault_path_for_watcher,
                 Arc::clone(&state),
             );
+            crate::mcp::background::embed::spawn_embed_ticker(Arc::clone(&state));
             let stdin = io::stdin();
             let stdout = io::stdout();
             let outcome =
