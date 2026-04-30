@@ -7,6 +7,9 @@ use talon_core::RecallInput;
 use crate::mcp::session::ledger::TurnLedger;
 use crate::mcp::state::{HostKind, McpServerState, SessionKey, SessionState};
 
+const MAX_HOOK_MESSAGE_CHARS: usize = 12_000;
+const MAX_HOOK_PRIOR_MESSAGE_CHARS: usize = 8_000;
+
 /// Returns the MCP `tools/list` entries for all hook-only tools.
 ///
 /// These tools are intended for Claude Code hook use only and must not be
@@ -40,6 +43,7 @@ pub fn hook_tools_list_entries() -> Vec<Value> {
                     "message":      { "type": "string" },
                     "budgetTokens": { "type": "integer" },
                     "format":       { "type": "string" },
+                    "fast":         { "type": "boolean" },
                     "scope":        { "type": "array", "items": { "type": "string" } }
                 },
                 "required": []
@@ -126,11 +130,13 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
     let session_id = string_field(arguments, "sessionId").unwrap_or_default();
     let turn_id = string_field(arguments, "turnId").unwrap_or_else(|| "unknown".to_owned());
     let message = string_field(arguments, "message").unwrap_or_default();
+    let (recall_message, message_truncated) = cap_tail(&message, MAX_HOOK_MESSAGE_CHARS);
     let budget_tokens = arguments
         .get("budgetTokens")
         .and_then(Value::as_u64)
         .map_or(500, |v| u32::try_from(v).unwrap_or(u32::MAX));
     let format = string_field(arguments, "format").unwrap_or_else(|| "hook-json".to_owned());
+    let requested_fast = bool_field(arguments, "fast").unwrap_or(false);
     let scope: Vec<String> = arguments
         .get("scope")
         .and_then(Value::as_array)
@@ -155,12 +161,17 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
                 session_id: session_id.clone(),
             })
             .and_then(|s| s.last_agent_response.clone())
-            .into_iter()
-            .collect::<Vec<_>>()
+            .map(|message| cap_tail(&message, MAX_HOOK_PRIOR_MESSAGE_CHARS))
     };
+    let prior_truncated = prior_messages
+        .as_ref()
+        .is_some_and(|(_, truncated)| *truncated);
+    let prior_messages = prior_messages
+        .map(|(message, _)| vec![message])
+        .unwrap_or_default();
 
     let input = RecallInput {
-        message: message.clone(),
+        message: recall_message.clone(),
         prior_messages,
         budget_tokens,
         exclude: Vec::new(),
@@ -170,7 +181,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         format: talon_core::RecallFormat::default(),
         depth: 1,
         min_confidence: 0.0,
-        fast: false,
+        fast: requested_fast || message_truncated || prior_truncated,
     };
 
     let config = &state.config.config;
@@ -188,7 +199,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
                 recall_response,
                 state,
                 &key,
-                &message,
+                &recall_message,
                 turn_id,
             );
             let fmt = super::hook_recall::RecallOutputFormat::from_str(&format);
@@ -223,7 +234,8 @@ fn handle_turn_end(arguments: &Value, state: &Arc<McpServerState>) -> Value {
             // Store the agent's response so the next recall call can use it
             // as prior context, enriching the query beyond the user message alone.
             if last_assistant.is_some() {
-                session.last_agent_response = last_assistant;
+                session.last_agent_response = last_assistant
+                    .map(|message| cap_tail(&message, MAX_HOOK_PRIOR_MESSAGE_CHARS).0);
             }
         }
     }
@@ -248,6 +260,23 @@ fn handle_session_end(arguments: &Value, state: &Arc<McpServerState>) -> Value {
 
 fn string_field(arguments: &Value, key: &str) -> Option<String> {
     arguments.get(key)?.as_str().map(str::to_owned)
+}
+
+fn bool_field(arguments: &Value, key: &str) -> Option<bool> {
+    arguments.get(key)?.as_bool()
+}
+
+fn cap_tail(value: &str, max_chars: usize) -> (String, bool) {
+    if value.chars().count() <= max_chars {
+        return (value.to_owned(), false);
+    }
+
+    let start = value
+        .char_indices()
+        .rev()
+        .nth(max_chars.saturating_sub(1))
+        .map_or(0, |(idx, _)| idx);
+    (value[start..].to_owned(), true)
 }
 
 fn parse_host_kind(host: &str) -> HostKind {
@@ -279,7 +308,7 @@ fn now_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::hook_tools_list_entries;
+    use super::{cap_tail, hook_tools_list_entries};
 
     #[test]
     fn hook_tools_list_entries_returns_four_hook_tools() {
@@ -304,5 +333,15 @@ mod tests {
                 "expected description to contain 'hook-only', got: {desc:?}"
             );
         }
+    }
+
+    #[test]
+    fn cap_tail_preserves_short_input() {
+        assert_eq!(cap_tail("short", 12), ("short".to_owned(), false));
+    }
+
+    #[test]
+    fn cap_tail_keeps_utf8_boundary() {
+        assert_eq!(cap_tail("aé日b", 3), ("é日b".to_owned(), true));
     }
 }
