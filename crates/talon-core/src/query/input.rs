@@ -70,6 +70,12 @@ pub struct RecallInput {
     /// Skip expansion and rerank (fast lexical-only path).
     #[serde(default)]
     pub fast: bool,
+    /// Include recall stage diagnostics in JSON output.
+    #[serde(default)]
+    pub diagnostics: bool,
+    /// Optional wall-clock deadline for hook-style recall orchestration.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub deadline_ms: Option<u64>,
 }
 
 const fn default_recall_budget() -> u32 {
@@ -94,6 +100,8 @@ impl Default for RecallInput {
             depth: default_recall_depth(),
             min_confidence: 0.0,
             fast: false,
+            diagnostics: false,
+            deadline_ms: None,
         }
     }
 }

@@ -77,12 +77,36 @@ impl ChatClient {
         timeout: Duration,
         max_tokens: Option<u32>,
     ) -> Result<Self, ChatError> {
-        let http = HttpClient::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|err| ChatError::Build {
-                message: redact(&err.to_string()),
-            })?;
+        Self::with_optional_timeout_and_max_tokens(base_url, model, Some(timeout), max_tokens)
+    }
+
+    /// Builds a client with no HTTP request timeout and optional completion token cap.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChatError::Build`] if the underlying `reqwest::Client` fails
+    /// to build.
+    pub fn with_no_timeout_and_max_tokens(
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, ChatError> {
+        Self::with_optional_timeout_and_max_tokens(base_url, model, None, max_tokens)
+    }
+
+    fn with_optional_timeout_and_max_tokens(
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+        timeout: Option<Duration>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, ChatError> {
+        let mut builder = HttpClient::builder();
+        if let Some(timeout) = timeout {
+            builder = builder.timeout(timeout);
+        }
+        let http = builder.build().map_err(|err| ChatError::Build {
+            message: redact(&err.to_string()),
+        })?;
         Ok(Self {
             base_url: base_url.into(),
             model: model.into(),
@@ -165,6 +189,7 @@ impl ChatClient {
             .map_err(|err| ChatError::Http {
                 status: None,
                 message: redact(&err.to_string()),
+                timed_out: err.is_timeout(),
             })?;
 
         let status = response.status();
@@ -173,6 +198,7 @@ impl ChatClient {
             return Err(ChatError::Http {
                 status: Some(status.as_u16()),
                 message: redact(&snippet),
+                timed_out: false,
             });
         }
 

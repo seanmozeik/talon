@@ -198,6 +198,7 @@ fn recall_success_round_trip() {
         excluded: Vec::new(),
         excluded_by_budget: Vec::new(),
         skipped: false,
+        diagnostics: None,
     });
     let envelope = TalonEnvelope::ok("recall", data, success_meta());
     let json = serde_json::to_string(&envelope).unwrap();
@@ -217,6 +218,7 @@ fn recall_skipped_round_trip() {
         excluded: Vec::new(),
         excluded_by_budget: Vec::new(),
         skipped: true,
+        diagnostics: None,
     });
     let envelope = TalonEnvelope::ok("recall", data, success_meta());
     let json = serde_json::to_string(&envelope).unwrap();

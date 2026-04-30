@@ -10,7 +10,7 @@ use crate::search::bm25::search_bm25;
 use crate::search::constants::{CANDIDATE_FLOOR, DEFAULT_SNIPPET_LENGTH};
 use crate::search::fuse::fuse_hybrid_result_lists;
 use crate::search::fuzzy_title::search_title_parts;
-use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline};
+use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline_with_metadata};
 use crate::search::pre_filter::PreFilter;
 use crate::search::types::RawSearchResult;
 
@@ -36,7 +36,13 @@ pub(super) fn build_query(input: &RecallInput) -> String {
     combined
 }
 
-pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> Vec<RawSearchResult> {
+#[derive(Debug, Clone, Default)]
+pub(super) struct RecallRetrievalOutput {
+    pub(super) results: Vec<RawSearchResult>,
+    pub(super) rerank_ms: Option<u64>,
+}
+
+pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> RecallRetrievalOutput {
     let opts = HybridPipelineOptions {
         limit: args.limit,
         candidate_limit: CANDIDATE_FLOOR,
@@ -48,8 +54,23 @@ pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> Vec<
         deadline_at: args.deadline_at,
     };
     args.inference.map_or_else(
-        || run_fast_bm25_title(args.conn, args.query, args.limit, args.pre_filter),
-        |inf| run_hybrid_pipeline(args.conn, inf, args.expansion, args.query, &opts),
+        || RecallRetrievalOutput {
+            results: run_fast_bm25_title(args.conn, args.query, args.limit, args.pre_filter),
+            rerank_ms: None,
+        },
+        |inf| {
+            let output = run_hybrid_pipeline_with_metadata(
+                args.conn,
+                inf,
+                args.expansion,
+                args.query,
+                &opts,
+            );
+            RecallRetrievalOutput {
+                results: output.results,
+                rerank_ms: output.rerank_ms,
+            }
+        },
     )
 }
 

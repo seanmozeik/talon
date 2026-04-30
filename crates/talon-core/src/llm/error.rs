@@ -25,6 +25,8 @@ pub enum ChatError {
         status: Option<u16>,
         /// Redacted detail (URL or response body snippet).
         message: String,
+        /// Whether the underlying transport failure was a timeout.
+        timed_out: bool,
     },
 
     /// The server returned a response that did not match the expected schema.

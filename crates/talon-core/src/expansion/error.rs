@@ -30,6 +30,8 @@ pub enum ExpansionError {
         status: Option<u16>,
         /// Redacted detail (URL or response body snippet).
         message: String,
+        /// Whether the underlying transport failure was a timeout.
+        timed_out: bool,
     },
 }
 
@@ -37,10 +39,19 @@ impl From<ChatError> for ExpansionError {
     fn from(value: ChatError) -> Self {
         match value {
             ChatError::Build { message } => Self::Build { message },
-            ChatError::Http { status, message } => Self::Http { status, message },
+            ChatError::Http {
+                status,
+                message,
+                timed_out,
+            } => Self::Http {
+                status,
+                message,
+                timed_out,
+            },
             ChatError::MalformedResponse => Self::Http {
                 status: None,
                 message: "malformed chat response".to_string(),
+                timed_out: false,
             },
         }
     }

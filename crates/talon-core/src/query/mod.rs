@@ -27,7 +27,7 @@ pub use meta::query_meta;
 pub use output::{
     AskDiagnostics, AskLlmStageDiagnostics, AskResponse, AskSearchDiagnostics, AskSource,
     ChangeEntry, ChangesResponse, LinkedNote, MetaEntry, MetaResponse, NoteExcerpt, ReadResponse,
-    ReadResult, ReadSection, RecallResponse, TombstoneEntry, VaultRecall,
+    ReadResult, ReadSection, RecallDiagnostics, RecallResponse, TombstoneEntry, VaultRecall,
 };
 pub use read::run_read;
 pub use recall::run_recall;

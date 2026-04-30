@@ -1,5 +1,5 @@
 use serde::Serialize;
-use talon_core::RecallResponse;
+use talon_core::{RecallResponse, query::RecallDiagnostics};
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -9,6 +9,8 @@ pub(super) struct AgentRecall<'a> {
     pub notes: Vec<AgentRecallNote<'a>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skipped: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<&'a RecallDiagnostics>,
 }
 
 #[derive(Debug, Serialize)]
@@ -37,6 +39,7 @@ impl<'a> From<&'a RecallResponse> for AgentRecall<'a> {
             vault: recall.vault.as_ref().map(talon_core::ContainerPath::as_str),
             notes,
             skipped: recall.skipped.then_some(true),
+            diagnostics: recall.diagnostics.as_ref(),
         }
     }
 }

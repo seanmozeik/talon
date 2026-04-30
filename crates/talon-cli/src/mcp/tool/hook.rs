@@ -125,6 +125,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         })
         .unwrap_or_default();
 
+    let config = &state.config.config;
     let input = RecallInput {
         message: recall_message.clone(),
         prior_messages: Vec::new(),
@@ -137,9 +138,10 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         depth: 1,
         min_confidence: 0.0,
         fast: requested_fast,
+        diagnostics: true,
+        deadline_ms: None,
     };
 
-    let config = &state.config.config;
     let vault = config.vault_path.to_string_lossy().to_string();
     let result = super::hook_recall::dispatch_recall_for_hook(&input, config);
 

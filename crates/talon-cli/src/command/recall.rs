@@ -56,6 +56,8 @@ pub(super) async fn emit(args: &RecallArgs, cli: &Cli) -> Result<()> {
         depth,
         min_confidence,
         fast,
+        diagnostics: cli.verbose || cli.json,
+        deadline_ms: None,
     };
 
     let started = Instant::now();

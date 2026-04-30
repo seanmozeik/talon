@@ -117,6 +117,21 @@ impl ExpansionClient {
         Ok(Self { chat })
     }
 
+    /// Builds a client with no HTTP request timeout and optional completion token cap.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExpansionError::Build`] on `reqwest::Client` build failure.
+    pub fn with_no_timeout_and_max_tokens(
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+        max_tokens: Option<u32>,
+    ) -> Result<Self, ExpansionError> {
+        let chat = ChatClient::with_no_timeout_and_max_tokens(base_url, model, max_tokens)
+            .map_err(ExpansionError::from)?;
+        Ok(Self { chat })
+    }
+
     /// Requests up to `n_variants` search reformulations for `query`.
     ///
     /// The original query is excluded from the returned list.  Case-insensitive

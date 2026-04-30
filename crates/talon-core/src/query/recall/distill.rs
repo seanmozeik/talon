@@ -1,7 +1,8 @@
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use crate::config::TalonConfig;
-use crate::expansion::ExpansionClient;
+use crate::expansion::{ExpansionClient, ExpansionError};
 use crate::text::{estimate_tokens, is_fence_line, nfd};
 
 mod phrases;
@@ -13,32 +14,68 @@ const DEFAULT_QUERY_EMBEDDING_CONTEXT_TOKENS: usize = 512;
 const MAX_QUERY_SET_SIZE: usize = 6;
 const MAX_MAIN_QUERY_TOKENS: usize = 96;
 const MAX_HINTS: usize = 16;
+const DISTILLATION_MIN_REMAINING: Duration = Duration::from_secs(3);
 
 #[derive(Debug, Clone)]
 pub(super) struct RecallQueryPlan {
     pub(super) main_query: String,
     pub(super) queries: Vec<String>,
+    pub(super) input_tokens: usize,
+    pub(super) query_tokens: usize,
+    pub(super) phrase_count: usize,
+    pub(super) distillation_ran: bool,
+    pub(super) distillation_ms: Option<u64>,
+    pub(super) distillation_succeeded: bool,
+    pub(super) distillation_fallback_reason: Option<String>,
 }
 
 pub(super) fn plan_recall_queries(
     raw_query: &str,
     expansion: Option<&ExpansionClient>,
     config: Option<&TalonConfig>,
+    deadline_at: Option<Instant>,
 ) -> RecallQueryPlan {
+    let started = Instant::now();
     let phrases = extract_weighted_phrases(raw_query);
     let embedding_budget = query_embedding_budget(config);
     let query_tokens = estimate_tokens(raw_query);
     let noisy = noisy_prompt(raw_query);
+    let should_distill = query_tokens > embedding_budget || noisy;
 
-    let distilled = if query_tokens > embedding_budget || noisy {
-        expansion.and_then(|client| {
+    let mut distillation_ran = false;
+    let mut distillation_succeeded = false;
+    let mut distillation_fallback_reason = None;
+    let distilled = if should_distill && has_time_for_distillation(deadline_at) {
+        if let Some(client) = expansion {
+            distillation_ran = true;
             let view = budgeted_prompt_view(raw_query, config);
             let hints = phrase_hints(&phrases);
-            client.distill_recall_prompt(&view, &hints).ok().flatten()
-        })
+            match client.distill_recall_prompt(&view, &hints) {
+                Ok(Some(body)) => {
+                    distillation_succeeded = true;
+                    Some(body)
+                }
+                Ok(None) => {
+                    distillation_fallback_reason = Some("empty-or-malformed-response".to_owned());
+                    None
+                }
+                Err(err) => {
+                    distillation_fallback_reason = Some(classify_distillation_error(&err));
+                    None
+                }
+            }
+        } else {
+            distillation_fallback_reason = Some("client-unavailable".to_owned());
+            None
+        }
     } else {
+        if should_distill {
+            distillation_fallback_reason = Some("deadline-too-close".to_owned());
+        }
         None
     };
+    let distillation_ms =
+        distillation_ran.then(|| u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX));
 
     let main_query = distilled
         .as_ref()
@@ -57,7 +94,31 @@ pub(super) fn plan_recall_queries(
 
     let mut queries = vec![main_query];
     queries.extend(build_phrase_queries(&phrase_texts));
-    dedupe_queries(queries)
+    let mut plan = dedupe_queries(queries);
+    plan.input_tokens = query_tokens;
+    plan.query_tokens = estimate_tokens(&plan.main_query);
+    plan.phrase_count = phrases.len();
+    plan.distillation_ran = distillation_ran;
+    plan.distillation_ms = distillation_ms;
+    plan.distillation_succeeded = distillation_succeeded;
+    plan.distillation_fallback_reason = distillation_fallback_reason;
+    plan
+}
+
+fn classify_distillation_error(error: &ExpansionError) -> String {
+    match error {
+        ExpansionError::Http {
+            timed_out: true, ..
+        } => "timeout".to_owned(),
+        ExpansionError::Http { .. } => "transport-error".to_owned(),
+        ExpansionError::Build { .. } => "client-build-error".to_owned(),
+    }
+}
+
+fn has_time_for_distillation(deadline_at: Option<Instant>) -> bool {
+    deadline_at.is_none_or(|deadline| {
+        deadline.saturating_duration_since(Instant::now()) > DISTILLATION_MIN_REMAINING
+    })
 }
 
 fn query_embedding_budget(config: Option<&TalonConfig>) -> usize {
@@ -169,6 +230,13 @@ fn dedupe_queries(queries: Vec<String>) -> RecallQueryPlan {
     RecallQueryPlan {
         main_query,
         queries: result,
+        input_tokens: 0,
+        query_tokens: 0,
+        phrase_count: 0,
+        distillation_ran: false,
+        distillation_ms: None,
+        distillation_succeeded: false,
+        distillation_fallback_reason: None,
     }
 }
 
@@ -230,7 +298,7 @@ mod tests {
     #[test]
     fn plan_recall_queries_compacts_large_prompt() {
         let prompt = "context overflow ".repeat(800);
-        let plan = plan_recall_queries(&prompt, None, None);
+        let plan = plan_recall_queries(&prompt, None, None, None);
         assert!(estimate_tokens(&plan.main_query) <= MAX_MAIN_QUERY_TOKENS);
         assert!(!plan.queries.is_empty());
     }

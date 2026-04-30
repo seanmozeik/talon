@@ -1,9 +1,7 @@
 //! Blocking HTTP client for the TEI-compatible sidecar.
 //!
-use std::convert::TryFrom;
 use std::time::Duration;
 
-use reqwest::StatusCode;
 use reqwest::blocking::Client as HttpClient;
 
 use super::error::{InferenceError, redact};
@@ -12,6 +10,8 @@ use super::types::{
 };
 use crate::config::{RerankConfig, RerankRequestShape, RerankScoreScale};
 use crate::search::constants::RERANK_BATCH_SIZE;
+
+mod transport;
 
 /// Default HTTP timeout for sidecar calls.
 ///
@@ -109,12 +109,48 @@ impl InferenceClient {
         rerank_max_tokens: u32,
         rerank_config: RerankConfig,
     ) -> Result<Self, InferenceError> {
-        let http = HttpClient::builder()
-            .timeout(timeout)
-            .build()
-            .map_err(|err| InferenceError::Build {
-                message: redact(&err.to_string()),
-            })?;
+        Self::with_optional_timeout_and_rerank_options(
+            base_url,
+            Some(timeout),
+            rerank_batch_size,
+            rerank_max_tokens,
+            rerank_config,
+        )
+    }
+
+    /// Builds a client with no HTTP request timeout and custom rerank options.
+    ///
+    /// # Errors
+    /// Returns [`InferenceError::Build`] when the HTTP client cannot be built.
+    pub fn with_no_timeout_and_rerank_options(
+        base_url: impl Into<String>,
+        rerank_batch_size: usize,
+        rerank_max_tokens: u32,
+        rerank_config: RerankConfig,
+    ) -> Result<Self, InferenceError> {
+        Self::with_optional_timeout_and_rerank_options(
+            base_url,
+            None,
+            rerank_batch_size,
+            rerank_max_tokens,
+            rerank_config,
+        )
+    }
+
+    fn with_optional_timeout_and_rerank_options(
+        base_url: impl Into<String>,
+        timeout: Option<Duration>,
+        rerank_batch_size: usize,
+        rerank_max_tokens: u32,
+        rerank_config: RerankConfig,
+    ) -> Result<Self, InferenceError> {
+        let mut builder = HttpClient::builder();
+        if let Some(timeout) = timeout {
+            builder = builder.timeout(timeout);
+        }
+        let http = builder.build().map_err(|err| InferenceError::Build {
+            message: redact(&err.to_string()),
+        })?;
         Ok(Self {
             base_url: base_url.into(),
             http,
@@ -228,119 +264,6 @@ impl InferenceClient {
             RerankScoreScale::Logits => 1.0 / (1.0 + (-score).exp()),
         }
     }
-
-    fn post_json<B, R>(&self, url: &str, body: &B) -> Result<R, InferenceError>
-    where
-        B: serde::Serialize,
-        R: serde::de::DeserializeOwned,
-    {
-        self.post_json_with_retry(url, body)
-    }
-
-    fn post_json_with_retry<B, R>(&self, url: &str, body: &B) -> Result<R, InferenceError>
-    where
-        B: serde::Serialize,
-        R: serde::de::DeserializeOwned,
-    {
-        // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — embedder.ts:384-395
-        for attempt in 0u32..=2 {
-            match self.post_json_attempt(url, body) {
-                Ok(value) => return Ok(value),
-                Err(err) if err.retryable && attempt < 2 => {
-                    (self.sleep)(Duration::from_secs(2_u64.pow(attempt + 1)));
-                }
-                Err(err) => return Err(err.error),
-            }
-        }
-        unreachable!("retry loop always returns or errors")
-    }
-
-    fn embed_chunked_fallback(
-        &self,
-        url: &str,
-        input: &[Vec<String>],
-    ) -> Result<EmbedChunkedResponse, InferenceError> {
-        let mut data = Vec::with_capacity(input.len());
-        let mut model: Option<String> = None;
-
-        for (index, group) in input.iter().enumerate() {
-            let body = EmbedChunkedRequest {
-                input: vec![group.clone()],
-            };
-            let mut response: EmbedChunkedResponse = self.post_json(url, &body)?;
-            let group_index = u32::try_from(index).map_err(|_| InferenceError::Decode {
-                message: "embed-chunked index overflow".to_owned(),
-            })?;
-            let Some(mut item) = response.data.pop() else {
-                return Err(InferenceError::Decode {
-                    message: "embed-chunked fallback returned no data".to_owned(),
-                });
-            };
-            if !response.data.is_empty() {
-                return Err(InferenceError::Decode {
-                    message: "embed-chunked fallback returned unexpected response shape".to_owned(),
-                });
-            }
-            item.index = group_index;
-            data.push(item);
-            if model.is_none() {
-                model = Some(response.model);
-            }
-        }
-
-        Ok(EmbedChunkedResponse {
-            data,
-            model: model.unwrap_or_default(),
-        })
-    }
-
-    fn post_json_attempt<B, R>(&self, url: &str, body: &B) -> Result<R, PostJsonError>
-    where
-        B: serde::Serialize,
-        R: serde::de::DeserializeOwned,
-    {
-        let response = self.http.post(url).json(body).send().map_err(|err| {
-            let retryable = err.is_connect() || err.is_timeout() || err.is_request();
-            PostJsonError {
-                error: InferenceError::Http {
-                    status: None,
-                    message: redact(&err.to_string()),
-                },
-                retryable,
-            }
-        })?;
-        let status = response.status();
-        if !status.is_success() {
-            let snippet = response.text().unwrap_or_default();
-            let error = InferenceError::Http {
-                status: Some(status.as_u16()),
-                message: redact(&snippet),
-            };
-            return Err(PostJsonError {
-                retryable: should_retry_status(status),
-                error,
-            });
-        }
-        response.json::<R>().map_err(|err| PostJsonError {
-            error: InferenceError::Decode {
-                message: redact(&err.to_string()),
-            },
-            retryable: false,
-        })
-    }
-}
-
-#[derive(Debug)]
-struct PostJsonError {
-    error: InferenceError,
-    retryable: bool,
-}
-
-fn should_retry_status(status: StatusCode) -> bool {
-    status == StatusCode::TOO_MANY_REQUESTS
-        || status == StatusCode::BAD_GATEWAY
-        || status == StatusCode::SERVICE_UNAVAILABLE
-        || status.is_server_error()
 }
 #[cfg(test)]
 mod tests;

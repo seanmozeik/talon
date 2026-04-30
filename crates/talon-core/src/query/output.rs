@@ -216,6 +216,38 @@ pub struct RecallResponse {
     pub excluded_by_budget: Vec<String>,
     /// True when `evidence_score` < `min_confidence` or zero results returned.
     pub skipped: bool,
+    /// Optional recall profiling diagnostics.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostics: Option<RecallDiagnostics>,
+}
+
+/// Recall pipeline profiling diagnostics.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecallDiagnostics {
+    /// Full input estimate before distillation.
+    pub input_tokens: usize,
+    /// Main query estimate after distillation/compaction.
+    pub query_tokens: usize,
+    /// Number of retrieval queries sent to the hybrid pipeline.
+    pub query_count: usize,
+    /// Number of weighted phrases extracted locally.
+    pub phrase_count: usize,
+    /// Whether the query distiller LLM call ran.
+    pub distillation_ran: bool,
+    /// Query distiller wall time.
+    pub distillation_ms: Option<u64>,
+    /// Whether the query distiller returned a usable compact query.
+    pub distillation_succeeded: bool,
+    /// Why recall fell back to deterministic query compaction.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distillation_fallback_reason: Option<String>,
+    /// Retrieval/fusion/rerank wall time.
+    pub retrieval_ms: u64,
+    /// Rerank wall time when the hybrid pipeline reported it.
+    pub rerank_ms: Option<u64>,
+    /// Full recall wall time.
+    pub total_ms: u64,
 }
 
 /// A single frontmatter entry.

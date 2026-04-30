@@ -15,7 +15,7 @@ use crate::ScopeFilter;
 use crate::config::TalonConfig;
 use crate::expansion::client::ExpansionClient;
 use crate::inference::InferenceClient;
-use crate::query::{RecallInput, RecallResponse, VaultRecall};
+use crate::query::{RecallDiagnostics, RecallInput, RecallResponse, VaultRecall};
 use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
 
 use super::recall_scoring::{EvidenceInputs, compute_evidence_score};
@@ -50,33 +50,29 @@ pub fn run_recall(
     input: &RecallInput,
     config: Option<&TalonConfig>,
 ) -> RecallResponse {
+    let recall_started = Instant::now();
     if input.message.trim().is_empty() {
-        return make_skipped(0.0);
+        return make_skipped(0.0, None);
     }
 
     let excluded_set: HashSet<String> = input.exclude.iter().cloned().collect();
+    let deadline_at = input
+        .deadline_ms
+        .map(|deadline_ms| Instant::now() + Duration::from_millis(deadline_ms));
     let query = build_query(input);
-    let query_plan = plan_recall_queries(&query, expansion, config);
-    let deadline_at =
-        config.map(|cfg| Instant::now() + Duration::from_millis(cfg.mcp.hooks.recall_deadline_ms));
+    let query_plan = plan_recall_queries(&query, expansion, config, deadline_at);
     let limit: u32 = 20;
 
-    let pre_filter = config.map_or_else(PreFilter::none, |cfg| {
-        let filter = ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
-            .unwrap_or_else(|_| ScopeFilter::default_for(cfg));
-        PreFilter {
-            since_ms: None,
-            accepted_note_ids: scope_to_note_ids(conn, &filter),
-            where_clauses: Vec::new(),
-            tags: Vec::new(),
-            headings: Vec::new(),
-        }
-    });
+    let pre_filter = recall_pre_filter(conn, input, config);
     if pre_filter.is_impossible() {
-        return make_skipped(0.0);
+        return make_skipped(
+            0.0,
+            diagnostics_for(&query_plan, 0, None, recall_started, input),
+        );
     }
 
-    let raw = retrieve_pipeline_results(&RetrievePipelineArgs {
+    let retrieval_started = Instant::now();
+    let retrieval_output = retrieve_pipeline_results(&RetrievePipelineArgs {
         conn,
         inference,
         expansion,
@@ -87,6 +83,15 @@ pub fn run_recall(
         pre_filter: &pre_filter,
         deadline_at,
     });
+    let retrieval_ms = elapsed_ms(retrieval_started);
+    let diagnostics = diagnostics_for(
+        &query_plan,
+        retrieval_ms,
+        retrieval_output.rerank_ms,
+        recall_started,
+        input,
+    );
+    let raw = retrieval_output.results;
     let mut raw = apply_scope_priority(raw, config, &input.scope);
     raw.sort_by(|a, b| b.score.total_cmp(&a.score));
 
@@ -126,6 +131,7 @@ pub fn run_recall(
             excluded: excluded_paths,
             excluded_by_budget: Vec::new(),
             skipped: true,
+            diagnostics,
         };
     }
 
@@ -153,10 +159,58 @@ pub fn run_recall(
         excluded: excluded_paths,
         excluded_by_budget,
         skipped: false,
+        diagnostics,
     }
 }
 
-const fn make_skipped(evidence_score: f64) -> RecallResponse {
+fn recall_pre_filter(
+    conn: &Connection,
+    input: &RecallInput,
+    config: Option<&TalonConfig>,
+) -> PreFilter {
+    config.map_or_else(PreFilter::none, |cfg| {
+        let filter = ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
+            .unwrap_or_else(|_| ScopeFilter::default_for(cfg));
+        PreFilter {
+            since_ms: None,
+            accepted_note_ids: scope_to_note_ids(conn, &filter),
+            where_clauses: Vec::new(),
+            tags: Vec::new(),
+            headings: Vec::new(),
+        }
+    })
+}
+
+fn diagnostics_for(
+    query_plan: &distill::RecallQueryPlan,
+    retrieval_ms: u64,
+    rerank_ms: Option<u64>,
+    recall_started: Instant,
+    input: &RecallInput,
+) -> Option<RecallDiagnostics> {
+    input.diagnostics.then_some(RecallDiagnostics {
+        input_tokens: query_plan.input_tokens,
+        query_tokens: query_plan.query_tokens,
+        query_count: query_plan.queries.len(),
+        phrase_count: query_plan.phrase_count,
+        distillation_ran: query_plan.distillation_ran,
+        distillation_ms: query_plan.distillation_ms,
+        distillation_succeeded: query_plan.distillation_succeeded,
+        distillation_fallback_reason: query_plan.distillation_fallback_reason.clone(),
+        retrieval_ms,
+        rerank_ms,
+        total_ms: elapsed_ms(recall_started),
+    })
+}
+
+fn elapsed_ms(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
+const fn make_skipped(
+    evidence_score: f64,
+    diagnostics: Option<RecallDiagnostics>,
+) -> RecallResponse {
     RecallResponse {
         vault: None,
         vault_recall: None,
@@ -165,6 +219,7 @@ const fn make_skipped(evidence_score: f64) -> RecallResponse {
         excluded: Vec::new(),
         excluded_by_budget: Vec::new(),
         skipped: true,
+        diagnostics,
     }
 }
 
