@@ -11,7 +11,7 @@ use phrases::{WeightedPhrase, clean_phrase, extract_weighted_phrases, strip_code
 
 const DISTILLER_OVERHEAD_TOKENS: usize = 512;
 const DISTILLER_SAFETY_MARGIN_TOKENS: usize = 2_048;
-const MAX_DISTILLER_INPUT_TOKENS: usize = 27_000;
+const MAX_DISTILLER_INPUT_TOKENS: usize = 16_000;
 const DEFAULT_QUERY_EMBEDDING_CONTEXT_TOKENS: usize = 512;
 const MAX_QUERY_SET_SIZE: usize = 6;
 const MAX_MAIN_QUERY_TOKENS: usize = 96;
@@ -171,10 +171,19 @@ fn noisy_prompt(query: &str) -> bool {
 fn budgeted_prompt_view(query: &str, config: Option<&TalonConfig>) -> String {
     let stripped = strip_code_blocks(query);
     let budget = expansion_input_budget(config);
-    if estimate_tokens(&stripped) <= budget {
-        return stripped;
+    budgeted_prompt_view_for_budget(&stripped, budget)
+}
+
+fn budgeted_prompt_view_for_budget(stripped: &str, budget: usize) -> String {
+    if estimate_tokens(stripped) <= budget {
+        return stripped.to_owned();
     }
-    cap_tokens_head_tail(&stripped, budget)
+    let capped = cap_tokens_head_tail(stripped, budget.saturating_sub(16));
+    if estimate_tokens(&capped) <= budget {
+        capped
+    } else {
+        cap_tokens(&capped, budget)
+    }
 }
 
 fn compact_main_query(raw_query: &str, phrases: &[WeightedPhrase], budget: usize) -> String {
@@ -321,13 +330,13 @@ mod tests {
 
     #[test]
     fn expansion_input_budget_keeps_margin_below_bonsai_context() {
-        assert_eq!(expansion_input_budget_for_limits(32_768, None), 27_000);
+        assert_eq!(expansion_input_budget_for_limits(32_768, None), 16_000);
     }
 
     #[test]
     fn budgeted_prompt_view_stays_under_distiller_input_ceiling() {
         let prompt = "supplier order hot sauce launch readiness ".repeat(20_000);
-        let view = budgeted_prompt_view(&prompt, None);
+        let view = budgeted_prompt_view_for_budget(&prompt, MAX_DISTILLER_INPUT_TOKENS);
         assert!(estimate_tokens(&view) <= MAX_DISTILLER_INPUT_TOKENS);
     }
 }
