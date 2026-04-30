@@ -28,14 +28,6 @@ struct AgentReadResult<'a> {
     content: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     section: Option<AgentReadSection<'a>>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    links: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    backlinks: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tags: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    aliases: Vec<&'a str>,
 }
 
 impl<'a> From<&'a ReadResult> for AgentReadResult<'a> {
@@ -46,10 +38,6 @@ impl<'a> From<&'a ReadResult> for AgentReadResult<'a> {
             title: result.title.as_deref(),
             content: result.content.as_deref(),
             section: result.section.as_ref().map(AgentReadSection::from),
-            links: result.links.iter().map(String::as_str).collect(),
-            backlinks: result.backlinks.iter().map(String::as_str).collect(),
-            tags: result.tags.iter().map(String::as_str).collect(),
-            aliases: result.aliases.iter().map(String::as_str).collect(),
         }
     }
 }

@@ -23,18 +23,6 @@ struct AgentSearchHit<'a> {
     title: &'a str,
     snippet: &'a str,
     score: f64,
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    is_index: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    citations: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    links: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    backlinks: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    tags: Vec<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    aliases: Vec<&'a str>,
 }
 
 impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {
@@ -44,12 +32,6 @@ impl<'a> From<&'a SearchResult> for AgentSearchHit<'a> {
             title: &result.title,
             snippet: &result.snippet,
             score: round_score(result.score),
-            is_index: result.is_index,
-            citations: result.citations.iter().map(String::as_str).collect(),
-            links: result.links.iter().map(String::as_str).collect(),
-            backlinks: result.backlinks.iter().map(String::as_str).collect(),
-            tags: result.tags.iter().map(String::as_str).collect(),
-            aliases: result.aliases.iter().map(String::as_str).collect(),
         }
     }
 }
