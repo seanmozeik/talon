@@ -40,7 +40,7 @@ reasoning overrides live here.
 
 ```toml
 [expansion]
-context_tokens = 32768
+context_tokens = 16000
 max_output_tokens = 768
 
 [ask]
@@ -54,9 +54,9 @@ synthesis_reasoning_effort = "medium"
 recall_deadline_ms = 45000
 ```
 
-Recall distillation keeps a practical safety margin below
-`expansion.context_tokens`; the example 32k context model receives a prompt
-view capped around 16k estimated tokens so small local models can still follow
-the JSON distillation schema reliably.
+Recall distillation derives its prompt-view budget from
+`expansion.context_tokens` minus output, prompt-overhead, and safety reserves.
+For small local models, set `context_tokens` to the effective reliable window,
+not necessarily the model's advertised maximum.
 
 Ultraclaw does not inject, adapt, or validate Talon config.

@@ -11,7 +11,6 @@ use phrases::{WeightedPhrase, clean_phrase, extract_weighted_phrases, strip_code
 
 const DISTILLER_OVERHEAD_TOKENS: usize = 512;
 const DISTILLER_SAFETY_MARGIN_TOKENS: usize = 2_048;
-const MAX_DISTILLER_INPUT_TOKENS: usize = 16_000;
 const DEFAULT_QUERY_EMBEDDING_CONTEXT_TOKENS: usize = 512;
 const MAX_QUERY_SET_SIZE: usize = 6;
 const MAX_MAIN_QUERY_TOKENS: usize = 96;
@@ -156,7 +155,7 @@ fn expansion_input_budget_for_limits(context_tokens: u32, max_output_tokens: Opt
         .unwrap_or(768);
     context
         .saturating_sub(output + DISTILLER_OVERHEAD_TOKENS + DISTILLER_SAFETY_MARGIN_TOKENS)
-        .clamp(256, MAX_DISTILLER_INPUT_TOKENS)
+        .max(256)
 }
 
 fn noisy_prompt(query: &str) -> bool {
@@ -329,14 +328,16 @@ mod tests {
     }
 
     #[test]
-    fn expansion_input_budget_keeps_margin_below_bonsai_context() {
-        assert_eq!(expansion_input_budget_for_limits(32_768, None), 16_000);
+    fn expansion_input_budget_respects_configured_context() {
+        assert_eq!(expansion_input_budget_for_limits(16_000, Some(768)), 12_672);
+        assert_eq!(expansion_input_budget_for_limits(32_768, None), 29_440);
     }
 
     #[test]
-    fn budgeted_prompt_view_stays_under_distiller_input_ceiling() {
+    fn budgeted_prompt_view_stays_under_configured_budget() {
         let prompt = "supplier order hot sauce launch readiness ".repeat(20_000);
-        let view = budgeted_prompt_view_for_budget(&prompt, MAX_DISTILLER_INPUT_TOKENS);
-        assert!(estimate_tokens(&view) <= MAX_DISTILLER_INPUT_TOKENS);
+        let budget = expansion_input_budget_for_limits(16_000, Some(768));
+        let view = budgeted_prompt_view_for_budget(&prompt, budget);
+        assert!(estimate_tokens(&view) <= budget);
     }
 }
