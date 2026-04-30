@@ -122,11 +122,42 @@ talon --agent search "<query>" --scope-all
 - `talon --agent sync --fast`: same index refresh and stale path cleanup, with no embedding pass. Use for quick lexical freshness checks.
 - `talon --agent sync --force`: incremental index refresh, then rebuild embeddings for every active chunk.
 - `talon --agent sync --rebuild`: delete and recreate the SQLite index, then index the vault from scratch. Add global `--fast` for a lexical-only rebuild.
-- `talon --agent meta --where <field><op><value> --select <field>`: inspect frontmatter metadata.
 - `talon --agent meta --tag-counts`: inspect tag distribution.
 - `talon --agent changes --since 7d`: inspect recent added/modified/deleted notes. `--since` accepts relative durations such as `7d`/`3h`, ISO 8601 timestamps, dates, or epoch milliseconds.
 - `talon --agent lint broken-links`: inspect graph health.
 - `talon --agent status`: inspect index readiness.
+
+### `--where` Filters (meta and search)
+
+Filter by frontmatter fields or the note's vault path. Operators glue to the key — no spaces required.
+
+| Operator | Syntax | Meaning |
+|----------|--------|---------|
+| `=` | `status=archived` | Exact match |
+| `!=` | `type!=method` | Not equal |
+| `<` `<=` `>` `>=` | `score>0.5` | Ordered (dates, numbers) |
+| `contains` | `tags contains workflow` | Substring in any value |
+| `exists` | `source exists` | Field is present |
+| `^=` | `path^=Templates/` | Prefix / starts-with |
+| `~=` | `path~=Patients/*` | Glob pattern (full globset syntax) |
+
+Prefix and glob work on any frontmatter field **and** the special `path` key:
+
+```bash
+# Show all notes under a directory subtree
+talon --agent meta --where 'path^=Projects/' --select path
+
+# Glob: all markdown files in artifacts/
+talon --agent meta --where 'path~=artifacts/*.md' --select path
+
+# Prefix on frontmatter field
+talon --agent meta --where 'title^=Weekly' --select path,title
+
+# Glob on frontmatter field
+talon --agent meta --where 'tags~=workflow*' --select path,tags
+```
+
+Glob uses the [`globset`](https://docs.rs/globset) crate: `*` matches any chars (including `/`), `**` matches zero or more directories.
 
 ## Result Contract
 
