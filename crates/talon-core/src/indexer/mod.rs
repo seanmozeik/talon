@@ -21,11 +21,13 @@ pub use crate::indexing::upsert::{
     upsert_chunks, upsert_frontmatter_fields, upsert_links, upsert_note, upsert_tags,
 };
 pub use prelude::{
-    DEFAULT_IGNORE_PATHS, extract_title, hash_file_content, load_notes_for_linking,
+    DEFAULT_IGNORE_PATHS, build_ignore_globset, build_include_globset, extract_title,
+    file_matches_ignore, file_matches_include, hash_file_content, load_notes_for_linking,
     matches_ignore_patterns, matches_include_patterns, merge_current_path_for_linking,
     scan_vault_markdown,
 };
 pub use scan::{
-    IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan, run_full_scan_with_chunker,
+    IndexerConfig, IndexerStats, reconcile_deletions, reconcile_ignored_notes, run_full_scan,
+    run_full_scan_with_chunker,
 };
 pub use wiring::{IndexNoteOutcome, NoteIndexConfig, index_one_note, index_one_note_with_config};

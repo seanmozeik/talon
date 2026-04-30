@@ -7,6 +7,7 @@ mod chunker;
 mod defaults;
 mod endpoints;
 mod scope_filter;
+use crate::indexer::build_include_globset;
 use defaults::{
     default_candidate_limit, default_limit, default_rerank_batch_size, default_rerank_cache_size,
     default_rerank_max_tokens, default_search_cache_size,
@@ -249,7 +250,7 @@ impl TalonConfig {
             .lint
             .ignore
             .iter()
-            .any(|glob| glob::Pattern::new(glob).is_ok_and(|p| p.matches(&path_str)));
+            .any(|glob| glob_matches_path(glob, path_str.as_ref()));
         if ignored {
             return true;
         }
@@ -288,12 +289,13 @@ impl TalonConfig {
 /// Checks whether a path matches any of the glob patterns in a scope.
 fn matches_path_glob(path: &Path, glob: &ScopeGlob) -> bool {
     let path_str = path.to_string_lossy();
-    match glob {
-        ScopeGlob::Single(g) => glob::Pattern::new(g).is_ok_and(|p| p.matches(&path_str)),
-        ScopeGlob::Multiple(globs) => globs
-            .iter()
-            .any(|g| glob::Pattern::new(g).is_ok_and(|p| p.matches(&path_str))),
-    }
+    glob.patterns()
+        .iter()
+        .any(|pattern| glob_matches_path(pattern, path_str.as_ref()))
+}
+
+fn glob_matches_path(pattern: &str, path: &str) -> bool {
+    build_include_globset(&[pattern.to_string()]).is_ok_and(|set| set.is_match(path))
 }
 
 /// Lint settings.

@@ -4,6 +4,7 @@ use rusqlite::Connection;
 
 use crate::config::TalonConfig;
 use crate::contracts::ContainerPath;
+use crate::indexer::build_include_globset;
 use crate::indexing::{IndexStats, ScopeReport, StatusResponse, StatusState};
 use crate::numeric::count_u32;
 use crate::vec_ext::get_vec_chunks_dimensions;
@@ -96,11 +97,13 @@ fn count_unscoped(conn: &Connection, config: &TalonConfig) -> u32 {
 
 fn is_unscoped(path: &str, config: &TalonConfig) -> bool {
     config.scopes.values().all(|scope| {
-        !scope
+        let patterns: Vec<String> = scope
             .glob
             .patterns()
-            .iter()
-            .any(|g| glob::Pattern::new(g).is_ok_and(|pat| pat.matches(path)))
+            .into_iter()
+            .map(str::to_string)
+            .collect();
+        build_include_globset(&patterns).map_or(true, |set| !set.is_match(path))
     })
 }
 

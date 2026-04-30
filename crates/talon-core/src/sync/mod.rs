@@ -18,7 +18,8 @@ use crate::TalonError;
 use crate::config::ChunkerConfig;
 use crate::embed::{EmbedPassOptions, EmbedPassStats, run_embed_pass};
 use crate::indexer::{
-    IndexerConfig, IndexerStats, reconcile_deletions, run_full_scan_with_chunker,
+    IndexerConfig, IndexerStats, reconcile_deletions, reconcile_ignored_notes,
+    run_full_scan_with_chunker,
 };
 use crate::indexing::change_tracking::TOMBSTONE_RETENTION_MS;
 use crate::inference::InferenceClient;
@@ -154,6 +155,8 @@ pub fn run_sync_with_chunker_locked(
         .map_err(SyncError::Indexer)?;
     let deleted = reconcile_deletions(conn, vault_root).map_err(SyncError::Indexer)?;
     stats.deleted = stats.deleted.saturating_add(deleted);
+    let ignored = reconcile_ignored_notes(conn, config).map_err(SyncError::Indexer)?;
+    stats.deleted = stats.deleted.saturating_add(ignored);
 
     // Closes the link-staleness window: incremental indexing only refreshes
     // a source file's resolved links when that source file is touched, so an

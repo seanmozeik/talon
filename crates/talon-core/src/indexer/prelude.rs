@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use globset::{GlobBuilder, GlobSet, GlobSetBuilder};
 use rusqlite::Connection;
 use sha2::{Digest, Sha256};
 use walkdir::WalkDir;
@@ -19,6 +20,28 @@ use crate::text::normalize_vault_path;
 /// always applied, in addition to whatever the caller passes through
 /// [`matches_ignore_patterns`]'s `extra` argument.
 pub const DEFAULT_IGNORE_PATHS: &[&str] = &[".obsidian", ".git", "templates", ".canvas"];
+
+fn add_case_insensitive_glob(builder: &mut GlobSetBuilder, pattern: &str) -> Result<(), String> {
+    let glob = GlobBuilder::new(pattern)
+        .case_insensitive(true)
+        .build()
+        .map_err(|err| err.to_string())?;
+    builder.add(glob);
+    Ok(())
+}
+
+fn add_pattern_variants(builder: &mut GlobSetBuilder, pattern: &str) -> Result<(), String> {
+    let trimmed = pattern.trim();
+    if trimmed.is_empty() {
+        return Ok(());
+    }
+
+    add_case_insensitive_glob(builder, trimmed)?;
+    if !trimmed.starts_with("**/") && !trimmed.starts_with('/') {
+        add_case_insensitive_glob(builder, &format!("**/{trimmed}"))?;
+    }
+    Ok(())
+}
 
 /// Returns the lowercase hex `SHA-256` of `content`.
 ///
@@ -36,45 +59,64 @@ pub fn hash_file_content(content: &str) -> String {
     out
 }
 
-/// Returns `true` if `file_path` matches any of the default or extra ignore
-/// patterns.
+/// Builds the case-insensitive ignore matcher used by scans and reconciliation.
 ///
-/// A pattern matches when it is contained as a substring in `file_path` or
-/// when `file_path` ends with it. This intentionally mirrors the loose
-/// substring matching used by the `TypeScript` reference.
-#[must_use]
-pub fn matches_ignore_patterns(file_path: &str, extra: &[String]) -> bool {
+/// # Errors
+///
+/// Returns a message from `globset` when any configured pattern is invalid.
+pub fn build_ignore_globset(extra: &[String]) -> Result<GlobSet, String> {
+    let mut builder = GlobSetBuilder::new();
     for default in DEFAULT_IGNORE_PATHS {
-        if file_path.contains(default) || file_path.ends_with(default) {
-            return true;
-        }
+        add_case_insensitive_glob(&mut builder, &format!("{default}/**"))?;
+        add_case_insensitive_glob(&mut builder, &format!("**/{default}/**"))?;
     }
     for pattern in extra {
-        if file_path.contains(pattern) || file_path.ends_with(pattern.as_str()) {
-            return true;
-        }
+        add_pattern_variants(&mut builder, pattern)?;
     }
-    false
+    builder.build().map_err(|err| err.to_string())
 }
 
-/// Returns `true` if `file_path` is a markdown file matching any of the
-/// include patterns. The wildcard pattern `**/*.md` matches any markdown
-/// path; other patterns are treated as substring matches.
+/// Builds the case-insensitive include matcher used by scans and reconciliation.
+///
+/// # Errors
+///
+/// Returns a message from `globset` when any configured pattern is invalid.
+pub fn build_include_globset(patterns: &[String]) -> Result<GlobSet, String> {
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        add_pattern_variants(&mut builder, pattern)?;
+    }
+    builder.build().map_err(|err| err.to_string())
+}
+
+/// Returns `true` when `path` matches the compiled ignore matcher.
 #[must_use]
-pub fn matches_include_patterns(file_path: &str, patterns: &[String]) -> bool {
-    let ext = std::path::Path::new(file_path)
+pub fn file_matches_ignore(path: &str, set: &GlobSet) -> bool {
+    set.is_match(path)
+}
+
+/// Returns `true` when `path` is a markdown file matching the include matcher.
+#[must_use]
+pub fn file_matches_include(path: &str, set: &GlobSet) -> bool {
+    let ext = std::path::Path::new(path)
         .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("");
-    if !ext.eq_ignore_ascii_case("md") {
-        return false;
-    }
-    for pattern in patterns {
-        if pattern == "**/*.md" || file_path.contains(pattern) {
-            return true;
-        }
-    }
-    false
+    ext.eq_ignore_ascii_case("md") && set.is_match(path)
+}
+
+/// Returns `true` if `file_path` matches any of the default or extra ignore
+/// patterns.
+#[must_use]
+pub fn matches_ignore_patterns(file_path: &str, extra: &[String]) -> bool {
+    build_ignore_globset(extra).is_ok_and(|set| file_matches_ignore(file_path, &set))
+}
+
+/// Returns `true` if `file_path` is a markdown file matching any include
+/// pattern.
+#[must_use]
+pub fn matches_include_patterns(file_path: &str, patterns: &[String]) -> bool {
+    build_include_globset(patterns).is_ok_and(|set| file_matches_include(file_path, &set))
 }
 
 /// Loads vault notes for link resolution from the `notes` table.
@@ -140,10 +182,26 @@ pub fn load_vault_notes_for_linking(
     include_patterns: &[String],
     ignore_patterns: &[String],
 ) -> Vec<NoteReference> {
+    let Ok(include_set) = build_include_globset(include_patterns) else {
+        return Vec::new();
+    };
+    let Ok(ignore_set) = build_ignore_globset(ignore_patterns) else {
+        return Vec::new();
+    };
+    load_vault_notes_for_linking_with_sets(vault_root, &include_set, &ignore_set)
+}
+
+/// Loads note references directly from the vault using precompiled filters.
+#[must_use]
+pub fn load_vault_notes_for_linking_with_sets(
+    vault_root: &Path,
+    include_set: &GlobSet,
+    ignore_set: &GlobSet,
+) -> Vec<NoteReference> {
     scan_vault_markdown(vault_root)
         .filter(|rel_path| {
-            matches_include_patterns(rel_path, include_patterns)
-                && !matches_ignore_patterns(rel_path, ignore_patterns)
+            file_matches_include(rel_path, include_set)
+                && !file_matches_ignore(rel_path, ignore_set)
         })
         .filter_map(|rel_path| {
             let content = fs::read_to_string(vault_root.join(&rel_path)).ok()?;
@@ -221,7 +279,11 @@ pub fn scan_vault_markdown(vault_root: &Path) -> impl Iterator<Item = String> + 
         .filter(|entry| entry.file_type().is_file())
         .filter_map(move |entry| {
             let path = entry.path();
-            if path.extension().and_then(|s| s.to_str()) != Some("md") {
+            if !path
+                .extension()
+                .and_then(|s| s.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("md"))
+            {
                 return None;
             }
             let rel = path.strip_prefix(vault_root).ok()?;
@@ -230,116 +292,5 @@ pub fn scan_vault_markdown(vault_root: &Path) -> impl Iterator<Item = String> + 
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-    use crate::text::frontmatter::FrontmatterValue;
-    use fs_err as fs;
-    use std::collections::BTreeMap;
-
-    #[test]
-    fn hash_is_stable_and_deterministic() {
-        let h1 = hash_file_content("hello");
-        let h2 = hash_file_content("hello");
-        assert_eq!(h1, h2);
-        assert_eq!(h1.len(), 64); // 32-byte SHA-256 → 64 hex chars
-    }
-
-    #[test]
-    fn hash_changes_with_input() {
-        assert_ne!(hash_file_content("a"), hash_file_content("b"));
-    }
-
-    #[test]
-    fn ignore_matches_default_obsidian_paths() {
-        assert!(matches_ignore_patterns(".obsidian/config.json", &[]));
-        assert!(matches_ignore_patterns("notes/.git/HEAD", &[]));
-        assert!(matches_ignore_patterns("templates/Daily.md", &[]));
-    }
-
-    #[test]
-    fn ignore_matches_extra_patterns() {
-        let extra = vec!["drafts".to_string()];
-        assert!(matches_ignore_patterns("zone/drafts/wip.md", &extra));
-        assert!(!matches_ignore_patterns("zone/notes/wip.md", &extra));
-    }
-
-    #[test]
-    fn include_requires_md_extension() {
-        let patterns = vec!["**/*.md".to_string()];
-        assert!(matches_include_patterns("a/b.md", &patterns));
-        assert!(!matches_include_patterns("a/b.txt", &patterns));
-    }
-
-    #[test]
-    fn include_matches_substring_patterns() {
-        let patterns = vec!["zone/".to_string()];
-        assert!(matches_include_patterns("zone/note.md", &patterns));
-        assert!(!matches_include_patterns("other/note.md", &patterns));
-    }
-
-    #[test]
-    fn extract_title_uses_frontmatter_title_when_present() {
-        let mut fm: BTreeMap<String, FrontmatterValue> = BTreeMap::new();
-        fm.insert("title".into(), FrontmatterValue::String("My Title".into()));
-        assert_eq!(extract_title("zone/note.md", &fm), "My Title");
-    }
-
-    #[test]
-    fn extract_title_falls_back_to_filename() {
-        let fm: BTreeMap<String, FrontmatterValue> = BTreeMap::new();
-        assert_eq!(extract_title("zone/My Note.md", &fm), "My Note");
-        assert_eq!(extract_title("toplevel.md", &fm), "toplevel");
-    }
-
-    #[test]
-    fn extract_title_ignores_blank_frontmatter_title() {
-        let mut fm: BTreeMap<String, FrontmatterValue> = BTreeMap::new();
-        fm.insert("title".into(), FrontmatterValue::String("   ".into()));
-        assert_eq!(extract_title("a/b.md", &fm), "b");
-    }
-
-    #[test]
-    fn merge_replaces_existing_path_entry() {
-        let base = vec![
-            NoteReference {
-                vault_path: "a.md".into(),
-                title: Some("old A".into()),
-                aliases: vec![],
-            },
-            NoteReference {
-                vault_path: "b.md".into(),
-                title: Some("B".into()),
-                aliases: vec![],
-            },
-        ];
-        let merged = merge_current_path_for_linking(&base, "a.md", "new A", &["alias".into()]);
-        assert_eq!(merged.len(), 2);
-        let a = merged.iter().find(|n| n.vault_path == "a.md").unwrap();
-        assert_eq!(a.title.as_deref(), Some("new A"));
-        assert_eq!(a.aliases, vec!["alias"]);
-    }
-
-    fn unique_dir(label: &str) -> std::path::PathBuf {
-        use std::sync::atomic::{AtomicU64, Ordering};
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let pid = std::process::id();
-        std::env::temp_dir().join(format!("talon-prelude-test-{label}-{pid}-{n}"))
-    }
-
-    #[test]
-    fn scan_vault_yields_only_md_files_with_relative_paths() {
-        let root = unique_dir("scan");
-        fs::create_dir_all(root.join("zone")).unwrap();
-        fs::write(root.join("a.md"), "a").unwrap();
-        fs::write(root.join("zone").join("b.md"), "b").unwrap();
-        fs::write(root.join("zone").join("c.txt"), "c").unwrap();
-
-        let mut paths: Vec<String> = scan_vault_markdown(&root).collect();
-        paths.sort();
-        assert_eq!(paths, vec!["a.md", "zone/b.md"]);
-
-        fs::remove_dir_all(&root).unwrap();
-    }
-}
+#[path = "prelude_tests.rs"]
+mod tests;
