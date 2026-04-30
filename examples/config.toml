@@ -63,7 +63,7 @@ planning_reasoning_effort = "none"
 synthesis_reasoning_effort = "medium"
 
 [mcp.hooks]
-recall_deadline_ms = 20000
+recall_deadline_ms = 45000
 
 # ── Scopes ─────────────────────────────────────────────────────────────────
 # Karpathy LLM-Wiki preset. Rationale per directory:

@@ -139,7 +139,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         min_confidence: 0.0,
         fast: requested_fast,
         diagnostics: true,
-        deadline_ms: None,
+        deadline_ms: Some(config.mcp.hooks.recall_deadline_ms),
     };
 
     let vault = config.vault_path.to_string_lossy().to_string();
