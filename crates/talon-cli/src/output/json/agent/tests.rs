@@ -99,6 +99,7 @@ fn to_agent_value_returns_none_for_sync() {
             status: SyncStatus::Ok,
             fast: false,
             force: false,
+            rebuild: false,
             path_count: 0,
             indexed: 0,
             skipped: 0,

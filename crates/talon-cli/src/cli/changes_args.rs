@@ -13,7 +13,7 @@ pub struct ChangesArgs {
     pub since: String,
 
     /// Search result limit.
-    #[arg(short, long)]
+    #[arg(short = 'n', long)]
     pub limit: Option<u16>,
 
     #[command(flatten)]

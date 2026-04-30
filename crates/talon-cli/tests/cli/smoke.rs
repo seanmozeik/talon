@@ -109,6 +109,71 @@ fn init_does_not_overwrite_existing_config() {
 }
 
 #[test]
+fn sync_rebuild_recreates_existing_index_database() {
+    let tmp = std::env::temp_dir().join(format!("talon-sync-rebuild-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let vault_path = tmp.join("vault");
+    let db_path = tmp.join("index.sqlite");
+    let config_path = tmp.join("config.toml");
+    std::fs::create_dir_all(&vault_path).unwrap_or_else(|e| panic!("create vault: {e}"));
+    std::fs::write(vault_path.join("note.md"), "# Note\n\nBody")
+        .unwrap_or_else(|e| panic!("write note: {e}"));
+    std::fs::write(
+        &config_path,
+        format!(
+            r#"vault_path = "{vault}"
+db_path = "{db}"
+include_patterns = ["**/*.md"]
+ignore_patterns = []
+
+[inference]
+base_url = "http://localhost:8080"
+
+[inference.models]
+query_embedding = "embed"
+document_embedding = "embed"
+chunk_embedding = "embed_chunked"
+reranker = "rerank"
+
+[expansion]
+provider = "openai-compatible"
+base_url = "http://localhost:1234/v1"
+model = "gemma-smol"
+"#,
+            vault = vault_path.display(),
+            db = db_path.display(),
+        ),
+    )
+    .unwrap_or_else(|e| panic!("write config: {e}"));
+
+    let conn = talon_core::open_database(&db_path).unwrap_or_else(|e| panic!("open db: {e}"));
+    conn.execute("CREATE TABLE rebuild_marker (id INTEGER)", [])
+        .unwrap_or_else(|e| panic!("create marker: {e}"));
+    drop(conn);
+
+    Command::cargo_bin(BIN)
+        .unwrap_or_else(|e| panic!("cargo_bin: {e}"))
+        .arg("--json")
+        .arg("--config")
+        .arg(&config_path)
+        .arg("--fast")
+        .arg("sync")
+        .arg("--rebuild")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains(r#""rebuild": true"#));
+
+    let conn = talon_core::open_database_read_only(&db_path)
+        .unwrap_or_else(|e| panic!("open rebuilt db: {e}"));
+    assert!(
+        conn.prepare("SELECT COUNT(*) FROM rebuild_marker").is_err(),
+        "rebuild should discard stale tables from the old index"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[test]
 fn status_ignores_empty_talon_config_file_env() {
     let tmp = std::env::temp_dir().join(format!("talon-empty-config-env-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);

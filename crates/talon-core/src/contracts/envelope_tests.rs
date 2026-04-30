@@ -72,6 +72,7 @@ fn sync_success_round_trip() {
         status: SyncStatus::Ok,
         fast: false,
         force: false,
+        rebuild: false,
         path_count: 1,
         indexed: 5,
         skipped: 0,

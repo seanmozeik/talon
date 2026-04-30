@@ -13,4 +13,8 @@ pub struct SyncArgs {
     /// Force vector rebuild during sync.
     #[arg(long)]
     pub force: bool,
+
+    /// Delete and recreate the index before syncing.
+    #[arg(long)]
+    pub rebuild: bool,
 }

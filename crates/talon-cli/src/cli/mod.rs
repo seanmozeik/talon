@@ -45,6 +45,7 @@ pub use sync_args::SyncArgs;
   talon read src/main.rs --from-line 10 --max-lines 20
   talon related src/lib.rs --depth 2 --direction both
   talon sync --force
+  talon sync --rebuild --fast
 
 Use 'talon <command> --help' for per-command help."#
 )]

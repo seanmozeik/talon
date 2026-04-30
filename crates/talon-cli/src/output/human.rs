@@ -56,7 +56,8 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
 pub fn format_sync_human(w: &mut impl Write, resp: &SyncResponse) -> Result<()> {
     writeln!(
         w,
-        "Sync: {} ({} indexed, {} skipped, {} deleted) in {}ms",
+        "Sync: {}{} ({} indexed, {} skipped, {} deleted) in {}ms",
+        if resp.rebuild { "rebuilt " } else { "" },
         if resp.completed { "OK" } else { "partial" },
         resp.indexed,
         resp.skipped,

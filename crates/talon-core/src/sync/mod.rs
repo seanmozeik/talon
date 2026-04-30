@@ -8,9 +8,13 @@
 
 pub mod lock;
 mod relink;
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests;
 
 use std::path::Path;
 
+use fs_err as fs;
 use rusqlite::Connection;
 use time::OffsetDateTime;
 
@@ -26,6 +30,29 @@ use crate::inference::InferenceClient;
 
 pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process};
 pub use relink::relink_unresolved;
+
+/// Deletes the `SQLite` index database and companion WAL/SHM files.
+///
+/// Callers should hold the sync lock before invoking this so no other Talon
+/// process can read or write the database while it is being replaced.
+///
+/// # Errors
+///
+/// Returns the first filesystem error other than `NotFound`.
+pub fn remove_index_files(db_path: &Path) -> std::io::Result<()> {
+    for path in [
+        db_path.to_path_buf(),
+        db_path.with_extension("sqlite-wal"),
+        db_path.with_extension("sqlite-shm"),
+    ] {
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => return Err(err),
+        }
+    }
+    Ok(())
+}
 
 /// No-embed sync used by query surfaces to keep the index in step with
 /// on-disk state without paying the embedding round-trip.
@@ -207,73 +234,5 @@ impl SyncError {
             SyncLockError::Busy => Self::LockBusy,
             SyncLockError::Io(io) => Self::Lock(io),
         }
-    }
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
-mod tests {
-    use super::*;
-    use crate::store::open_database;
-    use fs_err as fs;
-    use std::env::temp_dir;
-    use std::sync::atomic::{AtomicU64, Ordering};
-
-    fn unique_dir(label: &str) -> std::path::PathBuf {
-        static COUNTER: AtomicU64 = AtomicU64::new(0);
-        let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let pid = std::process::id();
-        temp_dir().join(format!("talon-sync-test-{label}-{pid}-{n}"))
-    }
-
-    #[test]
-    fn run_sync_indexes_then_reconciles() {
-        let vault = unique_dir("end-to-end");
-        fs::create_dir_all(&vault).unwrap();
-        fs::write(vault.join("a.md"), "# A").unwrap();
-        fs::write(vault.join("b.md"), "# B").unwrap();
-        let db = vault.join("idx.sqlite");
-        let lock = vault.join(".talon").join("sync.lock");
-        let mut conn = open_database(&db).unwrap();
-
-        let (first, embed) = run_sync(
-            &mut conn,
-            &vault,
-            &lock,
-            &IndexerConfig::index_all(),
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(first.indexed, 2);
-        assert_eq!(first.deleted, 0);
-        assert!(embed.is_none());
-
-        // Remove one note and re-sync — reconciler should soft-delete it.
-        fs::remove_file(vault.join("b.md")).unwrap();
-        let (second, _) = run_sync(
-            &mut conn,
-            &vault,
-            &lock,
-            &IndexerConfig::index_all(),
-            None,
-            None,
-        )
-        .unwrap();
-        assert_eq!(second.indexed, 0);
-        assert_eq!(second.deleted, 1);
-
-        let active: i64 = conn
-            .query_row("SELECT COUNT(*) FROM notes WHERE active = 1", [], |r| {
-                r.get(0)
-            })
-            .unwrap();
-        assert_eq!(active, 1);
-
-        drop(conn);
-        let _ = fs::remove_file(&db);
-        let _ = fs::remove_file(db.with_extension("sqlite-wal"));
-        let _ = fs::remove_file(db.with_extension("sqlite-shm"));
-        fs::remove_dir_all(&vault).unwrap();
     }
 }

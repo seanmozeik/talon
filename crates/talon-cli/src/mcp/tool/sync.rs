@@ -28,6 +28,10 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
     let lock = acquire_sync_lock(&lock_path).wrap_err("acquiring sync lock")?;
+    if input.rebuild {
+        talon_core::remove_index_files(&db_path)
+            .wrap_err_with(|| format!("removing index files for {}", db_path.display()))?;
+    }
     let mut conn = open_database(&db_path)
         .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
     let (embed_opts, inference) = embed_options(&config, input)?;
@@ -56,6 +60,7 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
         status: SyncStatus::Ok,
         fast: input.fast,
         force: input.force,
+        rebuild: input.rebuild,
         path_count: count_u32(input.paths.len()),
         indexed: stats.indexed,
         skipped: stats.skipped,

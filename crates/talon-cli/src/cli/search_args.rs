@@ -52,7 +52,7 @@ pub struct SharedSearchArgs {
     #[arg(long, value_enum, ignore_case = true)]
     pub mode: Option<CliSearchMode>,
 
-    #[arg(short, long)]
+    #[arg(short = 'n', long)]
     pub limit: Option<u16>,
 
     #[arg(long)]

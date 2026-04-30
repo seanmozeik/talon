@@ -23,7 +23,7 @@ pub enum SyncStatus {
 /// Sync response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-#[allow(clippy::struct_excessive_bools)] // pre-existing: 4 bools from US-004b embed fields
+#[allow(clippy::struct_excessive_bools)]
 pub struct SyncResponse {
     /// Whether the sync completed.
     pub completed: bool,
@@ -33,6 +33,8 @@ pub struct SyncResponse {
     pub fast: bool,
     /// Whether vector reset was requested.
     pub force: bool,
+    /// Whether the index database was rebuilt before syncing.
+    pub rebuild: bool,
     /// Number of paths in scope.
     pub path_count: u32,
     /// Indexed notes.

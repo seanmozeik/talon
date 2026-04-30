@@ -114,7 +114,7 @@ fn search_accepts_options_after_query() {
         "--fast",
         "--mode",
         "fulltext",
-        "--limit",
+        "-n",
         "1",
         "--anchors",
     ]);

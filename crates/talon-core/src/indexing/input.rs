@@ -31,9 +31,9 @@ pub struct SyncInput {
     /// Reset vector state before syncing.
     #[serde(default)]
     pub force: bool,
-    /// Return immediately if sync is already running.
+    /// Delete and recreate the index before syncing.
     #[serde(default)]
-    pub no_wait: bool,
+    pub rebuild: bool,
 }
 
 /// Status request.

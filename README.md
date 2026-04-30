@@ -22,6 +22,19 @@ cargo run -p talon-cli -- init
 cargo run -p talon-cli -- --skill
 ```
 
+## Index Lifecycle
+
+`talon sync` keeps the index in step with the configured vault. It scans Markdown files, reindexes new or changed files, skips unchanged files by mtime and size, then cleans up active index rows whose source paths were deleted, moved, renamed, or excluded by the current include/ignore filters.
+
+For a move or rename, the next sync indexes the new path and soft-deletes the old path in the same run. The old note row remains inactive for history/change queries, but its chunks, link rows, aliases, tags, frontmatter fields, and vector metadata are removed. Link edits inside changed files are reindexed with the file. If a link target moves without editing the source file, sync tries to relink unresolved wikilinks against current active note titles and aliases.
+
+Sync flags change cost or depth:
+
+- `talon sync`: incremental index refresh, stale path cleanup, and pending/changed embeddings.
+- `talon sync --fast`: same index refresh and stale path cleanup, with no embedding pass.
+- `talon sync --force`: incremental index refresh, then rebuild embeddings for every active chunk.
+- `talon sync --rebuild`: delete the SQLite index files, recreate the schema, and index the vault from scratch. Combine with `--fast` for a lexical-only rebuild.
+
 ## Standalone Embedder
 
 Set `inference.base_url` in `~/.config/talon/config.toml` to a local HTTP TEI-compatible endpoint. Good defaults are Hugging Face `text-embeddings-inference`, Infinity, or ultraclaw's local sidecar if you are running one. Talon only expects `/embed`, `/embed-chunked`, and `/rerank` endpoints with the shapes described in the design doc.

@@ -29,6 +29,7 @@ Only switch modes when there is a reason:
 - `--mode title` when you are looking for a note by title or alias.
 - `--mode semantic` when wording may differ strongly from the user's phrasing.
 - `--fast` only when you explicitly need lexical-only speed and can skip embeddings/rerank.
+- `-n <count>` to cap result count.
 
 ## Optional Query Narrowing
 
@@ -117,8 +118,10 @@ talon --agent search "<query>" --scope-all
 
 ## Other Commands
 
-- `talon --agent sync`: full index and embedding sync. Use before judging semantic search quality.
-- `talon --agent sync --fast`: lexical/index refresh only. Do not use when testing embeddings.
+- `talon --agent sync`: incremental index refresh, stale path cleanup, and pending/changed embeddings. Picks up changed files, deletes, moves, renames, and changed links in edited files.
+- `talon --agent sync --fast`: same index refresh and stale path cleanup, with no embedding pass. Use for quick lexical freshness checks.
+- `talon --agent sync --force`: incremental index refresh, then rebuild embeddings for every active chunk.
+- `talon --agent sync --rebuild`: delete and recreate the SQLite index, then index the vault from scratch. Add global `--fast` for a lexical-only rebuild.
 - `talon --agent meta --where <field><op><value> --select <field>`: inspect frontmatter metadata.
 - `talon --agent meta --tag-counts`: inspect tag distribution.
 - `talon --agent changes --since 7d`: inspect recent added/modified/deleted notes. `--since` accepts relative durations such as `7d`/`3h`, ISO 8601 timestamps, dates, or epoch milliseconds.
