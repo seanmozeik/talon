@@ -67,15 +67,23 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
         }
 
         if !inside_fence {
+            let inline_code_ranges = inline_code_ranges(line);
             for caps in WIKILINK_RE.captures_iter(line) {
+                let Some(full_match) = caps.get(0) else {
+                    continue;
+                };
+                if inline_code_ranges
+                    .iter()
+                    .any(|(start, end)| (*start..*end).contains(&full_match.start()))
+                {
+                    continue;
+                }
+
                 let raw_target = caps.get(1).map_or("", |m| m.as_str());
                 let parsed = parse_wiki_link(raw_target);
                 let line_start = line_number(line_index);
                 let line_end = line_start;
 
-                let Some(full_match) = caps.get(0) else {
-                    continue;
-                };
                 links.push(WikiLink {
                     alias: parsed.alias,
                     char_end: char_offset + full_match.end(),
@@ -94,6 +102,29 @@ pub fn extract_wikilinks(content: &str) -> Vec<WikiLink> {
     }
 
     links
+}
+
+fn inline_code_ranges(line: &str) -> Vec<(usize, usize)> {
+    let mut ranges = Vec::new();
+    let mut cursor = 0;
+
+    while let Some(relative_start) = line[cursor..].find('`') {
+        let start = cursor + relative_start;
+        let tick_count = count_backticks(&line[start..]);
+        let code_start = start + tick_count;
+        let Some(relative_end) = line[code_start..].find(&"`".repeat(tick_count)) else {
+            break;
+        };
+        let end = code_start + relative_end + tick_count;
+        ranges.push((start, end));
+        cursor = end;
+    }
+
+    ranges
+}
+
+fn count_backticks(text: &str) -> usize {
+    text.bytes().take_while(|byte| *byte == b'`').count()
 }
 
 fn trim_line_ending(line: &str) -> &str {

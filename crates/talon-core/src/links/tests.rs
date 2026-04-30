@@ -26,6 +26,53 @@ fn test_resolve_wiki_link_by_path() {
 }
 
 #[test]
+fn test_resolve_wiki_link_by_global_basename() {
+    let notes = vec![
+        NoteReference {
+            vault_path: "wiki/entities/example-person.md".to_string(),
+            title: Some("Example Person".to_string()),
+            aliases: vec![],
+        },
+        NoteReference {
+            vault_path: "projects/research/example-study.md".to_string(),
+            title: None,
+            aliases: vec![],
+        },
+    ];
+
+    assert_eq!(
+        resolve_wiki_link_target("example-person", &notes),
+        Some("wiki/entities/example-person.md".to_string())
+    );
+    assert_eq!(
+        resolve_wiki_link_target("example-study", &notes),
+        Some("projects/research/example-study.md".to_string())
+    );
+}
+
+#[test]
+fn test_resolve_wiki_link_by_unique_path_suffix() {
+    let notes = vec![
+        NoteReference {
+            vault_path: "archive/research/shared-name.md".to_string(),
+            title: None,
+            aliases: vec![],
+        },
+        NoteReference {
+            vault_path: "projects/research/shared-name.md".to_string(),
+            title: None,
+            aliases: vec![],
+        },
+    ];
+
+    assert_eq!(resolve_wiki_link_target("shared-name", &notes), None);
+    assert_eq!(
+        resolve_wiki_link_target("projects/research/shared-name", &notes),
+        Some("projects/research/shared-name.md".to_string())
+    );
+}
+
+#[test]
 fn test_resolve_wiki_link_by_title() {
     let notes = vec![NoteReference {
         vault_path: "notes/a.md".to_string(),

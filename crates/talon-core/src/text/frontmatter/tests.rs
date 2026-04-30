@@ -57,6 +57,15 @@ fn test_extract_wikilinks() {
 }
 
 #[test]
+fn extract_wikilinks_skips_inline_code_spans() {
+    let content = "Show syntax as `[[wikilink]]` and ``[[wikilinks]]``.\nKeep [[Real Note]].";
+    let links = extract_wikilinks(content);
+
+    assert_eq!(links.len(), 1);
+    assert_eq!(links[0].target, "Real Note");
+}
+
+#[test]
 fn test_extract_inline_tags() {
     let content = "Some text #hello #world and #foo.\n```\n#not a tag\n```";
     let tags = links::extract_inline_tags(content);

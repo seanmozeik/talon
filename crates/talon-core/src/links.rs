@@ -5,8 +5,8 @@
 
 use crate::numeric::count_u32;
 use crate::text::frontmatter::{WikiLink, normalize_keyword, normalize_vault_path};
-use crate::text::nfd;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 
 // ── Link graph types ────────────────────────────────────────────────────────
 
@@ -76,6 +76,7 @@ pub struct LinkGraphStats {
 /// 1. Normalize the target (NFD, lowercase, remove `.md` suffix).
 /// 2. For each note, check:
 ///    - Path match (exact, with/without `.md`)
+///    - Unique path suffix or basename match (Obsidian-style shortest path)
 ///    - Title match
 ///    - Alias match
 /// 3. Return first match.
@@ -86,11 +87,13 @@ pub fn resolve_wiki_link_target(target: &str, notes: &[NoteReference]) -> Option
         .strip_suffix(".md")
         .unwrap_or(&normalized_target)
         .to_string();
-    let normalized_with_ext = if nfd::normalize(target).to_lowercase().ends_with(".md") {
-        target.to_string()
+    let normalized_with_ext = if has_markdown_extension(&normalized_target) {
+        normalized_target.clone()
     } else {
-        format!("{target}.md")
+        format!("{normalized_target}.md")
     };
+    let target_contains_path = normalized_stem.contains('/');
+    let mut suffix_matches = Vec::new();
 
     for note in notes {
         let normalized_path = normalize_keyword(&normalize_vault_path(&note.vault_path));
@@ -98,18 +101,39 @@ pub fn resolve_wiki_link_target(target: &str, notes: &[NoteReference]) -> Option
             .strip_suffix(".md")
             .unwrap_or(&normalized_path)
             .to_string();
+
+        if normalized_path == normalized_target
+            || normalized_path == normalized_with_ext
+            || normalized_path_stem == normalized_stem
+        {
+            return Some(note.vault_path.clone());
+        }
+
+        let suffix_matches_note = if target_contains_path {
+            path_has_component_suffix(&normalized_path_stem, &normalized_stem)
+        } else {
+            basename(&normalized_path_stem) == normalized_stem
+        };
+        if suffix_matches_note {
+            suffix_matches.push(note.vault_path.clone());
+        }
+    }
+
+    if suffix_matches.len() == 1 {
+        return suffix_matches.into_iter().next();
+    }
+
+    for note in notes {
         let normalized_title = note
             .title
             .as_ref()
             .map(|t| normalize_keyword(t))
             .unwrap_or_default();
-        let normalized_aliases: std::collections::HashSet<String> =
-            note.aliases.iter().map(|a| normalize_keyword(a)).collect();
-
-        // Path match
-        let matches_path = normalized_path == normalized_target
-            || normalized_path == normalized_with_ext
-            || normalized_path_stem == normalized_stem;
+        let normalized_aliases: HashSet<String> = note
+            .aliases
+            .iter()
+            .map(|alias| normalize_keyword(alias))
+            .collect();
 
         // Title match
         let matches_title =
@@ -119,12 +143,28 @@ pub fn resolve_wiki_link_target(target: &str, notes: &[NoteReference]) -> Option
         let matches_alias = normalized_aliases.contains(&normalized_target)
             || normalized_aliases.contains(&normalized_stem);
 
-        if matches_path || matches_title || matches_alias {
+        if matches_title || matches_alias {
             return Some(note.vault_path.clone());
         }
     }
 
     None
+}
+
+fn basename(path_stem: &str) -> &str {
+    path_stem.rsplit('/').next().unwrap_or(path_stem)
+}
+
+fn path_has_component_suffix(path_stem: &str, target_stem: &str) -> bool {
+    path_stem
+        .strip_suffix(target_stem)
+        .is_some_and(|prefix| prefix.is_empty() || prefix.ends_with('/'))
+}
+
+fn has_markdown_extension(path: &str) -> bool {
+    std::path::Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("md"))
 }
 
 /// Resolves all wikilinks from a source note against the note reference set.
