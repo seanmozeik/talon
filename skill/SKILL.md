@@ -11,7 +11,7 @@ Use Talon to search and inspect an indexed Obsidian vault. Talon is optimized fo
 >
 > **MCP** exposes `talon_search`, `talon_read`, and `talon_related`. It intentionally does not expose `talon_ask`; agents should use search/read and synthesize with their own model. If you truly need Talon's built-in synthesis, call the CLI.
 
-Always pass `--agent` on every command. The examples below are the pattern to follow.
+Always pass `--agent` on every command (unless you specifically need metadata that only `--json` provides). The examples below are the pattern to follow.
 
 ## Default Search
 
@@ -57,6 +57,7 @@ For agents, prefer `search` plus `read`: you can plan searches and synthesize be
 ## Reading
 
 Use `read` after search when you need source text, exact wording, or the body of a result.
+You may also read the files directly with your file read tool.
 
 `read` accepts vault paths and Obsidian references:
 
@@ -127,19 +128,21 @@ talon --agent search "<query>" --scope-all
 - `talon --agent lint broken-links`: inspect graph health.
 - `talon --agent status`: inspect index readiness.
 
+Note: when MCP is active, the vault syncs in the background - no action needed.
+
 ### `--where` Filters (meta and search)
 
 Filter by frontmatter fields or the note's vault path. Operators glue to the key — no spaces required.
 
-| Operator | Syntax | Meaning |
-|----------|--------|---------|
-| `=` | `status=archived` | Exact match |
-| `!=` | `type!=method` | Not equal |
-| `<` `<=` `>` `>=` | `score>0.5` | Ordered (dates, numbers) |
-| `contains` | `tags contains workflow` | Substring in any value |
-| `exists` | `source exists` | Field is present |
-| `^=` | `path^=Templates/` | Prefix / starts-with |
-| `~=` | `path~=Patients/*` | Glob pattern (full globset syntax) |
+| Operator          | Syntax                   | Meaning                            |
+| ----------------- | ------------------------ | ---------------------------------- |
+| `=`               | `status=archived`        | Exact match                        |
+| `!=`              | `type!=method`           | Not equal                          |
+| `<` `<=` `>` `>=` | `score>0.5`              | Ordered (dates, numbers)           |
+| `contains`        | `tags contains workflow` | Substring in any value             |
+| `exists`          | `source exists`          | Field is present                   |
+| `^=`              | `path^=Templates/`       | Prefix / starts-with               |
+| `~=`              | `path~=Patients/*`       | Glob pattern (full globset syntax) |
 
 Prefix and glob work on any frontmatter field **and** the special `path` key:
 
@@ -161,7 +164,8 @@ Glob uses the [`globset`](https://docs.rs/globset) crate: `*` matches any chars 
 
 ## Result Contract
 
-Search hits include `path`, `title`, `snippet`, and `score`. They may also include:
+Search hits with `--agent` include `path`, `title`, `snippet`, and `score`.
+To see more metadata, pass `--json` instead:
 
 - `isIndex`: index/overview page signal.
 - `citations`: resolved notes from `sources:` frontmatter.
