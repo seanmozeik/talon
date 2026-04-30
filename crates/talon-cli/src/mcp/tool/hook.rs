@@ -8,7 +8,6 @@ use crate::mcp::session::ledger::TurnLedger;
 use crate::mcp::state::{HostKind, McpServerState, SessionKey, SessionState};
 
 const MAX_HOOK_MESSAGE_CHARS: usize = 12_000;
-const MAX_HOOK_PRIOR_MESSAGE_CHARS: usize = 8_000;
 
 /// Returns the MCP `tools/list` entries for all hook-only tools.
 ///
@@ -50,22 +49,6 @@ pub fn hook_tools_list_entries() -> Vec<Value> {
             }
         }),
         json!({
-            "name": "talon_hook_turn_end",
-            "description": "hook-only — not for model use. Called by Claude Code hooks when a conversation turn completes. Updates session bookkeeping.",
-            "inputSchema": {
-                "type": "object",
-                "properties": {
-                    "host":                 { "type": "string" },
-                    "sessionId":            { "type": "string" },
-                    "turnId":               { "type": "string" },
-                    "outcome":              { "type": "string" },
-                    "lastUserMessage":      { "type": "string" },
-                    "lastAssistantMessage": { "type": "string" }
-                },
-                "required": []
-            }
-        }),
-        json!({
             "name": "talon_hook_session_end",
             "description": "hook-only — not for model use. Called by Claude Code hooks when a session ends. Marks the session last-seen timestamp for TTL eviction.",
             "inputSchema": {
@@ -89,7 +72,6 @@ pub fn dispatch_hook(name: &str, arguments: &Value, state: &Arc<McpServerState>)
     match name {
         "talon_hook_session_start" => Some(handle_session_start(arguments, state)),
         "talon_hook_recall" => Some(handle_recall(arguments, state)),
-        "talon_hook_turn_end" => Some(handle_turn_end(arguments, state)),
         "talon_hook_session_end" => Some(handle_session_end(arguments, state)),
         _ => None,
     }
@@ -111,7 +93,6 @@ fn handle_session_start(arguments: &Value, state: &Arc<McpServerState>) -> Value
         last_seen_at_ms: now_ms,
         ledger: TurnLedger::new(),
         suppression_decay: crate::mcp::session::suppression::DEFAULT_DECAY,
-        last_agent_response: None,
     };
 
     {
@@ -147,32 +128,9 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         })
         .unwrap_or_default();
 
-    // Enrich recall with the agent's last response so the query captures
-    // conversation context, not just the current user message.
-    let prior_messages = {
-        let store = state
-            .sessions
-            .read()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        store
-            .sessions
-            .get(&SessionKey {
-                host: parse_host_kind(&host),
-                session_id: session_id.clone(),
-            })
-            .and_then(|s| s.last_agent_response.clone())
-            .map(|message| cap_tail(&message, MAX_HOOK_PRIOR_MESSAGE_CHARS))
-    };
-    let prior_truncated = prior_messages
-        .as_ref()
-        .is_some_and(|(_, truncated)| *truncated);
-    let prior_messages = prior_messages
-        .map(|(message, _)| vec![message])
-        .unwrap_or_default();
-
     let input = RecallInput {
         message: recall_message.clone(),
-        prior_messages,
+        prior_messages: Vec::new(),
         budget_tokens,
         exclude: Vec::new(),
         scope,
@@ -181,7 +139,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         format: talon_core::RecallFormat::default(),
         depth: 1,
         min_confidence: 0.0,
-        fast: requested_fast || message_truncated || prior_truncated,
+        fast: requested_fast || message_truncated,
     };
 
     let config = &state.config.config;
@@ -211,36 +169,6 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
             json!({ "content": [{ "type": "text", "text": text }] })
         }
     }
-}
-
-fn handle_turn_end(arguments: &Value, state: &Arc<McpServerState>) -> Value {
-    let host = string_field(arguments, "host").unwrap_or_else(|| "unknown".to_owned());
-    let session_id = string_field(arguments, "sessionId").unwrap_or_default();
-    let last_assistant = string_field(arguments, "lastAssistantMessage");
-
-    let key = SessionKey {
-        host: parse_host_kind(&host),
-        session_id,
-    };
-
-    {
-        let mut store = state
-            .sessions
-            .write()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(session) = store.sessions.get_mut(&key) {
-            let now = now_ms();
-            session.last_seen_at_ms = now;
-            // Store the agent's response so the next recall call can use it
-            // as prior context, enriching the query beyond the user message alone.
-            if last_assistant.is_some() {
-                session.last_agent_response = last_assistant
-                    .map(|message| cap_tail(&message, MAX_HOOK_PRIOR_MESSAGE_CHARS).0);
-            }
-        }
-    }
-
-    json!({ "content": [{ "type": "text", "text": "{\"ok\":true}" }] })
 }
 
 fn handle_session_end(arguments: &Value, state: &Arc<McpServerState>) -> Value {
@@ -311,9 +239,9 @@ mod tests {
     use super::{cap_tail, hook_tools_list_entries};
 
     #[test]
-    fn hook_tools_list_entries_returns_four_hook_tools() {
+    fn hook_tools_list_entries_returns_three_hook_tools() {
         let entries = hook_tools_list_entries();
-        assert_eq!(entries.len(), 4);
+        assert_eq!(entries.len(), 3);
         for entry in &entries {
             let name = entry["name"].as_str().unwrap_or("");
             assert!(

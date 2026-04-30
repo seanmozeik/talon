@@ -38,25 +38,6 @@
         ]
       }
     ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "mcp_tool",
-            "server": "talon",
-            "tool": "talon_hook_turn_end",
-            "input": {
-              "host": "claude-code",
-              "sessionId": "${session_id}",
-              "turnId": "${session_id}:${transcript_path}:stop",
-              "cwd": "${cwd}",
-              "transcriptPath": "${transcript_path}",
-              "outcome": "completed"
-            }
-          }
-        ]
-      }
-    ],
     "SessionEnd": [
       {
         "hooks": [
