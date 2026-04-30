@@ -55,6 +55,6 @@ recall_deadline_ms = 45000
 ```
 
 Recall distillation keeps a safety margin below `expansion.context_tokens`; a
-32k context model receives a prompt view below roughly 30k estimated tokens.
+32k context model receives a prompt view below roughly 27k estimated tokens.
 
 Ultraclaw does not inject, adapt, or validate Talon config.

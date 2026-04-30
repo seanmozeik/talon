@@ -51,8 +51,8 @@ provider = "openai-compatible"
 base_url = "http://host.docker.internal:8000/v1"
 model = "bonsai"
 context_tokens = 32768
-# Optional generated output cap. Leave unset for thinking models.
-# max_output_tokens = 768
+# Reserve and enforce a small JSON completion budget for recall distillation.
+max_output_tokens = 768
 
 [ask]
 # Optional larger model for `talon ask`. Reuses the [expansion] endpoint.

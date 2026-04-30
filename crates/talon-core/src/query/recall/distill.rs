@@ -11,7 +11,7 @@ use phrases::{WeightedPhrase, clean_phrase, extract_weighted_phrases, strip_code
 
 const DISTILLER_OVERHEAD_TOKENS: usize = 512;
 const DISTILLER_SAFETY_MARGIN_TOKENS: usize = 2_048;
-const MAX_DISTILLER_INPUT_TOKENS: usize = 29_500;
+const MAX_DISTILLER_INPUT_TOKENS: usize = 27_000;
 const DEFAULT_QUERY_EMBEDDING_CONTEXT_TOKENS: usize = 512;
 const MAX_QUERY_SET_SIZE: usize = 6;
 const MAX_MAIN_QUERY_TOKENS: usize = 96;
@@ -321,7 +321,7 @@ mod tests {
 
     #[test]
     fn expansion_input_budget_keeps_margin_below_bonsai_context() {
-        assert_eq!(expansion_input_budget_for_limits(32_768, None), 29_440);
+        assert_eq!(expansion_input_budget_for_limits(32_768, None), 27_000);
     }
 
     #[test]

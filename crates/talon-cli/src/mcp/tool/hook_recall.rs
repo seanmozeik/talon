@@ -31,7 +31,7 @@ pub(super) fn dispatch_recall_for_hook(
         (None, None)
     } else {
         talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
-        let timeout = Duration::from_millis(config.mcp.hooks.recall_deadline_ms.max(1));
+        let timeout = hook_sidecar_timeout(config.mcp.hooks.recall_deadline_ms);
         (
             InferenceClient::with_timeout_and_rerank_options(
                 &config.inference.base_url,
@@ -58,6 +58,10 @@ pub(super) fn dispatch_recall_for_hook(
         input,
         Some(config),
     ))
+}
+
+fn hook_sidecar_timeout(deadline_ms: u64) -> Duration {
+    Duration::from_millis(deadline_ms.saturating_sub(5_000).max(1))
 }
 
 /// Output format for hook recall responses.
