@@ -193,6 +193,7 @@ fn diagnostics_for(
         query_tokens: query_plan.query_tokens,
         query_count: query_plan.queries.len(),
         phrase_count: query_plan.phrase_count,
+        distillation_input_tokens: query_plan.distillation_input_tokens,
         distillation_ran: query_plan.distillation_ran,
         distillation_ms: query_plan.distillation_ms,
         distillation_succeeded: query_plan.distillation_succeeded,

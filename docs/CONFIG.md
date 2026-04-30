@@ -51,7 +51,10 @@ planning_reasoning_effort = "none"
 synthesis_reasoning_effort = "medium"
 
 [mcp.hooks]
-recall_deadline_ms = 20000
+recall_deadline_ms = 45000
 ```
+
+Recall distillation keeps a safety margin below `expansion.context_tokens`; a
+32k context model receives a prompt view below roughly 30k estimated tokens.
 
 Ultraclaw does not inject, adapt, or validate Talon config.

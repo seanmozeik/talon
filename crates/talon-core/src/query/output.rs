@@ -233,6 +233,9 @@ pub struct RecallDiagnostics {
     pub query_count: usize,
     /// Number of weighted phrases extracted locally.
     pub phrase_count: usize,
+    /// Prompt-view tokens sent to the query distiller, after safety margins.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub distillation_input_tokens: Option<usize>,
     /// Whether the query distiller LLM call ran.
     pub distillation_ran: bool,
     /// Query distiller wall time.

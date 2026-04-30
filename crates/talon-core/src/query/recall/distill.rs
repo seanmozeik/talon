@@ -10,6 +10,8 @@ mod phrases;
 use phrases::{WeightedPhrase, clean_phrase, extract_weighted_phrases, strip_code_blocks};
 
 const DISTILLER_OVERHEAD_TOKENS: usize = 512;
+const DISTILLER_SAFETY_MARGIN_TOKENS: usize = 2_048;
+const MAX_DISTILLER_INPUT_TOKENS: usize = 29_500;
 const DEFAULT_QUERY_EMBEDDING_CONTEXT_TOKENS: usize = 512;
 const MAX_QUERY_SET_SIZE: usize = 6;
 const MAX_MAIN_QUERY_TOKENS: usize = 96;
@@ -23,6 +25,7 @@ pub(super) struct RecallQueryPlan {
     pub(super) input_tokens: usize,
     pub(super) query_tokens: usize,
     pub(super) phrase_count: usize,
+    pub(super) distillation_input_tokens: Option<usize>,
     pub(super) distillation_ran: bool,
     pub(super) distillation_ms: Option<u64>,
     pub(super) distillation_succeeded: bool,
@@ -45,10 +48,12 @@ pub(super) fn plan_recall_queries(
     let mut distillation_ran = false;
     let mut distillation_succeeded = false;
     let mut distillation_fallback_reason = None;
+    let mut distillation_input_tokens = None;
     let distilled = if should_distill && has_time_for_distillation(deadline_at) {
         if let Some(client) = expansion {
             distillation_ran = true;
             let view = budgeted_prompt_view(raw_query, config);
+            distillation_input_tokens = Some(estimate_tokens(&view));
             let hints = phrase_hints(&phrases);
             match client.distill_recall_prompt(&view, &hints) {
                 Ok(Some(body)) => {
@@ -98,6 +103,7 @@ pub(super) fn plan_recall_queries(
     plan.input_tokens = query_tokens;
     plan.query_tokens = estimate_tokens(&plan.main_query);
     plan.phrase_count = phrases.len();
+    plan.distillation_input_tokens = distillation_input_tokens;
     plan.distillation_ran = distillation_ran;
     plan.distillation_ms = distillation_ms;
     plan.distillation_succeeded = distillation_succeeded;
@@ -137,15 +143,20 @@ fn expansion_input_budget(config: Option<&TalonConfig>) -> usize {
     let Some(config) = config else {
         return 4_000;
     };
-    let context = usize::try_from(config.expansion.context_tokens).unwrap_or(usize::MAX);
-    let output = config
-        .expansion
-        .max_output_tokens
+    expansion_input_budget_for_limits(
+        config.expansion.context_tokens,
+        config.expansion.max_output_tokens,
+    )
+}
+
+fn expansion_input_budget_for_limits(context_tokens: u32, max_output_tokens: Option<u32>) -> usize {
+    let context = usize::try_from(context_tokens).unwrap_or(usize::MAX);
+    let output = max_output_tokens
         .and_then(|tokens| usize::try_from(tokens).ok())
         .unwrap_or(768);
     context
-        .saturating_sub(output + DISTILLER_OVERHEAD_TOKENS)
-        .max(256)
+        .saturating_sub(output + DISTILLER_OVERHEAD_TOKENS + DISTILLER_SAFETY_MARGIN_TOKENS)
+        .clamp(256, MAX_DISTILLER_INPUT_TOKENS)
 }
 
 fn noisy_prompt(query: &str) -> bool {
@@ -237,6 +248,7 @@ fn dedupe_queries(queries: Vec<String>) -> RecallQueryPlan {
         input_tokens: 0,
         query_tokens: 0,
         phrase_count: 0,
+        distillation_input_tokens: None,
         distillation_ran: false,
         distillation_ms: None,
         distillation_succeeded: false,
@@ -305,5 +317,17 @@ mod tests {
         let plan = plan_recall_queries(&prompt, None, None, None);
         assert!(estimate_tokens(&plan.main_query) <= MAX_MAIN_QUERY_TOKENS);
         assert!(!plan.queries.is_empty());
+    }
+
+    #[test]
+    fn expansion_input_budget_keeps_margin_below_bonsai_context() {
+        assert_eq!(expansion_input_budget_for_limits(32_768, None), 29_440);
+    }
+
+    #[test]
+    fn budgeted_prompt_view_stays_under_distiller_input_ceiling() {
+        let prompt = "supplier order hot sauce launch readiness ".repeat(20_000);
+        let view = budgeted_prompt_view(&prompt, None);
+        assert!(estimate_tokens(&view) <= MAX_DISTILLER_INPUT_TOKENS);
     }
 }
