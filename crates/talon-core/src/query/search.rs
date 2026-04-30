@@ -131,6 +131,18 @@ fn run_search_inner(
         } => (results, expanded_queries, diagnostics),
     };
 
+    // Step 1.5: post-filter glob where clauses (can't be expressed in SQL).
+    let raw_results =
+        if crate::search::pre_filter::has_glob_where_clauses(&pre_filter.where_clauses) {
+            crate::search::pre_filter::filter_results_by_glob(
+                conn,
+                &raw_results,
+                &pre_filter.where_clauses,
+            )
+        } else {
+            raw_results
+        };
+
     // Step 2: scope priority multiplication (score modifier, not filter).
     let mut scored = apply_scope_priority(raw_results, config, &input.scope);
     apply_index_page_preference(&mut scored);

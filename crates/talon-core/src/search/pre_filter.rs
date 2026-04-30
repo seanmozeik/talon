@@ -6,12 +6,14 @@
 
 use std::fmt::Write as _;
 
+use globset::{GlobBuilder, GlobSetBuilder};
 use rusqlite::Connection;
 use rusqlite::types::Value;
 
 use crate::config::ScopeFilter;
 use crate::search::input::{WhereClause, WhereOperator};
 use crate::search::query_syntax::normalize_tag_filter;
+use crate::search::types::RawSearchResult;
 
 /// Filters to push down into each retrieval query.
 ///
@@ -24,7 +26,7 @@ pub struct PreFilter {
     /// Accepted note IDs from scope config. `None` = all notes in scope.
     /// `Some([])` = impossible (zero notes pass): callers should short-circuit.
     pub accepted_note_ids: Option<Vec<i64>>,
-    /// `--where` frontmatter clauses.
+    /// `--where` clauses (all of them; some may need SQL, some post-filter).
     pub where_clauses: Vec<WhereClause>,
     /// Tag filters from `SearchInput.tag` or query syntax.
     pub tags: Vec<String>,
@@ -158,7 +160,36 @@ fn where_clause_sql(clause: &WhereClause) -> (String, Vec<Value>) {
             format!(" AND {pfx} AND INSTR(value, ?) > 0)"),
             vec![key, val],
         ),
+        WhereOperator::StartsWith => {
+            let pattern = format!("{}%", escape_like(clause.value.as_ref()));
+            if clause.key == "path" {
+                // Prefix match on vault_path: LIKE 'prefix%'
+                (
+                    " AND n.vault_path LIKE ? ESCAPE '\'".to_string(),
+                    vec![Value::Text(pattern)],
+                )
+            } else {
+                // Frontmatter prefix: EXISTS with LIKE
+                (
+                    format!(" AND {pfx} AND value LIKE ? ESCAPE '\\')"),
+                    vec![key, Value::Text(pattern)],
+                )
+            }
+        }
+        WhereOperator::GlobMatch => {
+            // Glob patterns can't be expressed in SQL (SQLite GLOB doesn't support **).
+            // Return empty fragment — caller must post-filter if needed.
+            (String::new(), Vec::new())
+        }
     }
+}
+
+/// Escapes `%`, `_`, and `\` for use in a SQL LIKE pattern.
+fn escape_like(value: Option<&String>) -> String {
+    let s = value.map_or("", |v| v.as_str());
+    s.replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn ordered_where_clause_sql(
@@ -180,4 +211,94 @@ fn ordered_where_clause_sql(
         format!(" AND {pfx} AND value_type = 'date' AND value {op} ?)"),
         vec![key, Value::Text(target.to_string())],
     )
+}
+
+/// Returns `true` if any clause needs post-filtering (i.e. cannot be expressed in SQL).
+#[must_use]
+pub fn has_glob_where_clauses(clauses: &[WhereClause]) -> bool {
+    clauses.iter().any(|c| c.op == WhereOperator::GlobMatch)
+}
+
+/// Post-filters search results by glob `where` clauses.
+///
+/// Uses the same evaluation logic as [`crate::query::where_filter`] but operates
+/// on raw paths and frontmatter JSON strings (no `note_id` lookup needed).
+pub fn filter_results_by_glob(
+    conn: &Connection,
+    results: &[RawSearchResult],
+    clauses: &[WhereClause],
+) -> Vec<RawSearchResult> {
+    let glob_clauses: Vec<&WhereClause> = clauses
+        .iter()
+        .filter(|c| c.op == WhereOperator::GlobMatch)
+        .collect();
+
+    if glob_clauses.is_empty() {
+        return results.to_vec();
+    }
+
+    results
+        .iter()
+        .filter(|r| {
+            let note_id = conn
+                .query_row(
+                    "SELECT id FROM notes WHERE vault_path = ? AND active = 1",
+                    [&r.path],
+                    |row| row.get::<_, i64>(0),
+                )
+                .ok();
+            note_id.is_some_and(|id| {
+                glob_clauses
+                    .iter()
+                    .all(|clause| clause_matches_glob(conn, id, clause))
+            })
+        })
+        .cloned()
+        .collect()
+}
+
+fn clause_matches_glob(conn: &Connection, note_id: i64, clause: &WhereClause) -> bool {
+    let Some(ref pattern) = clause.value else {
+        return false;
+    };
+
+    if clause.key == "path" {
+        // Match against vault_path
+        let path = conn
+            .query_row(
+                "SELECT vault_path FROM notes WHERE id = ? AND active = 1",
+                [note_id],
+                |row| row.get::<_, String>(0),
+            )
+            .ok();
+        path.is_some_and(|p| glob_match(pattern, &p))
+    } else {
+        // Match against frontmatter field values
+        let Ok(mut stmt) = conn
+            .prepare("SELECT value FROM note_frontmatter_fields WHERE note_id = ? AND field = ?")
+        else {
+            return false;
+        };
+        let values: Vec<String> = stmt
+            .query_map(rusqlite::params![note_id, &clause.key], |row| {
+                row.get::<_, String>(0)
+            })
+            .and_then(Iterator::collect)
+            .unwrap_or_default();
+
+        !values.is_empty() && values.iter().any(|v| glob_match(pattern, v.as_str()))
+    }
+}
+
+/// Checks if `text` matches the glob `pattern`.
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let mut builder = GlobSetBuilder::new();
+    let Ok(glob) = GlobBuilder::new(pattern).case_insensitive(false).build() else {
+        return false;
+    };
+    builder.add(glob);
+    let Ok(set) = builder.build() else {
+        return false;
+    };
+    set.is_match(text)
 }

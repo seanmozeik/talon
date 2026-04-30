@@ -217,6 +217,8 @@ const fn operator_key(op: WhereOperator) -> &'static str {
         WhereOperator::GreaterThanOrEqual => "gte",
         WhereOperator::Contains => "contains",
         WhereOperator::Exists => "exists",
+        WhereOperator::StartsWith => "startswith",
+        WhereOperator::GlobMatch => "glob",
     }
 }
 

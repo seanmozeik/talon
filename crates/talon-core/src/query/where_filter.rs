@@ -1,10 +1,12 @@
 //! Shared `--where` frontmatter filter primitives.
 //!
 //! Used by both the search and meta query handlers to evaluate
-//! `WhereClause` predicates against notes stored in `note_frontmatter_fields`.
+//! `WhereClause` predicates against notes stored in `note_frontmatter_fields`,
+//! or against the note's own `vault_path` when the key is `"path"`.
 
 use std::cmp::Ordering;
 
+use globset::{GlobBuilder, GlobSetBuilder};
 use rusqlite::{Connection, params};
 
 use crate::search::{WhereClause, WhereOperator};
@@ -48,6 +50,24 @@ pub fn check_where_clause(conn: &Connection, note_id: i64, clause: &WhereClause)
         WhereOperator::Contains => check_fm_field(conn, note_id, &clause.key, |value| {
             value.is_some_and(|v| v.contains(clause.value.as_deref().unwrap_or("")))
         }),
+        WhereOperator::StartsWith => {
+            if clause.key == "path" {
+                check_path_prefix(conn, note_id, clause)
+            } else {
+                check_fm_field(conn, note_id, &clause.key, |value| {
+                    value.is_some_and(|v| v.starts_with(clause.value.as_deref().unwrap_or("")))
+                })
+            }
+        }
+        WhereOperator::GlobMatch => {
+            if clause.key == "path" {
+                check_path_glob(conn, note_id, clause)
+            } else {
+                check_fm_field(conn, note_id, &clause.key, |value| {
+                    value.is_some_and(|v| glob_matches(clause.value.as_deref(), v).unwrap_or(false))
+                })
+            }
+        }
     }
 }
 
@@ -138,4 +158,64 @@ fn parse_date_millis(value: &str) -> Option<i128> {
         .ok()
         .map(time::PrimitiveDateTime::assume_utc)?;
     Some(dt.unix_timestamp_nanos() / 1_000_000)
+}
+
+/// Returns the `vault_path` for a `note_id`.
+fn get_vault_path(conn: &Connection, note_id: i64) -> Option<String> {
+    conn.query_row(
+        "SELECT vault_path FROM notes WHERE id = ? AND active = 1",
+        params![note_id],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+}
+
+/// Starts-with / prefix match on a note's `vault_path`.
+fn check_path_prefix(conn: &Connection, note_id: i64, clause: &WhereClause) -> bool {
+    let target = clause.value.as_deref().unwrap_or("");
+    get_vault_path(conn, note_id).is_some_and(|path| path.starts_with(target))
+}
+
+/// Glob pattern match on a note's `vault_path`.
+fn check_path_glob(conn: &Connection, note_id: i64, clause: &WhereClause) -> bool {
+    let Some(ref pattern) = clause.value else {
+        return false;
+    };
+    let Some(path) = get_vault_path(conn, note_id) else {
+        return false;
+    };
+    glob_matches(Some(pattern), &path).unwrap_or(false)
+}
+
+/// Compiles `pattern` as a glob and checks if `text` matches.
+/// Returns `None` if the pattern is invalid, `Some(true/false)` otherwise.
+fn glob_matches(pattern: Option<&str>, text: &str) -> Option<bool> {
+    let pat = pattern?;
+    let mut builder = GlobSetBuilder::new();
+    let glob = GlobBuilder::new(pat).case_insensitive(false).build().ok()?;
+    builder.add(glob);
+    let set = builder.build().ok()?;
+    Some(set.is_match(text))
+}
+
+#[cfg(test)]
+mod glob_tests {
+    use super::*;
+
+    #[test]
+    fn test_glob_patterns() {
+        // Patients/* matches Patients/base.md and Patients/nested/deep.md
+        let result = glob_matches(Some("Patients/*"), "Patients/base.md");
+        assert!(result.is_some_and(|b| b));
+        let result = glob_matches(Some("Patients/*"), "Patients/nested/deep.md");
+        assert!(result.is_some_and(|b| b));
+        // Patients/** also matches (globset ** means zero or more dirs)
+        let result = glob_matches(Some("Patients/**"), "Patients/base.md");
+        assert!(result.is_some_and(|b| b));
+        let result = glob_matches(Some("Patients/**"), "Patients/nested/deep.md");
+        assert!(result.is_some_and(|b| b));
+        // Non-matching paths
+        let result = glob_matches(Some("Patients/*"), "artifacts/foo.md");
+        assert!(result.is_some_and(|b| !b));
+    }
 }

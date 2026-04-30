@@ -24,6 +24,28 @@ fn parse_where_clause_accepts_exists_without_value() {
 }
 
 #[test]
+fn parse_where_clause_accepts_prefix_operator() {
+    let Ok(clause) = parse_where_clause("path ^= Templates/") else {
+        panic!("valid where clause should parse");
+    };
+
+    assert_eq!(clause.key, "path");
+    assert_eq!(clause.op, WhereOperator::StartsWith);
+    assert_eq!(clause.value.as_deref(), Some("Templates/"));
+}
+
+#[test]
+fn parse_where_clause_accepts_glob_operator() {
+    let Ok(clause) = parse_where_clause("path ~= Templates/**") else {
+        panic!("valid where clause should parse");
+    };
+
+    assert_eq!(clause.key, "path");
+    assert_eq!(clause.op, WhereOperator::GlobMatch);
+    assert_eq!(clause.value.as_deref(), Some("Templates/**"));
+}
+
+#[test]
 fn parse_where_clause_rejects_missing_value() {
     let Err(err) = parse_where_clause("status =") else {
         panic!("missing value should fail");

@@ -64,6 +64,10 @@ pub enum WhereOperator {
     GreaterThanOrEqual,
     Contains,
     Exists,
+    /// Starts-with / prefix match (`^=`).
+    StartsWith,
+    /// Glob pattern match (`~=`). Uses [`globset`] syntax.
+    GlobMatch,
 }
 
 /// A single `--where` filter clause.

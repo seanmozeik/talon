@@ -61,7 +61,7 @@ pub struct SharedSearchArgs {
     #[arg(long)]
     pub intent: Option<String>,
 
-    /// Frontmatter filter: KEY OP VALUE (repeatable). Ops: =, !=, <, <=, >, >=, contains, exists.
+    /// Frontmatter filter: KEY OP VALUE (repeatable). Ops: =, !=, <, <=, >, >=, contains, exists, ^= (prefix), ~= (glob).
     #[arg(long)]
     pub where_: Vec<String>,
 
