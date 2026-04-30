@@ -110,6 +110,10 @@ fn classify_distillation_error(error: &ExpansionError) -> String {
         ExpansionError::Http {
             timed_out: true, ..
         } => "timeout".to_owned(),
+        ExpansionError::Http {
+            status: Some(status),
+            ..
+        } => format!("http-{status}"),
         ExpansionError::Http { .. } => "transport-error".to_owned(),
         ExpansionError::Build { .. } => "client-build-error".to_owned(),
     }
