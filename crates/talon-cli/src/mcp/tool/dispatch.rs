@@ -49,7 +49,7 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
                 ExpansionClient::with_max_tokens(
                     config.expansion.base_url.clone(),
                     &config.expansion.model,
-                    config.expansion.max_tokens,
+                    config.expansion.max_output_tokens,
                 )
                 .ok(),
             )
@@ -262,7 +262,7 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
             ExpansionClient::with_max_tokens(
                 config.expansion.base_url.clone(),
                 &config.expansion.model,
-                config.expansion.max_tokens,
+                config.expansion.max_output_tokens,
             )
             .ok(),
         )

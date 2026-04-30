@@ -18,6 +18,7 @@ fn test_opts(fast: bool, queries: Vec<String>, intent: Option<String>) -> Hybrid
         intent,
         hooks: SearchHooks::default(),
         pre_filter: PreFilter::none(),
+        deadline_at: None,
     }
 }
 

@@ -33,9 +33,11 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
             base_url: "http://localhost:8080".to_string(),
             models: InferenceModels {
                 query_embedding: "q".to_string(),
+                query_embedding_context_tokens: 512,
                 document_embedding: "d".to_string(),
                 chunk_embedding: "c".to_string(),
                 reranker: "r".to_string(),
+                reranker_context_tokens: 512,
             },
             rerank: RerankConfig::default(),
         },
@@ -43,9 +45,11 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
             provider: "openai-compatible".to_string(),
             base_url: "http://localhost:8080".to_string(),
             model: "x".to_string(),
-            max_tokens: None,
+            context_tokens: 32768,
+            max_output_tokens: None,
         },
         ask: crate::config::AskConfig::default(),
+        mcp: crate::config::McpConfig::default(),
         scopes: map,
         search: SearchConfig::default(),
         lint: crate::config::LintConfig::default(),
@@ -107,7 +111,6 @@ fn insert_tag(conn: &Connection, note_id: i64, tag: &str) {
     )
     .unwrap();
 }
-
 #[test]
 fn tag_counts_aggregates_by_tag() {
     let conn = fresh_db();
@@ -134,7 +137,6 @@ fn tag_counts_aggregates_by_tag() {
     assert_eq!(tc.get("programming"), Some(&1));
     assert_eq!(tc.get("algorithms"), Some(&1));
 }
-
 #[test]
 fn where_equals_filters_notes() {
     let conn = fresh_db();
@@ -159,7 +161,6 @@ fn where_equals_filters_notes() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "project.md");
 }
-
 #[test]
 fn where_exists_returns_notes_with_field() {
     let conn = fresh_db();
@@ -183,7 +184,6 @@ fn where_exists_returns_notes_with_field() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "done.md");
 }
-
 #[test]
 fn where_contains_matches_substring() {
     let conn = fresh_db();
@@ -208,7 +208,6 @@ fn where_contains_matches_substring() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "rust-notes.md");
 }
-
 #[test]
 fn where_numeric_comparison_uses_value_type() {
     let conn = fresh_db();
@@ -233,7 +232,6 @@ fn where_numeric_comparison_uses_value_type() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "high.md");
 }
-
 #[test]
 fn where_date_comparison_uses_value_type() {
     let conn = fresh_db();
@@ -258,7 +256,6 @@ fn where_date_comparison_uses_value_type() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "new.md");
 }
-
 #[test]
 fn sources_returns_notes_referencing_target() {
     let conn = fresh_db();
@@ -279,7 +276,6 @@ fn sources_returns_notes_referencing_target() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "referencing.md");
 }
-
 #[test]
 fn since_filter_excludes_old_notes() {
     let conn = fresh_db();
@@ -298,7 +294,6 @@ fn since_filter_excludes_old_notes() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "new.md");
 }
-
 #[test]
 fn scope_only_filters_by_configured_scope() {
     let conn = fresh_db();
@@ -318,7 +313,6 @@ fn scope_only_filters_by_configured_scope() {
     assert_eq!(resp.entries.len(), 1);
     assert_eq!(resp.entries[0].path.as_str(), "Atlas/note.md");
 }
-
 #[test]
 fn select_projects_only_requested_fields() {
     let conn = fresh_db();

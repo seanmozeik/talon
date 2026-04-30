@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 use talon_core::{
     AskClient, AskDiagnostics, AskLlmStageDiagnostics, AskResponse, AskSearchDiagnostics,
-    AskSource, ResponseMeta, SearchMode, TalonEnvelope, TalonResponseData,
+    AskSource, ResponseMeta, SearchMode, TalonEnvelope, TalonResponseData, estimate_tokens,
 };
 
 const ASK_QUERY_LIMIT: u8 = 6;
@@ -112,7 +112,8 @@ fn execute_ask(
     set_progress(progress, "Searching notes...");
     let (search_response, search_meta, search_ms) =
         run_search_stage(input, config, mode, queries.len(), verbose, fast)?;
-    let sources = ask_sources::build_ask_sources(&search_response, config, &queries)?;
+    let mut sources = ask_sources::build_ask_sources(&search_response, config, &queries)?;
+    trim_ask_sources_to_budget(&question, &queries, &mut sources, config);
     set_progress(progress, "Distilling answer...");
     let synthesized = run_synthesis(&ask, &question, &queries, &sources, verbose)?;
 
@@ -150,6 +151,55 @@ fn execute_ask(
         TalonResponseData::Ask(response),
         meta,
     ))
+}
+
+fn trim_ask_sources_to_budget(
+    question: &str,
+    queries: &[String],
+    sources: &mut Vec<AskSource>,
+    config: &talon_core::TalonConfig,
+) {
+    let output_reserve = usize::try_from(config.ask.max_output_tokens).unwrap_or(2_048);
+    let context = usize::try_from(config.ask.context_tokens).unwrap_or(usize::MAX);
+    let budget = context.saturating_sub(output_reserve + 512).max(256);
+    while ask_synthesis_tokens(question, queries, sources) > budget {
+        let Some(last) = sources.last_mut() else {
+            break;
+        };
+        if estimate_tokens(&last.snippet) > 96 {
+            last.snippet = trim_text_tokens(&last.snippet, estimate_tokens(&last.snippet) / 2);
+        } else {
+            let _ = sources.pop();
+        }
+    }
+}
+
+fn ask_synthesis_tokens(question: &str, queries: &[String], sources: &[AskSource]) -> usize {
+    estimate_tokens(question)
+        + queries
+            .iter()
+            .map(|query| estimate_tokens(query))
+            .sum::<usize>()
+        + sources
+            .iter()
+            .map(|source| {
+                estimate_tokens(source.vault_path.as_str())
+                    + estimate_tokens(&source.title)
+                    + estimate_tokens(&source.snippet)
+                    + 8
+            })
+            .sum::<usize>()
+}
+
+fn trim_text_tokens(text: &str, budget: usize) -> String {
+    let max_chars = budget
+        .saturating_mul(usize::from(talon_core::TOKEN_CHAR_RATIO))
+        .max(1);
+    text.chars()
+        .take(max_chars)
+        .collect::<String>()
+        .trim()
+        .to_owned()
 }
 
 fn set_progress(progress: Option<&Mutex<String>>, label: &str) {

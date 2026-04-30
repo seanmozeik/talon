@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use color_eyre::eyre::{Result, WrapErr as _};
 use serde_json::{Value, json};
@@ -29,18 +30,21 @@ pub(super) fn dispatch_recall_for_hook(
         (None, None)
     } else {
         talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
+        let timeout = Duration::from_millis(config.mcp.hooks.recall_deadline_ms.max(1));
         (
-            InferenceClient::with_rerank_options_and_protocol(
+            InferenceClient::with_timeout_and_rerank_options(
                 &config.inference.base_url,
+                timeout,
                 config.search.rerank_batch_size,
                 config.search.rerank_max_tokens,
                 config.inference.rerank,
             )
             .ok(),
-            ExpansionClient::with_max_tokens(
+            ExpansionClient::with_timeout_and_max_tokens(
                 config.expansion.base_url.clone(),
                 &config.expansion.model,
-                config.expansion.max_tokens,
+                timeout,
+                config.expansion.max_output_tokens,
             )
             .ok(),
         )

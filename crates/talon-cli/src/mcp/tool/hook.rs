@@ -7,8 +7,6 @@ use talon_core::RecallInput;
 use crate::mcp::session::ledger::TurnLedger;
 use crate::mcp::state::{HostKind, McpServerState, SessionKey, SessionState};
 
-const MAX_HOOK_MESSAGE_CHARS: usize = 12_000;
-
 /// Returns the MCP `tools/list` entries for all hook-only tools.
 ///
 /// These tools are intended for Claude Code hook use only and must not be
@@ -110,8 +108,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
     let host = string_field(arguments, "host").unwrap_or_else(|| "unknown".to_owned());
     let session_id = string_field(arguments, "sessionId").unwrap_or_default();
     let turn_id = string_field(arguments, "turnId").unwrap_or_else(|| "unknown".to_owned());
-    let message = string_field(arguments, "message").unwrap_or_default();
-    let (recall_message, message_truncated) = cap_tail(&message, MAX_HOOK_MESSAGE_CHARS);
+    let recall_message = string_field(arguments, "message").unwrap_or_default();
     let budget_tokens = arguments
         .get("budgetTokens")
         .and_then(Value::as_u64)
@@ -139,7 +136,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         format: talon_core::RecallFormat::default(),
         depth: 1,
         min_confidence: 0.0,
-        fast: requested_fast || message_truncated,
+        fast: requested_fast,
     };
 
     let config = &state.config.config;
@@ -194,19 +191,6 @@ fn bool_field(arguments: &Value, key: &str) -> Option<bool> {
     arguments.get(key)?.as_bool()
 }
 
-fn cap_tail(value: &str, max_chars: usize) -> (String, bool) {
-    if value.chars().count() <= max_chars {
-        return (value.to_owned(), false);
-    }
-
-    let start = value
-        .char_indices()
-        .rev()
-        .nth(max_chars.saturating_sub(1))
-        .map_or(0, |(idx, _)| idx);
-    (value[start..].to_owned(), true)
-}
-
 fn parse_host_kind(host: &str) -> HostKind {
     match host {
         "claude-code" | "claudecode" | "ClaudeCode" => HostKind::ClaudeCode,
@@ -236,7 +220,7 @@ fn now_ms() -> i64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{cap_tail, hook_tools_list_entries};
+    use super::hook_tools_list_entries;
 
     #[test]
     fn hook_tools_list_entries_returns_three_hook_tools() {
@@ -261,15 +245,5 @@ mod tests {
                 "expected description to contain 'hook-only', got: {desc:?}"
             );
         }
-    }
-
-    #[test]
-    fn cap_tail_preserves_short_input() {
-        assert_eq!(cap_tail("short", 12), ("short".to_owned(), false));
-    }
-
-    #[test]
-    fn cap_tail_keeps_utf8_boundary() {
-        assert_eq!(cap_tail("aé日b", 3), ("é日b".to_owned(), true));
     }
 }

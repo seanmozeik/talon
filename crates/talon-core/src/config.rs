@@ -15,8 +15,8 @@ use defaults::{
 
 pub use chunker::ChunkerConfig;
 pub use endpoints::{
-    AskConfig, ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, RerankRequestShape,
-    RerankScoreScale,
+    AskConfig, ExpansionConfig, InferenceConfig, InferenceModels, McpConfig, McpHooksConfig,
+    RerankConfig, RerankRequestShape, RerankScoreScale,
 };
 pub use scope_filter::ScopeFilter;
 
@@ -179,6 +179,9 @@ pub struct TalonConfig {
     /// Ask-command model override.
     #[serde(default)]
     pub ask: AskConfig,
+    /// MCP runtime settings.
+    #[serde(default)]
+    pub mcp: McpConfig,
     /// Named scopes for vault partitioning and ranking.
     #[serde(default)]
     pub scopes: ScopesConfig,

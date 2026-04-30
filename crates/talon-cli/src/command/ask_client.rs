@@ -5,8 +5,6 @@ use std::time::Duration;
 use talon_core::{AskClient, ChatClient, ReasoningEffort};
 
 const ASK_CHAT_TIMEOUT: Duration = Duration::from_mins(2);
-const ASK_FAST_MAX_TOKENS: u32 = 2048;
-
 pub(super) fn build_ask_client(config: &talon_core::TalonConfig, fast: bool) -> Result<AskClient> {
     let ask_model = config
         .ask
@@ -22,7 +20,7 @@ pub(super) fn build_ask_client(config: &talon_core::TalonConfig, fast: bool) -> 
     let planning_chat = ask_chat_client(
         config,
         ask_model,
-        fast.then_some(ASK_FAST_MAX_TOKENS),
+        Some(config.ask.max_output_tokens),
         planning_enable_thinking,
         planning_effort,
         ask_kwargs(config.ask.planning_chat_template_kwargs.as_ref(), fast),
@@ -30,7 +28,7 @@ pub(super) fn build_ask_client(config: &talon_core::TalonConfig, fast: bool) -> 
     let synthesis_chat = ask_chat_client(
         config,
         ask_model,
-        fast.then_some(ASK_FAST_MAX_TOKENS),
+        Some(config.ask.max_output_tokens),
         synthesis_enable_thinking,
         synthesis_effort,
         ask_kwargs(config.ask.synthesis_chat_template_kwargs.as_ref(), fast),

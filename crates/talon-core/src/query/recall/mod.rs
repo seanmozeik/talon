@@ -7,6 +7,7 @@
 //! Spec: `docs/recall.md`.  Scoring formulas: `recall_scoring.rs`.
 
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 use rusqlite::Connection;
 
@@ -20,11 +21,15 @@ use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
 use super::recall_scoring::{EvidenceInputs, compute_evidence_score};
 
 mod budget;
+mod distill;
 mod retrieval;
 mod sections;
 
 use budget::{estimate_payload_tokens, trim_to_budget};
-use retrieval::{apply_scope_priority, build_query, retrieve_pipeline_results};
+use distill::plan_recall_queries;
+use retrieval::{
+    RetrievePipelineArgs, apply_scope_priority, build_query, retrieve_pipeline_results,
+};
 use sections::{build_linked_context, days_since_mtime, to_note_excerpts};
 
 /// Runs the full recall pipeline and returns a `RecallResponse`.
@@ -51,6 +56,9 @@ pub fn run_recall(
 
     let excluded_set: HashSet<String> = input.exclude.iter().cloned().collect();
     let query = build_query(input);
+    let query_plan = plan_recall_queries(&query, expansion, config);
+    let deadline_at =
+        config.map(|cfg| Instant::now() + Duration::from_millis(cfg.mcp.hooks.recall_deadline_ms));
     let limit: u32 = 20;
 
     let pre_filter = config.map_or_else(PreFilter::none, |cfg| {
@@ -68,15 +76,17 @@ pub fn run_recall(
         return make_skipped(0.0);
     }
 
-    let raw = retrieve_pipeline_results(
+    let raw = retrieve_pipeline_results(&RetrievePipelineArgs {
         conn,
         inference,
         expansion,
-        &query,
+        query: &query_plan.main_query,
+        queries: &query_plan.queries,
         limit,
-        input.fast,
-        &pre_filter,
-    );
+        fast: input.fast,
+        pre_filter: &pre_filter,
+        deadline_at,
+    });
     let mut raw = apply_scope_priority(raw, config, &input.scope);
     raw.sort_by(|a, b| b.score.total_cmp(&a.score));
 

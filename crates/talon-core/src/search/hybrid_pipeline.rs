@@ -1,11 +1,6 @@
 //! Full hybrid search pipeline orchestrator.
 //!
-//! Wires together a lexical probe, optional LLM expansion (US-001),
-//! per-variant hybrid retrieval (US-003), cross-variant RRF fusion, and
-//! cross-encoder reranking (US-004).
-//!
-//! Search progress hooks (US-018) are optional and default to no-op.
-//!
+//! Wires lexical probe, LLM expansion, hybrid retrieval, RRF, and rerank.
 //! Ports `services/talon/search/hybrid-pipeline.ts`.
 
 use rusqlite::Connection;
@@ -50,6 +45,8 @@ pub struct HybridPipelineOptions {
     pub hooks: SearchHooks,
     /// Pre-computed filters pushed into every retrieval SQL query.
     pub pre_filter: PreFilter,
+    /// Wall-clock deadline for cooperative hook fallback.
+    pub deadline_at: Option<Instant>,
 }
 
 /// Results plus query-expansion metadata from the hybrid pipeline.
@@ -129,51 +126,111 @@ pub fn run_hybrid_pipeline_with_metadata(
         None
     };
 
+    if deadline_exceeded(options.deadline_at) {
+        return HybridPipelineOutput {
+            results: lexical_probe_results(&bm25_probe, &title_probe, options.limit),
+            expanded_queries: Vec::new(),
+            expansion_ms: None,
+            strong_signal_score,
+            rerank_candidates: None,
+            rerank_ms: None,
+        };
+    }
+
     // A decisive probe or fast mode skips both expansion and reranking.
     let skip_expensive = options.fast || probe_decisive;
     // An exact alias hit additionally skips LLM expansion (not reranking).
     let skip_llm = skip_expensive || has_exact_alias;
 
-    // Resolve variants: supplied → deduped supplied; bypass → []; else → LLM.
-    let mut expansion_ms: Option<u64> = None;
-    let variants: Vec<String> = if has_supplied {
-        dedupe_query_variants(&options.queries)
-    } else if skip_llm {
-        vec![]
-    } else if let Some(exp) = expansion {
-        options.hooks.emit_expand_start();
-        let started = Instant::now();
-        let expanded = exp
-            .expand_with_intent(query, options.intent.as_deref(), EXPANSION_N_VARIANTS)
-            .unwrap_or_default();
-        let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
-        options.hooks.emit_expand_end(elapsed_ms);
-        expansion_ms = Some(elapsed_ms);
-        expanded
-    } else {
-        vec![]
-    };
+    let (variants, expansion_ms) =
+        resolve_query_variants(expansion, query, options, has_supplied, skip_llm);
 
-    // Build the final query list.
-    let queries_to_search: Vec<String> = if has_supplied {
+    let queries_to_search = build_query_list(query, has_supplied, &variants);
+
+    let rrf_size = pool::rrf_pool(options.limit, options.candidate_limit);
+    let per_variant =
+        retrieve_query_variants(conn, inference, &queries_to_search, options, rrf_size);
+
+    // Cross-variant RRF fusion.
+    // Original query (index 0) gets 2× weight; expansion variants get 1.0.
+    // Algorithm ported verbatim from qmd — store.ts:4122
+    let list_refs: Vec<&[RawSearchResult]> = per_variant.iter().map(Vec::as_slice).collect();
+    let variant_weights: Vec<f64> = (0..list_refs.len())
+        .map(|i| if i == 0 { 2.0 } else { 1.0 })
+        .collect();
+    let fused = fuse_hybrid_result_lists(&list_refs, &variant_weights, rrf_size as usize);
+
+    // Rerank unless the probe gave us high confidence or fast mode is active.
+    let (results, rerank_candidates, rerank_ms) =
+        if skip_expensive || deadline_exceeded(options.deadline_at) {
+            (fused, None, None)
+        } else {
+            run_rerank_stage(conn, inference, query, options, fused)
+        };
+
+    HybridPipelineOutput {
+        results,
+        expanded_queries: variants,
+        expansion_ms,
+        strong_signal_score,
+        rerank_candidates,
+        rerank_ms,
+    }
+}
+
+fn resolve_query_variants(
+    expansion: Option<&ExpansionClient>,
+    query: &str,
+    options: &HybridPipelineOptions,
+    has_supplied: bool,
+    skip_llm: bool,
+) -> (Vec<String>, Option<u64>) {
+    if has_supplied {
+        return (dedupe_query_variants(&options.queries), None);
+    }
+    if skip_llm || deadline_exceeded(options.deadline_at) {
+        return (Vec::new(), None);
+    }
+    let Some(exp) = expansion else {
+        return (Vec::new(), None);
+    };
+    options.hooks.emit_expand_start();
+    let started = Instant::now();
+    let expanded = exp
+        .expand_with_intent(query, options.intent.as_deref(), EXPANSION_N_VARIANTS)
+        .unwrap_or_default();
+    let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    options.hooks.emit_expand_end(elapsed_ms);
+    (expanded, Some(elapsed_ms))
+}
+
+fn build_query_list(query: &str, has_supplied: bool, variants: &[String]) -> Vec<String> {
+    if has_supplied {
         if variants.is_empty() {
             vec![query.to_owned()]
         } else {
-            variants.clone()
+            variants.to_vec()
         }
     } else if variants.is_empty() {
         vec![query.to_owned()]
     } else {
-        let mut v = vec![query.to_owned()];
-        v.extend(variants.iter().cloned());
-        v
-    };
+        let mut queries = Vec::with_capacity(variants.len() + 1);
+        queries.push(query.to_owned());
+        queries.extend(variants.iter().cloned());
+        queries
+    }
+}
 
-    let rrf_size = pool::rrf_pool(options.limit, options.candidate_limit);
-
-    // Per-variant: embed → retrieve (BM25 + fuzzy + vector) → intra-variant RRF.
-    let per_variant: Vec<Vec<RawSearchResult>> = queries_to_search
+fn retrieve_query_variants(
+    conn: &Connection,
+    inference: &InferenceClient,
+    queries_to_search: &[String],
+    options: &HybridPipelineOptions,
+    rrf_size: u32,
+) -> Vec<Vec<RawSearchResult>> {
+    queries_to_search
         .iter()
+        .take_while(|_| !deadline_exceeded(options.deadline_at))
         .map(|q| {
             options.hooks.emit_embed_batch(1);
             let embedding = inference
@@ -190,32 +247,7 @@ pub fn run_hybrid_pipeline_with_metadata(
             );
             single_to_raw_list(&single, rrf_size as usize)
         })
-        .collect();
-
-    // Cross-variant RRF fusion.
-    // Original query (index 0) gets 2× weight; expansion variants get 1.0.
-    // Algorithm ported verbatim from qmd — store.ts:4122
-    let list_refs: Vec<&[RawSearchResult]> = per_variant.iter().map(Vec::as_slice).collect();
-    let variant_weights: Vec<f64> = (0..list_refs.len())
-        .map(|i| if i == 0 { 2.0 } else { 1.0 })
-        .collect();
-    let fused = fuse_hybrid_result_lists(&list_refs, &variant_weights, rrf_size as usize);
-
-    // Rerank unless the probe gave us high confidence or fast mode is active.
-    let (results, rerank_candidates, rerank_ms) = if skip_expensive {
-        (fused, None, None)
-    } else {
-        run_rerank_stage(conn, inference, query, options, fused)
-    };
-
-    HybridPipelineOutput {
-        results,
-        expanded_queries: variants,
-        expansion_ms,
-        strong_signal_score,
-        rerank_candidates,
-        rerank_ms,
-    }
+        .collect()
 }
 
 fn run_rerank_stage(
@@ -225,6 +257,9 @@ fn run_rerank_stage(
     options: &HybridPipelineOptions,
     fused: Vec<RawSearchResult>,
 ) -> (Vec<RawSearchResult>, Option<u32>, Option<u64>) {
+    if deadline_exceeded(options.deadline_at) {
+        return (fused, None, None);
+    }
     let candidate_count =
         u32::try_from(fused.len().min(RERANK_TOP_K as usize)).unwrap_or(RERANK_TOP_K);
     let started = Instant::now();
@@ -240,6 +275,20 @@ fn run_rerank_stage(
     });
     let elapsed = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
     (reranked, Some(candidate_count), Some(elapsed))
+}
+
+fn deadline_exceeded(deadline_at: Option<Instant>) -> bool {
+    deadline_at.is_some_and(|deadline| Instant::now() >= deadline)
+}
+
+fn lexical_probe_results(
+    bm25_probe: &[RawSearchResult],
+    title_probe: &super::fuzzy_title::TitleSearchParts,
+    limit: u32,
+) -> Vec<RawSearchResult> {
+    let mut title = title_probe.exact_alias.clone();
+    title.extend(title_probe.fuzzy.clone());
+    fuse_hybrid_result_lists(&[bm25_probe, title.as_slice()], &[1.0, 1.0], limit as usize)
 }
 
 /// Runs per-signal weighted RRF on the three [`HybridSingleResult`] buckets

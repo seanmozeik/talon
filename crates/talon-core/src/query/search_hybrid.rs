@@ -45,6 +45,7 @@ pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
         intent: args.input.intent.clone(),
         hooks: crate::search::SearchHooks::default(),
         pre_filter: args.pre_filter.clone(),
+        deadline_at: None,
     };
     let output =
         run_hybrid_pipeline_with_metadata(args.conn, inference, args.expansion, args.query, &opts);

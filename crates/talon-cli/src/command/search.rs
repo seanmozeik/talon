@@ -135,7 +135,7 @@ pub(super) fn execute_search(
             let expansion = ExpansionClient::with_max_tokens(
                 config.expansion.base_url.clone(),
                 &config.expansion.model,
-                config.expansion.max_tokens,
+                config.expansion.max_output_tokens,
             )
             .ok();
             (inference, expansion)

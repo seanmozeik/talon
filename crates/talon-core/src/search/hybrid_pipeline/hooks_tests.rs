@@ -132,6 +132,7 @@ fn hooks_record_expand_before_rerank() {
         intent: None,
         hooks,
         pre_filter: PreFilter::none(),
+        deadline_at: None,
     };
 
     let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "atomic notes", &opts);

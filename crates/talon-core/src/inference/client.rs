@@ -1,10 +1,5 @@
 //! Blocking HTTP client for the TEI-compatible sidecar.
 //!
-//! The CLI runs the embed pipeline inside [`tokio::task::spawn_blocking`] so
-//! it can use the same sync `rusqlite::Connection` as the rest of the indexer.
-//! That means the inference client must be blocking; using `reqwest::blocking`
-//! avoids hand-rolling an `executor::block_on` bridge.
-
 use std::convert::TryFrom;
 use std::time::Duration;
 
@@ -103,7 +98,11 @@ impl InferenceClient {
         )
     }
 
-    fn with_timeout_and_rerank_options(
+    /// Builds a client with custom timeout, rerank process, and protocol tunables.
+    ///
+    /// # Errors
+    /// Returns [`InferenceError::Build`] when the HTTP client cannot be built.
+    pub fn with_timeout_and_rerank_options(
         base_url: impl Into<String>,
         timeout: Duration,
         rerank_batch_size: usize,

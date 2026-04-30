@@ -68,6 +68,7 @@ fn intent_disables_strong_signal_probe_short_circuit() {
         intent: Some("web page load".to_owned()),
         hooks: SearchHooks::default(),
         pre_filter: PreFilter::none(),
+        deadline_at: None,
     };
 
     let _ = run_hybrid_pipeline(

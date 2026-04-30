@@ -25,12 +25,18 @@ pub struct InferenceConfig {
 pub struct InferenceModels {
     /// Query embedding model.
     pub query_embedding: String,
+    /// Query embedding input context window.
+    #[serde(default = "default_query_embedding_context_tokens")]
+    pub query_embedding_context_tokens: u32,
     /// Document embedding model.
     pub document_embedding: String,
     /// Chunk embedding model.
     pub chunk_embedding: String,
     /// Reranker model.
     pub reranker: String,
+    /// Reranker query/text input context window.
+    #[serde(default = "default_reranker_context_tokens")]
+    pub reranker_context_tokens: u32,
 }
 
 /// Reranker protocol and score semantics.
@@ -94,24 +100,33 @@ pub struct ExpansionConfig {
     pub base_url: String,
     /// Expansion model name.
     pub model: String,
-    /// Optional total completion token cap.
+    /// Total usable context window for the expansion/distillation model.
+    #[serde(default = "default_expansion_context_tokens")]
+    pub context_tokens: u32,
+    /// Optional generated output token cap.
     ///
     /// Leave unset for thinking models because many OpenAI-compatible local
     /// servers count hidden reasoning tokens against this budget.
     #[serde(default)]
-    pub max_tokens: Option<u32>,
+    pub max_output_tokens: Option<u32>,
 }
 
 /// Ask-command chat model override.
 ///
 /// Transport settings are shared with `[expansion]`; this table only selects
 /// the model and reasoning behavior used by `talon ask`.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AskConfig {
     /// Ask planner/synthesis model name. Falls back to `[expansion].model`.
     #[serde(default)]
     pub model: Option<String>,
+    /// Total usable context window for ask planning and synthesis.
+    #[serde(default = "default_ask_context_tokens")]
+    pub context_tokens: u32,
+    /// Optional generated output token cap for ask planning and synthesis.
+    #[serde(default = "default_ask_max_output_tokens")]
+    pub max_output_tokens: u32,
     /// Provider-specific Qwen-style thinking toggle for query planning.
     ///
     /// When set, Talon sends `chat_template_kwargs.enable_thinking` in the
@@ -150,4 +165,70 @@ pub struct AskConfig {
     /// map win over the shorthand boolean.
     #[serde(default)]
     pub synthesis_chat_template_kwargs: Option<BTreeMap<String, serde_json::Value>>,
+}
+
+impl Default for AskConfig {
+    fn default() -> Self {
+        Self {
+            model: None,
+            context_tokens: default_ask_context_tokens(),
+            max_output_tokens: default_ask_max_output_tokens(),
+            planning_enable_thinking: None,
+            synthesis_enable_thinking: None,
+            planning_reasoning_effort: None,
+            synthesis_reasoning_effort: None,
+            planning_chat_template_kwargs: None,
+            synthesis_chat_template_kwargs: None,
+        }
+    }
+}
+
+/// MCP runtime configuration.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpConfig {
+    /// Hook-specific runtime budgets.
+    #[serde(default)]
+    pub hooks: McpHooksConfig,
+}
+
+/// Synchronous MCP hook budgets.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct McpHooksConfig {
+    /// Wall-clock deadline for the recall hook, in milliseconds.
+    #[serde(default = "default_recall_deadline_ms")]
+    pub recall_deadline_ms: u64,
+}
+
+impl Default for McpHooksConfig {
+    fn default() -> Self {
+        Self {
+            recall_deadline_ms: default_recall_deadline_ms(),
+        }
+    }
+}
+
+const fn default_query_embedding_context_tokens() -> u32 {
+    512
+}
+
+const fn default_reranker_context_tokens() -> u32 {
+    512
+}
+
+const fn default_expansion_context_tokens() -> u32 {
+    32_768
+}
+
+const fn default_ask_context_tokens() -> u32 {
+    65_536
+}
+
+const fn default_ask_max_output_tokens() -> u32 {
+    2_048
+}
+
+const fn default_recall_deadline_ms() -> u64 {
+    20_000
 }

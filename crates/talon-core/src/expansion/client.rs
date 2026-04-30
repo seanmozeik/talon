@@ -16,7 +16,7 @@ use crate::llm::{ChatClient, ChatError, ChatMessage, strip_code_fences};
 use crate::text::nfd;
 
 use super::error::ExpansionError;
-use super::types::ExpansionBody;
+use super::types::{ExpansionBody, RecallDistillationBody};
 
 /// Default HTTP timeout for LLM expansion calls.
 ///
@@ -40,6 +40,14 @@ const SYSTEM_PROMPT: &str = "Return only valid JSON of the form \
     would help Obsidian search. If the user message includes a \
     \"Query intent:\" line, every reformulation must stay consistent with \
     that intent and avoid unrelated senses of the original query.";
+
+const DISTILLER_SYSTEM_PROMPT: &str = "Return only valid JSON of the form \
+    {\"search_query\":\"...\",\"phrases\":[\"...\"],\"identifiers\":[\"...\"]}. \
+    Given a user prompt for an Obsidian memory system, extract the retrieval \
+    intent. Return one compact semantic query plus concrete project, decision, \
+    concept, person, place, artifact, path, tag, wikilink, and identifier \
+    phrases worth searching. Ignore tool chatter, code blocks, logs, \
+    boilerplate, and unrelated implementation detail.";
 
 /// Blocking HTTP client for the OpenAI-compatible LLM expansion endpoint.
 ///
@@ -159,6 +167,52 @@ impl ExpansionClient {
 
         Ok(normalize_queries(query, expansion.queries, n_variants))
     }
+
+    /// Distills an oversized recall prompt into a compact retrieval query.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ExpansionError::Http`] for transport failures or non-2xx
+    /// HTTP responses from the sidecar.
+    pub fn distill_recall_prompt(
+        &self,
+        prompt_view: &str,
+        extraction_hints: &[String],
+    ) -> Result<Option<RecallDistillationBody>, ExpansionError> {
+        let mut user_content = String::from("Prompt view:\n");
+        user_content.push_str(prompt_view);
+        if !extraction_hints.is_empty() {
+            user_content.push_str("\n\nExtraction hints:\n");
+            for hint in extraction_hints {
+                user_content.push_str("- ");
+                user_content.push_str(hint);
+                user_content.push('\n');
+            }
+        }
+        let messages = vec![
+            ChatMessage::new("system", DISTILLER_SYSTEM_PROMPT),
+            ChatMessage::new("user", user_content),
+        ];
+        let content = match self.chat.complete(messages, EXPANSION_TEMPERATURE) {
+            Ok(content) => content,
+            Err(ChatError::MalformedResponse) => return Ok(None),
+            Err(err) => return Err(ExpansionError::from(err)),
+        };
+        let cleaned = strip_code_fences(&content);
+        let mut body: RecallDistillationBody = match serde_json::from_str(&cleaned) {
+            Ok(body) => body,
+            Err(_) => return Ok(None),
+        };
+        let search_query = body.search_query.trim().to_owned();
+        body.search_query = search_query;
+        body.phrases = normalize_items(body.phrases, 12);
+        body.identifiers = normalize_items(body.identifiers, 12);
+        if body.search_query.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(body))
+        }
+    }
 }
 
 /// Builds the user message for an expansion request.
@@ -189,6 +243,25 @@ fn normalize_queries(original: &str, queries: Vec<String>, limit: u8) -> Vec<Str
         }
         let normalized = nfd::normalize(&trimmed).to_lowercase();
         if normalized != normalized_original && seen.insert(normalized) {
+            result.push(trimmed);
+            if result.len() >= limit {
+                break;
+            }
+        }
+    }
+    result
+}
+
+fn normalize_items(items: Vec<String>, limit: usize) -> Vec<String> {
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut result = Vec::with_capacity(limit);
+    for item in items {
+        let trimmed = item.trim().to_owned();
+        if trimmed.is_empty() {
+            continue;
+        }
+        let normalized = nfd::normalize(&trimmed).to_lowercase();
+        if seen.insert(normalized) {
             result.push(trimmed);
             if result.len() >= limit {
                 break;

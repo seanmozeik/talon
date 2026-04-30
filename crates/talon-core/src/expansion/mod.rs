@@ -14,3 +14,4 @@ pub mod types;
 pub use cache::LlmCache;
 pub use client::{DEFAULT_EXPANSION_TIMEOUT, ExpansionClient};
 pub use error::ExpansionError;
+pub use types::RecallDistillationBody;

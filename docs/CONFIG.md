@@ -20,6 +20,10 @@ rerank_max_tokens = 128
 sidecar or adapter.
 
 ```toml
+[inference.models]
+query_embedding_context_tokens = 512
+reranker_context_tokens = 512
+
 [inference.rerank]
 request_shape = "minimal"  # minimal | tei
 score_scale = "normalized" # normalized | logits
@@ -35,10 +39,19 @@ OpenAI-compatible `[expansion]` endpoint, so only ask-specific model and
 reasoning overrides live here.
 
 ```toml
+[expansion]
+context_tokens = 32768
+max_output_tokens = 768
+
 [ask]
 model = "qwen-smol"
+context_tokens = 65536
+max_output_tokens = 2048
 planning_reasoning_effort = "none"
 synthesis_reasoning_effort = "medium"
+
+[mcp.hooks]
+recall_deadline_ms = 20000
 ```
 
 Ultraclaw does not inject, adapt, or validate Talon config.

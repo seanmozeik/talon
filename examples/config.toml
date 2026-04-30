@@ -29,9 +29,11 @@ base_url = "http://host.docker.internal:8000"
 
 [inference.models]
 query_embedding = "embed"
+query_embedding_context_tokens = 512
 document_embedding = "embed"
 chunk_embedding = "embed_chunked"
 reranker = "rerank"
+reranker_context_tokens = 512
 
 [inference.rerank]
 # Expected response: [{ index, score }] for every input text, sorted descending.
@@ -48,14 +50,20 @@ truncate = true
 provider = "openai-compatible"
 base_url = "http://host.docker.internal:8000/v1"
 model = "bonsai"
-# Optional total completion cap. Leave unset for thinking models.
-# max_tokens = 768
+context_tokens = 32768
+# Optional generated output cap. Leave unset for thinking models.
+# max_output_tokens = 768
 
 [ask]
 # Optional larger model for `talon ask`. Reuses the [expansion] endpoint.
 model = "qwen-smol"
+context_tokens = 65536
+max_output_tokens = 2048
 planning_reasoning_effort = "none"
 synthesis_reasoning_effort = "medium"
+
+[mcp.hooks]
+recall_deadline_ms = 20000
 
 # ── Scopes ─────────────────────────────────────────────────────────────────
 # Karpathy LLM-Wiki preset. Rationale per directory:

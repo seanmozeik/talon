@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use rusqlite::Connection;
 
 use crate::config::TalonConfig;
@@ -12,6 +14,18 @@ use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline}
 use crate::search::pre_filter::PreFilter;
 use crate::search::types::RawSearchResult;
 
+pub(super) struct RetrievePipelineArgs<'a> {
+    pub(super) conn: &'a Connection,
+    pub(super) inference: Option<&'a InferenceClient>,
+    pub(super) expansion: Option<&'a ExpansionClient>,
+    pub(super) query: &'a str,
+    pub(super) queries: &'a [String],
+    pub(super) limit: u32,
+    pub(super) fast: bool,
+    pub(super) pre_filter: &'a PreFilter,
+    pub(super) deadline_at: Option<Instant>,
+}
+
 pub(super) fn build_query(input: &RecallInput) -> String {
     if input.fast || input.prior_messages.is_empty() {
         return input.message.clone();
@@ -22,27 +36,20 @@ pub(super) fn build_query(input: &RecallInput) -> String {
     combined
 }
 
-pub(super) fn retrieve_pipeline_results(
-    conn: &Connection,
-    inference: Option<&InferenceClient>,
-    expansion: Option<&ExpansionClient>,
-    query: &str,
-    limit: u32,
-    fast: bool,
-    pre_filter: &PreFilter,
-) -> Vec<RawSearchResult> {
+pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> Vec<RawSearchResult> {
     let opts = HybridPipelineOptions {
-        limit,
+        limit: args.limit,
         candidate_limit: CANDIDATE_FLOOR,
-        fast,
-        queries: Vec::new(),
+        fast: args.fast,
+        queries: args.queries.to_vec(),
         intent: None,
         hooks: crate::search::SearchHooks::default(),
-        pre_filter: pre_filter.clone(),
+        pre_filter: args.pre_filter.clone(),
+        deadline_at: args.deadline_at,
     };
-    inference.map_or_else(
-        || run_fast_bm25_title(conn, query, limit, pre_filter),
-        |inf| run_hybrid_pipeline(conn, inf, expansion, query, &opts),
+    args.inference.map_or_else(
+        || run_fast_bm25_title(args.conn, args.query, args.limit, args.pre_filter),
+        |inf| run_hybrid_pipeline(args.conn, inf, args.expansion, args.query, &opts),
     )
 }
 

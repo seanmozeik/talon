@@ -27,8 +27,9 @@ pub mod vec_ext;
 pub use ask::{AskClient, AskError, AskPlan, AskSynthesis};
 pub use config::{
     AskConfig, ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig,
-    RerankConfig, RerankRequestShape, RerankScoreScale, Scope, ScopeFilter, ScopeGlob,
-    ScopePriority, ScopeResolution, ScopesConfig, SearchConfig, TalonConfig,
+    McpConfig, McpHooksConfig, RerankConfig, RerankRequestShape, RerankScoreScale, Scope,
+    ScopeFilter, ScopeGlob, ScopePriority, ScopeResolution, ScopesConfig, SearchConfig,
+    TalonConfig,
 };
 pub use contracts::{
     ContainerPath, ErrorEnvelope, PositiveCount, ResponseMeta, TalonEnvelope, TalonInput,

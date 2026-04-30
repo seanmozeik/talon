@@ -68,9 +68,11 @@ base_url = "http://localhost:8080"
 
 [inference.models]
 query_embedding = "embed"
+query_embedding_context_tokens = 512
 document_embedding = "embed"
 chunk_embedding = "embed_chunked"
 reranker = "rerank"
+reranker_context_tokens = 512
 
 [inference.rerank]
 # Minimal common reranker API:
@@ -85,14 +87,20 @@ truncate = true
 provider = "openai-compatible"
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
-# Optional total completion cap. Leave unset for thinking models.
-# max_tokens = 768
+context_tokens = 32768
+# Optional generated output cap. Leave unset for thinking models.
+# max_output_tokens = 768
 
 [ask]
 # Optional larger model for `talon ask`. Reuses the [expansion] endpoint.
 # model = "qwen3-32b"
+context_tokens = 65536
+max_output_tokens = 2048
 # planning_reasoning_effort = "none"
 # synthesis_reasoning_effort = "medium"
+
+[mcp.hooks]
+recall_deadline_ms = 20000
 
 # ── Scopes ─────────────────────────────────────────────────────────────────
 # Named vault partitions with priority-based ranking.
@@ -217,9 +225,11 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
             base_url: "http://localhost:8080".to_string(),
             models: InferenceModels {
                 query_embedding: "embed".to_string(),
+                query_embedding_context_tokens: 512,
                 document_embedding: "embed".to_string(),
                 chunk_embedding: "embed_chunked".to_string(),
                 reranker: "rerank".to_string(),
+                reranker_context_tokens: 512,
             },
             rerank: talon_core::RerankConfig::default(),
         },
@@ -227,9 +237,11 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
             provider: "openai-compatible".to_string(),
             base_url: "http://localhost:1234/v1".to_string(),
             model: "gemma-smol".to_string(),
-            max_tokens: None,
+            context_tokens: 32768,
+            max_output_tokens: None,
         },
         ask: talon_core::AskConfig::default(),
+        mcp: talon_core::McpConfig::default(),
         scopes: default_karpathy_scopes(),
         search: talon_core::SearchConfig::default(),
         lint: talon_core::LintConfig::default(),
