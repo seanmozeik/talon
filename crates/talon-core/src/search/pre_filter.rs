@@ -6,7 +6,6 @@
 
 use std::fmt::Write as _;
 
-use globset::{GlobBuilder, GlobSetBuilder};
 use rusqlite::Connection;
 use rusqlite::types::Value;
 
@@ -271,7 +270,7 @@ fn clause_matches_glob(conn: &Connection, note_id: i64, clause: &WhereClause) ->
                 |row| row.get::<_, String>(0),
             )
             .ok();
-        path.is_some_and(|p| glob_match(pattern, &p))
+        path.is_some_and(|p| crate::glob_match_case_insensitive(pattern, &p).unwrap_or(false))
     } else {
         // Match against frontmatter field values
         let Ok(mut stmt) = conn
@@ -286,19 +285,9 @@ fn clause_matches_glob(conn: &Connection, note_id: i64, clause: &WhereClause) ->
             .and_then(Iterator::collect)
             .unwrap_or_default();
 
-        !values.is_empty() && values.iter().any(|v| glob_match(pattern, v.as_str()))
+        !values.is_empty()
+            && values
+                .iter()
+                .any(|v| crate::glob_match_case_insensitive(pattern, v.as_str()).unwrap_or(false))
     }
-}
-
-/// Checks if `text` matches the glob `pattern`.
-fn glob_match(pattern: &str, text: &str) -> bool {
-    let mut builder = GlobSetBuilder::new();
-    let Ok(glob) = GlobBuilder::new(pattern).case_insensitive(false).build() else {
-        return false;
-    };
-    builder.add(glob);
-    let Ok(set) = builder.build() else {
-        return false;
-    };
-    set.is_match(text)
 }

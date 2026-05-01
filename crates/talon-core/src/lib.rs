@@ -11,6 +11,7 @@ pub mod contracts;
 pub mod embed;
 pub mod error;
 pub mod expansion;
+pub mod glob_matcher;
 pub mod indexer;
 pub mod indexing;
 pub mod inference;
@@ -37,6 +38,7 @@ pub use contracts::{
 };
 pub use error::{ErrorCode, TalonError, TalonResult};
 pub use expansion::{ExpansionClient, ExpansionError, LlmCache};
+pub use glob_matcher::glob_match_case_insensitive;
 pub use indexer::{
     IndexNoteOutcome, IndexerConfig, IndexerStats, NoteIndexConfig, build_ignore_globset,
     build_include_globset, extract_title, file_matches_ignore, file_matches_include,

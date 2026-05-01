@@ -6,7 +6,6 @@
 
 use std::cmp::Ordering;
 
-use globset::{GlobBuilder, GlobSetBuilder};
 use rusqlite::{Connection, params};
 
 use crate::search::{WhereClause, WhereOperator};
@@ -64,7 +63,11 @@ pub fn check_where_clause(conn: &Connection, note_id: i64, clause: &WhereClause)
                 check_path_glob(conn, note_id, clause)
             } else {
                 check_fm_field(conn, note_id, &clause.key, |value| {
-                    value.is_some_and(|v| glob_matches(clause.value.as_deref(), v).unwrap_or(false))
+                    value.is_some_and(|v| {
+                        clause.value.as_deref().is_some_and(|pat| {
+                            crate::glob_match_case_insensitive(pat, v).unwrap_or(false)
+                        })
+                    })
                 })
             }
         }
@@ -184,38 +187,32 @@ fn check_path_glob(conn: &Connection, note_id: i64, clause: &WhereClause) -> boo
     let Some(path) = get_vault_path(conn, note_id) else {
         return false;
     };
-    glob_matches(Some(pattern), &path).unwrap_or(false)
-}
-
-/// Compiles `pattern` as a glob and checks if `text` matches.
-/// Returns `None` if the pattern is invalid, `Some(true/false)` otherwise.
-fn glob_matches(pattern: Option<&str>, text: &str) -> Option<bool> {
-    let pat = pattern?;
-    let mut builder = GlobSetBuilder::new();
-    let glob = GlobBuilder::new(pat).case_insensitive(false).build().ok()?;
-    builder.add(glob);
-    let set = builder.build().ok()?;
-    Some(set.is_match(text))
+    crate::glob_match_case_insensitive(pattern, &path).unwrap_or(false)
 }
 
 #[cfg(test)]
 mod glob_tests {
-    use super::*;
-
     #[test]
     fn test_glob_patterns() {
-        // Patients/* matches Patients/base.md and Patients/nested/deep.md
-        let result = glob_matches(Some("Patients/*"), "Patients/base.md");
-        assert!(result.is_some_and(|b| b));
-        let result = glob_matches(Some("Patients/*"), "Patients/nested/deep.md");
-        assert!(result.is_some_and(|b| b));
+        // Case-insensitive: Patients/* matches patients/base.md
+        assert!(
+            crate::glob_match_case_insensitive("Patients/*", "patients/base.md").unwrap_or(false)
+        );
+        assert!(
+            crate::glob_match_case_insensitive("Patients/*", "patients/nested/deep.md")
+                .unwrap_or(false)
+        );
         // Patients/** also matches (globset ** means zero or more dirs)
-        let result = glob_matches(Some("Patients/**"), "Patients/base.md");
-        assert!(result.is_some_and(|b| b));
-        let result = glob_matches(Some("Patients/**"), "Patients/nested/deep.md");
-        assert!(result.is_some_and(|b| b));
+        assert!(
+            crate::glob_match_case_insensitive("Patients/**", "patients/base.md").unwrap_or(false)
+        );
+        assert!(
+            crate::glob_match_case_insensitive("Patients/**", "patients/nested/deep.md")
+                .unwrap_or(false)
+        );
         // Non-matching paths
-        let result = glob_matches(Some("Patients/*"), "artifacts/foo.md");
-        assert!(result.is_some_and(|b| !b));
+        assert!(
+            !crate::glob_match_case_insensitive("Patients/*", "artifacts/foo.md").unwrap_or(false)
+        );
     }
 }
