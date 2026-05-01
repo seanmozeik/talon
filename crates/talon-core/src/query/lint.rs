@@ -2,8 +2,10 @@
 
 use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
+use crate::indexer::prelude::{build_ignore_globset, file_matches_ignore};
 use crate::indexing::{LintCheck, LintFinding, LintInput, LintResponse};
 use crate::sync::relink_unresolved;
+use globset::GlobSet;
 use rusqlite::Connection;
 
 pub fn query_lint(
@@ -22,11 +24,17 @@ pub fn query_lint(
         ScopeFilter::from_args(cfg, &input.scope, &input.scope_only, input.scope_all)
             .unwrap_or_else(|_| ScopeFilter::default_for(cfg))
     });
+    let ignore_set = config
+        .map_or_else(
+            || build_ignore_globset(&[]),
+            |cfg| build_ignore_globset(&cfg.ignore_patterns),
+        )
+        .ok();
     let findings = match input.check {
-        LintCheck::All => find_all(conn, filter.as_ref()),
+        LintCheck::All => find_all(conn, filter.as_ref(), ignore_set.as_ref()),
         LintCheck::Orphans => find_orphans(conn, filter.as_ref()),
-        LintCheck::BrokenLinks => find_broken_links(conn, filter.as_ref()),
-        LintCheck::DanglingRefs => find_dangling_refs(conn, filter.as_ref()),
+        LintCheck::BrokenLinks => find_broken_links(conn, filter.as_ref(), ignore_set.as_ref()),
+        LintCheck::DanglingRefs => find_dangling_refs(conn, filter.as_ref(), ignore_set.as_ref()),
         LintCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
     };
     let findings = match config {
@@ -43,10 +51,14 @@ pub fn query_lint(
     }
 }
 
-fn find_all(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+fn find_all(
+    conn: &Connection,
+    filter: Option<&ScopeFilter<'_>>,
+    ignore_set: Option<&GlobSet>,
+) -> Vec<LintFinding> {
     let mut findings = find_orphans(conn, filter);
-    findings.extend(find_broken_links(conn, filter));
-    findings.extend(find_dangling_refs(conn, filter));
+    findings.extend(find_broken_links(conn, filter, ignore_set));
+    findings.extend(find_dangling_refs(conn, filter, ignore_set));
     findings.extend(find_unreferenced(conn, filter));
     findings
 }
@@ -80,7 +92,11 @@ fn find_orphans(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<Lint
         .collect()
 }
 
-fn find_broken_links(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+fn find_broken_links(
+    conn: &Connection,
+    filter: Option<&ScopeFilter<'_>>,
+    ignore_set: Option<&GlobSet>,
+) -> Vec<LintFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT DISTINCT from_path, to_path, raw_target FROM links \
          WHERE to_path NOT IN (SELECT vault_path FROM notes WHERE active = 1) \
@@ -103,6 +119,10 @@ fn find_broken_links(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec
     links
         .into_iter()
         .filter(|(from, _, _)| filter.is_none_or(|f| f.accepts(from)))
+        // Links to ignored files are not broken — the target is intentionally
+        // excluded from indexing (e.g. CLAUDE.md, PURPOSE.md). Treat them as
+        // valid targets.
+        .filter(|(_, to, _)| !ignored_by_set(to, ignore_set))
         .filter_map(|(from, to, raw)| {
             // For bare `[[X]]` wikilinks (raw == to), the arrow form duplicates
             // information. Only show the resolution arrow when raw differs —
@@ -122,7 +142,11 @@ fn find_broken_links(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec
         .collect()
 }
 
-fn find_dangling_refs(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+fn find_dangling_refs(
+    conn: &Connection,
+    filter: Option<&ScopeFilter<'_>>,
+    ignore_set: Option<&GlobSet>,
+) -> Vec<LintFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT n.vault_path, f.field, f.value \
          FROM notes n \
@@ -149,6 +173,9 @@ fn find_dangling_refs(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Ve
     references
         .into_iter()
         .filter(|(path, _, _)| filter.is_none_or(|f| f.accepts(path)))
+        // Frontmatter paths to ignored files are not dangling — the target is
+        // intentionally excluded from indexing.
+        .filter(|(_, _, value)| !ignored_by_set(value, ignore_set))
         .filter_map(|(path, field, value)| {
             VaultPath::parse(&path).ok().map(|vp| LintFinding {
                 check: LintCheck::DanglingRefs,
@@ -158,6 +185,10 @@ fn find_dangling_refs(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Ve
             })
         })
         .collect()
+}
+
+fn ignored_by_set(path: &str, ignore_set: Option<&GlobSet>) -> bool {
+    ignore_set.is_some_and(|set| file_matches_ignore(path, set))
 }
 
 fn find_unreferenced(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {

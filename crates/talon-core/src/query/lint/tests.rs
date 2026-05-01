@@ -109,6 +109,13 @@ fn lint_input_scoped(check: LintCheck, scope_only: Vec<String>) -> LintInput {
     }
 }
 
+fn test_config_with_ignore(ignore_patterns: Vec<String>) -> TalonConfig {
+    TalonConfig {
+        ignore_patterns,
+        ..test_config_with_scopes(Vec::new())
+    }
+}
+
 #[test]
 fn test_all_runs_every_lint_check() {
     let conn = fresh_db();
@@ -181,6 +188,24 @@ fn test_broken_links_detects_missing_targets() {
 }
 
 #[test]
+fn test_broken_links_ignores_targets_matching_ignore_patterns() {
+    let conn = fresh_db();
+    insert_note(&conn, "Graph/Source.md");
+    insert_link(&conn, "Graph/Source.md", "CLAUDE.md", "[[CLAUDE]]");
+    insert_link(&conn, "Graph/Source.md", "PURPOSE.md", "[[PURPOSE]]");
+    insert_link(&conn, "Graph/Source.md", "RealTarget.md", "[[RealTarget]]");
+
+    let config = test_config_with_ignore(vec!["CLAUDE.md".into(), "PURPOSE.md".into()]);
+    let resp = query_lint(&conn, &lint_input(LintCheck::BrokenLinks), Some(&config));
+
+    // Links to ignored files are NOT broken; only the real missing target is.
+    assert_eq!(resp.findings.len(), 1);
+    assert!(resp.findings[0].message.contains("RealTarget"));
+    assert!(!resp.findings[0].message.contains("CLAUDE"));
+    assert!(!resp.findings[0].message.contains("PURPOSE"));
+}
+
+#[test]
 fn test_dangling_refs_detects_missing_frontmatter_paths() {
     let conn = fresh_db();
     insert_note(&conn, "Atlas/Node.md");
@@ -194,6 +219,24 @@ fn test_dangling_refs_detects_missing_frontmatter_paths() {
     assert_eq!(resp.findings.len(), 1);
     assert_eq!(resp.findings[0].path.as_str(), "Atlas/Node.md");
     assert!(resp.findings[0].message.contains("Ghost.md"));
+}
+
+#[test]
+fn test_dangling_refs_ignores_targets_matching_ignore_patterns() {
+    let conn = fresh_db();
+    insert_note(&conn, "Atlas/Node.md");
+    let node_id = last_insert_id(&conn);
+
+    insert_fm_field(&conn, node_id, "sources", "CLAUDE.md");
+    insert_fm_field(&conn, node_id, "sources", "Ghost.md");
+
+    let config = test_config_with_ignore(vec!["CLAUDE.md".into()]);
+    let resp = query_lint(&conn, &lint_input(LintCheck::DanglingRefs), Some(&config));
+
+    // Frontmatter to ignored file is NOT dangling; only the real missing one.
+    assert_eq!(resp.findings.len(), 1);
+    assert!(resp.findings[0].message.contains("Ghost.md"));
+    assert!(!resp.findings[0].message.contains("CLAUDE"));
 }
 
 #[test]
