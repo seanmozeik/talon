@@ -1,6 +1,6 @@
 use super::{output_mode, should_spin};
 use crate::cli::{Cli, InspectArgs, InspectCheck};
-use crate::config::{self, RefreshLockPolicy, refresh_index_if_needed, vault_container_path};
+use crate::config::{self, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
@@ -8,8 +8,9 @@ use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    InspectInput, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData, open_database,
-    query_inspect, vec_ext::register_sqlite_vec,
+    InspectInput, ResponseMeta, ScopeFilter, SyncLockError, TalonEnvelope, TalonResponseData,
+    acquire_sync_lock, open_database, open_database_read_only, query_inspect,
+    vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
@@ -36,11 +37,25 @@ pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
     let work = async move {
         tokio::task::spawn_blocking(move || {
             register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-            let mut conn = open_database(&db_path)
-                .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-            // Always refreshes — findings must reflect current vault state.
-            // `false` for `fast`: inspect never opts out of refresh.
-            refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::ErrorIfBusy)?;
+
+            // Try to acquire the sync lock for a fresh index. If busy (another
+            // sync is running), fall back to read-only + fast mode — same as
+            // search does.
+            let lock_path = crate::config::sync_lock_path(&config);
+            let conn = match acquire_sync_lock(&lock_path) {
+                Ok(lock) => {
+                    let mut conn = open_database(&db_path)
+                        .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+                    crate::config::refresh_index_with_lock(&config, &mut conn, lock)?;
+                    conn
+                }
+                Err(SyncLockError::Busy) => open_database_read_only(&db_path)
+                    .wrap_err_with(|| format!("opening index at {}", db_path.display()))?,
+                Err(SyncLockError::Io(err)) => {
+                    return Err(err).wrap_err("acquiring sync lock for inspect");
+                }
+                Err(err) => return Err(eyre::eyre!("acquiring sync lock for inspect: {err}")),
+            };
 
             let mut response = query_inspect(&conn, &input, Some(&config));
             response.vault = vault;
