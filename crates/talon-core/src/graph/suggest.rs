@@ -10,6 +10,7 @@ use crate::TalonError;
 use super::GraphSnapshot;
 
 const PROVENANCE_DETERMINISTIC: &str = "deterministic";
+pub(super) const PROVENANCE_LLM: &str = "ask-llm";
 
 /// Persisted read-only link suggestion.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -82,7 +83,7 @@ pub fn build_missing_link_suggestions(
     Ok(suggestions)
 }
 
-fn target_dictionary(snapshot: &GraphSnapshot) -> Vec<(String, String, String)> {
+pub(super) fn target_dictionary(snapshot: &GraphSnapshot) -> Vec<(String, String, String)> {
     let mut terms = BTreeMap::new();
     for node in snapshot.nodes.values().filter(|node| !node.structural) {
         for term in std::iter::once(node.title.as_str())
@@ -105,7 +106,7 @@ fn target_dictionary(snapshot: &GraphSnapshot) -> Vec<(String, String, String)> 
         .collect()
 }
 
-fn active_note_bodies(conn: &Connection) -> Result<Vec<(String, String)>, TalonError> {
+pub(super) fn active_note_bodies(conn: &Connection) -> Result<Vec<(String, String)>, TalonError> {
     let mut stmt = conn
         .prepare("SELECT vault_path, content FROM notes WHERE active = 1 ORDER BY vault_path")
         .map_err(|source| TalonError::Sqlite {
@@ -124,7 +125,7 @@ fn active_note_bodies(conn: &Connection) -> Result<Vec<(String, String)>, TalonE
         })
 }
 
-fn existing_edges(snapshot: &GraphSnapshot) -> BTreeSet<(String, String)> {
+pub(super) fn existing_edges(snapshot: &GraphSnapshot) -> BTreeSet<(String, String)> {
     snapshot
         .edges
         .iter()
@@ -132,7 +133,7 @@ fn existing_edges(snapshot: &GraphSnapshot) -> BTreeSet<(String, String)> {
         .collect()
 }
 
-fn line_mentions_term(line: &str, term_norm: &str) -> bool {
+pub(super) fn line_mentions_term(line: &str, term_norm: &str) -> bool {
     let searchable = mask_excluded_spans(line);
     let lower = searchable.to_lowercase();
     lower

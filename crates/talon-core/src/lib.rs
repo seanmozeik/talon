@@ -40,7 +40,7 @@ pub use contracts::{
 pub use error::{ErrorCode, TalonError, TalonResult};
 pub use expansion::{ExpansionClient, ExpansionError, LlmCache};
 pub use glob_matcher::glob_match_case_insensitive;
-pub use graph::GraphBuildStats;
+pub use graph::{GraphBuildStats, GraphSuggestionClient};
 pub use indexer::{
     IndexNoteOutcome, IndexerConfig, IndexerStats, NoteIndexConfig, build_ignore_globset,
     build_include_globset, extract_title, file_matches_ignore, file_matches_include,
