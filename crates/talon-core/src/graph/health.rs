@@ -197,9 +197,7 @@ fn missing_link_findings(
             .and_then(|cfg| GraphSuggestionClient::from_config(cfg).ok())
             .flatten()
         {
-            suggestions.extend(
-                super::build_llm_link_suggestions(conn, snapshot, &client).unwrap_or_default(),
-            );
+            suggestions.extend(super::build_llm_link_suggestions(conn, snapshot, &client));
         }
     }
 

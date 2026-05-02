@@ -82,7 +82,7 @@ fn llm_suggestions_are_validated_after_chat_response() -> Result<(), Box<dyn std
     )?;
     let client = GraphSuggestionClient::new(chat);
 
-    let suggestions = build_llm_link_suggestions(&conn, &snapshot_with_target(), &client)?;
+    let suggestions = build_llm_link_suggestions(&conn, &snapshot_with_target(), &client);
 
     assert_eq!(suggestions.len(), 1);
     assert_eq!(suggestions[0].target, "Target.md");

@@ -21,7 +21,7 @@ pub fn build_link_suggestions(
     if let Some(suggester) = suggester {
         suggestions.extend(suggest_llm::build_llm_link_suggestions(
             conn, snapshot, suggester,
-        )?);
+        ));
         suggestions.sort_by(|left, right| {
             left.path
                 .cmp(&right.path)

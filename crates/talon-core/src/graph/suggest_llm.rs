@@ -15,12 +15,11 @@ use super::suggest::{
     LinkSuggestion, PROVENANCE_LLM, active_note_bodies, existing_edges, line_mentions_term,
     target_dictionary,
 };
-use crate::TalonError;
 
-const SYSTEM_PROMPT: &str = "Return only JSON. Suggest missing Obsidian wikilinks from source terms to existing target paths. Never suggest edits.";
-const MAX_NOTES: usize = 12;
-const MAX_LINES_PER_NOTE: usize = 40;
-const MAX_TARGETS: usize = 80;
+const SYSTEM_PROMPT: &str = "Return only plain JSON (not in MarkDown code fences). Suggest missing Obsidian wikilinks from source terms to existing target paths. Never suggest edits.";
+const MAX_NOTES: usize = 8;
+const MAX_LINES_PER_NOTE: usize = 6;
+const MAX_TARGETS: usize = 50;
 pub(super) const ASK_SUGGESTION_TIMEOUT: Duration = Duration::from_mins(2);
 
 /// Ask-mode client used for read-only missing-link suggestions during sync.
@@ -49,7 +48,7 @@ impl GraphSuggestionClient {
             config.expansion.base_url.clone(),
             model,
             ASK_SUGGESTION_TIMEOUT,
-            Some(config.ask.max_output_tokens.min(512)),
+            Some(config.ask.max_output_tokens),
         )?;
         if let Some(reasoning_effort) = config.ask.planning_reasoning_effort {
             chat = chat.with_reasoning_effort(reasoning_effort);
@@ -92,34 +91,35 @@ fn merged_chat_template_kwargs(
 pub fn build_llm_link_suggestions(
     conn: &rusqlite::Connection,
     snapshot: &GraphSnapshot,
-    client: &GraphSuggestionClient,
-) -> Result<Vec<LinkSuggestion>, TalonError> {
+    #[allow(clippy::needless_ifs)] client: &GraphSuggestionClient,
+) -> Vec<LinkSuggestion> {
     let dictionary = target_dictionary(snapshot);
     if dictionary.is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
-    let note_bodies = active_note_bodies(conn)?;
-    let prompt = build_prompt(&note_bodies, &dictionary);
-    let Ok(content) = client.chat.complete(
-        vec![
-            ChatMessage {
-                role: "system".into(),
-                content: SYSTEM_PROMPT.into(),
-            },
-            ChatMessage {
-                role: "user".into(),
-                content: prompt,
-            },
-        ],
-        0.0,
-    ) else {
-        return Ok(Vec::new());
+    let Ok(note_bodies) = active_note_bodies(conn) else {
+        return Vec::new();
     };
-    Ok(validate_llm_candidates(
-        parse_candidates(&content),
-        snapshot,
-        note_bodies.as_slice(),
-    ))
+    let prompt = build_prompt(&note_bodies, &dictionary);
+    client
+        .chat
+        .complete(
+            vec![
+                ChatMessage {
+                    role: "system".into(),
+                    content: SYSTEM_PROMPT.into(),
+                },
+                ChatMessage {
+                    role: "user".into(),
+                    content: prompt,
+                },
+            ],
+            0.0,
+        )
+        .map(|content| {
+            validate_llm_candidates(parse_candidates(&content), snapshot, note_bodies.as_slice())
+        })
+        .unwrap_or_default()
 }
 
 fn build_prompt(
@@ -146,6 +146,7 @@ fn build_prompt(
 fn format_note(path: &str, body: &str) -> String {
     let lines = body
         .lines()
+        .filter(|l| !l.trim().is_empty())
         .take(MAX_LINES_PER_NOTE)
         .enumerate()
         .map(|(index, line)| format!("{}: {}", index + 1, line))
@@ -159,20 +160,26 @@ pub(super) struct LlmCandidate {
     pub(super) path: String,
     pub(super) target: String,
     pub(super) term: String,
+    #[serde(default)]
     pub(super) line: u32,
 }
 
 fn parse_candidates(content: &str) -> Vec<LlmCandidate> {
-    let json = content
-        .trim()
-        .strip_prefix("```json")
-        .or_else(|| content.trim().strip_prefix("```"))
-        .unwrap_or_else(|| content.trim())
-        .trim()
-        .strip_suffix("```")
-        .unwrap_or_else(|| content.trim())
-        .trim();
-    serde_json::from_str(json).unwrap_or_default()
+    let mut s = content.trim();
+    // Strip markdown code fence prefix
+    if s.starts_with("```json") {
+        s = &s[7..];
+    } else if s.starts_with("```") {
+        s = &s[3..];
+    }
+    s = s.trim();
+    // Strip markdown code fence suffix
+    if s.ends_with("```") {
+        s = &s[..s.len() - 3];
+    }
+    s = s.trim();
+    let candidates: Vec<LlmCandidate> = serde_json::from_str(s).unwrap_or_default();
+    candidates
 }
 
 pub(super) fn validate_llm_candidates(
