@@ -48,6 +48,7 @@ fn fixture_vault_related_hub_depth2() {
         scope: Vec::new(),
         scope_only: Vec::new(),
         scope_all: false,
+        limit: None,
     };
 
     let response = talon_core::find_related(&conn, &input, None);

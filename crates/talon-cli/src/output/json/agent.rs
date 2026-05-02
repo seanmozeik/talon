@@ -189,6 +189,9 @@ struct AgentRelatedResult<'a> {
     title: &'a str,
     relation: &'a talon_core::RelationKind,
     link_text: &'a str,
+    score: f64,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    reasons: Vec<&'static str>,
 }
 
 impl<'a> From<&'a RelatedResult> for AgentRelatedResult<'a> {
@@ -198,8 +201,28 @@ impl<'a> From<&'a RelatedResult> for AgentRelatedResult<'a> {
             title: &result.title,
             relation: &result.relation,
             link_text: &result.link_text,
+            score: round_score(result.score),
+            reasons: compact_graph_reasons(result),
         }
     }
+}
+
+fn compact_graph_reasons(result: &RelatedResult) -> Vec<&'static str> {
+    let mut reasons = Vec::new();
+    if result.signals.direct_out > 0.0 {
+        reasons.push("direct_link");
+    }
+    if result.signals.direct_backlink > 0.0 {
+        reasons.push("backlink");
+    }
+    if result.signals.shared_sources > 0.0 {
+        reasons.push("shared_source");
+    }
+    if result.signals.common_neighbors > 0.0 {
+        reasons.push("common_neighbor");
+    }
+    reasons.truncate(2);
+    reasons
 }
 
 // ── Meta ──────────────────────────────────────────────────────────────────────

@@ -27,6 +27,7 @@ pub(super) async fn emit(args: &RelatedArgs, cli: &Cli) -> Result<()> {
         scope: args.scope.scope.clone(),
         scope_only: args.scope.scope_only.clone(),
         scope_all: args.scope.scope_all,
+        limit: None,
     };
 
     let config = config::load_config(cli.config_file.as_deref())?;

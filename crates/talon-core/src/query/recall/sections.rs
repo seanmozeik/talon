@@ -103,6 +103,7 @@ pub(super) fn build_linked_context(
             scope: input.scope.clone(),
             scope_only: input.scope_only.clone(),
             scope_all: input.scope_all,
+            limit: None,
         };
         for r in find_related(conn, &ri, config).results {
             if excluded_set.contains(r.vault_path.as_str()) {

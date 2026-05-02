@@ -23,8 +23,8 @@ pub const READ: AgentToolContract = AgentToolContract {
 
 pub const RELATED: AgentToolContract = AgentToolContract {
     name: "talon_related",
-    description: "Traverse the vault graph from a known note to find outgoing links, backlinks, or both. Use for deliberate graph traversal.",
-    when_to_use: "When you want to explore what a note links to or what links to it.",
+    description: "Find ranked related notes from links, backlinks, shared sources, common neighbors, and graph communities. Use for deliberate graph/provenance exploration from a known note.",
+    when_to_use: "When you want to explore graph-ranked context around a specific note.",
     when_not_to_use: "When you want a broad topic search — use talon_search instead.",
 };
 

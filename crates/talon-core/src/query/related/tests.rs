@@ -35,6 +35,7 @@ fn related_input(path: &str, depth: u8, direction: Direction) -> RelatedInput {
         scope: Vec::new(),
         scope_only: Vec::new(),
         scope_all: false,
+        limit: None,
     }
 }
 

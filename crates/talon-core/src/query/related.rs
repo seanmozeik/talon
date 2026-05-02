@@ -8,6 +8,10 @@ use serde::{Deserialize, Serialize};
 use crate::config::{ScopeFilter, TalonConfig};
 use crate::constants::RELATED_MAX_DEPTH;
 use crate::contracts::{ContainerPath, VaultPath};
+use crate::graph::{
+    GraphRankInput, GraphRankedNode, GraphRelation, GraphSignalBreakdown, load_graph_snapshot,
+    rank_related,
+};
 use crate::search::Direction;
 
 /// Related-note request.
@@ -31,10 +35,13 @@ pub struct RelatedInput {
     /// Include every configured scope, overriding `default = false`.
     #[serde(default)]
     pub scope_all: bool,
+    /// Maximum ranked results returned by MCP callers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
 }
 
 /// Related-note response.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelatedResponse {
     /// Vault root (absolute container path).
@@ -49,7 +56,7 @@ pub struct RelatedResponse {
 }
 
 /// A single related-note result.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RelatedResult {
     /// Vault-relative path.
@@ -64,6 +71,10 @@ pub struct RelatedResult {
     /// linked once and a note linked from three different aliases score
     /// 1 vs 3 — a rough proxy for edge strength.
     pub count: u32,
+    /// Graph relevance score.
+    pub score: f64,
+    /// Per-signal graph score breakdown.
+    pub signals: GraphSignalBreakdown,
     /// Resolved scope name, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
@@ -114,6 +125,27 @@ pub fn find_related(
             .unwrap_or_else(|_| ScopeFilter::default_for(cfg))
     });
 
+    if let Ok(snapshot) = load_graph_snapshot(conn)
+        && snapshot.nodes.contains_key(path)
+        && !snapshot.edges.is_empty()
+    {
+        let ranked = rank_related(
+            &snapshot,
+            &GraphRankInput {
+                source_path: path.to_string(),
+                direction,
+                depth,
+                limit: input.limit.unwrap_or(usize::MAX),
+            },
+        );
+        return RelatedResponse {
+            vault: None,
+            path: source_path,
+            direction,
+            results: ranked_to_results(conn, ranked, config, filter.as_ref()),
+        };
+    }
+
     let mut visited: HashSet<String> = HashSet::new();
     visited.insert(path.to_string());
 
@@ -159,6 +191,20 @@ pub fn find_related(
                 link_text,
                 relation,
                 count,
+                score: f64::from(count),
+                signals: GraphSignalBreakdown {
+                    direct_out: if relation == RelationKind::Outgoing {
+                        f64::from(count)
+                    } else {
+                        0.0
+                    },
+                    direct_backlink: if relation == RelationKind::Backlink {
+                        f64::from(count)
+                    } else {
+                        0.0
+                    },
+                    ..GraphSignalBreakdown::default()
+                },
                 scope,
                 mtime,
             });
@@ -173,6 +219,39 @@ pub fn find_related(
         direction,
         results,
     }
+}
+
+fn ranked_to_results(
+    conn: &Connection,
+    ranked: Vec<GraphRankedNode>,
+    config: Option<&TalonConfig>,
+    filter: Option<&ScopeFilter<'_>>,
+) -> Vec<RelatedResult> {
+    ranked
+        .into_iter()
+        .filter(|node| filter.is_none_or(|f| f.accepts(&node.vault_path)))
+        .filter_map(|node| {
+            let vault_path = VaultPath::parse(&node.vault_path).ok()?;
+            let scope = config
+                .and_then(|cfg| cfg.resolve_scope_name(std::path::Path::new(&node.vault_path)))
+                .map(str::to_string);
+            let mtime = super::mtime::local_mtime_for_path(conn, &node.vault_path);
+            Some(RelatedResult {
+                vault_path,
+                title: node.title,
+                link_text: node.link_text,
+                relation: match node.relation {
+                    GraphRelation::Outgoing | GraphRelation::Related => RelationKind::Outgoing,
+                    GraphRelation::Backlink => RelationKind::Backlink,
+                },
+                count: node.count,
+                score: node.score,
+                signals: node.signals,
+                scope,
+                mtime,
+            })
+        })
+        .collect()
 }
 
 /// Returns `(neighbor_path, link_text, relation, count)` tuples for a given path.

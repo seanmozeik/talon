@@ -12,6 +12,7 @@ pub mod embed;
 pub mod error;
 pub mod expansion;
 pub mod glob_matcher;
+pub mod graph;
 pub mod indexer;
 pub mod indexing;
 pub mod inference;

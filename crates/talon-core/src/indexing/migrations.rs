@@ -108,6 +108,53 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
        dimensions     INTEGER NOT NULL,
        embedded_at_ms INTEGER NOT NULL
      )",
+    "CREATE TABLE IF NOT EXISTS graph_meta (
+       key   TEXT PRIMARY KEY,
+       value TEXT NOT NULL
+     )",
+    "CREATE TABLE IF NOT EXISTS graph_nodes (
+       vault_path               TEXT PRIMARY KEY,
+       title                    TEXT NOT NULL,
+       aliases                  TEXT NOT NULL DEFAULT '[]',
+       tags                     TEXT NOT NULL DEFAULT '[]',
+       scope                    TEXT NOT NULL DEFAULT '',
+       note_type                TEXT,
+       sources                  TEXT NOT NULL DEFAULT '[]',
+       outgoing_degree          INTEGER NOT NULL DEFAULT 0,
+       backlink_degree          INTEGER NOT NULL DEFAULT 0,
+       total_degree             INTEGER NOT NULL DEFAULT 0,
+       structural               INTEGER NOT NULL DEFAULT 0,
+       community_id             INTEGER,
+       community_cohesion       REAL NOT NULL DEFAULT 0.0,
+       community_neighbor_count INTEGER NOT NULL DEFAULT 0,
+       bridge_weight            REAL NOT NULL DEFAULT 0.0
+     )",
+    "CREATE TABLE IF NOT EXISTS graph_edges (
+       from_path TEXT NOT NULL,
+       to_path   TEXT NOT NULL,
+       link_text TEXT NOT NULL DEFAULT '',
+       weight    INTEGER NOT NULL DEFAULT 1,
+       PRIMARY KEY (from_path, to_path)
+     )",
+    "CREATE TABLE IF NOT EXISTS graph_sources (
+       source TEXT NOT NULL,
+       path   TEXT NOT NULL,
+       PRIMARY KEY (source, path)
+     )",
+    "CREATE TABLE IF NOT EXISTS graph_communities (
+       community_id INTEGER PRIMARY KEY,
+       node_count   INTEGER NOT NULL,
+       cohesion     REAL NOT NULL DEFAULT 0.0,
+       top_nodes    TEXT NOT NULL DEFAULT '[]'
+     )",
+    "CREATE TABLE IF NOT EXISTS graph_missing_links (
+       path       TEXT NOT NULL,
+       target     TEXT NOT NULL,
+       term       TEXT NOT NULL,
+       line       INTEGER,
+       provenance TEXT NOT NULL,
+       PRIMARY KEY (path, target, term, provenance)
+     )",
     "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts_bm25 USING fts5(
        title, aliases, content,
        content='notes', content_rowid='id',
@@ -126,6 +173,12 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_fm_field_type_value
      ON note_frontmatter_fields(field, value_type, value)",
     "CREATE INDEX IF NOT EXISTS idx_notes_active_path ON notes(active, vault_path)",
+    "CREATE INDEX IF NOT EXISTS idx_notes_active_scope ON notes(active, scope)",
+    "CREATE INDEX IF NOT EXISTS idx_links_from ON links(from_path)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_edges_to ON graph_edges(to_path)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_sources_path ON graph_sources(path)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_nodes_community ON graph_nodes(community_id)",
+    "CREATE INDEX IF NOT EXISTS idx_graph_missing_links_path ON graph_missing_links(path)",
     "CREATE INDEX IF NOT EXISTS idx_notes_hash ON notes(hash)",
     "CREATE INDEX IF NOT EXISTS idx_notes_docid ON notes(docid)",
     "CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(chunk_hash)",
