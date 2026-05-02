@@ -7,7 +7,8 @@ use crate::contracts::{
 };
 use crate::error::ErrorCode;
 use crate::indexing::{
-    IndexStats, LintCheck, LintResponse, StatusResponse, StatusState, SyncResponse, SyncStatus,
+    IndexStats, InspectCheck, InspectResponse, StatusResponse, StatusState, SyncResponse,
+    SyncStatus,
 };
 use crate::query::{
     ChangesResponse, MetaResponse, ReadResponse, RecallResponse, RelatedResponse, VaultRecall,
@@ -175,15 +176,15 @@ fn changes_success_round_trip() {
 
 #[test]
 fn lint_success_round_trip() {
-    let data = TalonResponseData::Lint(LintResponse {
+    let data = TalonResponseData::Inspect(InspectResponse {
         vault: None,
-        check: LintCheck::Orphans,
+        check: InspectCheck::Orphans,
         findings: Vec::new(),
     });
-    let envelope = TalonEnvelope::ok("lint", data, success_meta());
+    let envelope = TalonEnvelope::ok("inspect", data, success_meta());
     let json = serde_json::to_string(&envelope).unwrap();
     let round_trip: TalonEnvelope = serde_json::from_str(&json).unwrap();
-    assert_eq!(round_trip.action, "lint");
+    assert_eq!(round_trip.action, "inspect");
     assert!(round_trip.ok);
 }
 

@@ -6,7 +6,7 @@ use crate::cli::SharedScopeArgs;
 
 /// Inspect check type (clap derive wrapper).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum LintCheck {
+pub enum InspectCheck {
     /// Run all checks.
     All,
     /// Find orphan notes with no links to them.
@@ -21,15 +21,15 @@ pub enum LintCheck {
     Graph,
 }
 
-impl From<LintCheck> for talon_core::LintCheck {
-    fn from(check: LintCheck) -> Self {
+impl From<InspectCheck> for talon_core::InspectCheck {
+    fn from(check: InspectCheck) -> Self {
         match check {
-            LintCheck::All => Self::All,
-            LintCheck::Orphans => Self::Orphans,
-            LintCheck::BrokenLinks => Self::BrokenLinks,
-            LintCheck::DanglingRefs => Self::DanglingRefs,
-            LintCheck::Unreferenced => Self::Unreferenced,
-            LintCheck::Graph => Self::Graph,
+            InspectCheck::All => Self::All,
+            InspectCheck::Orphans => Self::Orphans,
+            InspectCheck::BrokenLinks => Self::BrokenLinks,
+            InspectCheck::DanglingRefs => Self::DanglingRefs,
+            InspectCheck::Unreferenced => Self::Unreferenced,
+            InspectCheck::Graph => Self::Graph,
         }
     }
 }
@@ -40,7 +40,7 @@ impl From<LintCheck> for talon_core::LintCheck {
 pub struct InspectArgs {
     /// Which inspect check to run (default: all).
     #[arg(value_enum, ignore_case = true)]
-    pub check: Option<LintCheck>,
+    pub check: Option<InspectCheck>,
 
     #[command(flatten)]
     pub scope: SharedScopeArgs,

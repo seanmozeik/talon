@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::ScopeFilter;
 use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig, RerankConfig,
     Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
 };
 use crate::error::TalonError;
@@ -12,7 +12,7 @@ fn scope(glob: &str, priority: ScopePriority, default: bool) -> Scope {
         glob: ScopeGlob::Single(glob.to_string()),
         priority,
         default,
-        lint: true,
+        inspect: true,
     }
 }
 
@@ -50,7 +50,7 @@ fn config_with(scopes: Vec<(&str, Scope)>) -> TalonConfig {
         mcp: crate::config::McpConfig::default(),
         scopes: map,
         search: SearchConfig::default(),
-        lint: crate::config::LintConfig::default(),
+        inspect: crate::config::InspectConfig::default(),
         chunker: ChunkerConfig::default(),
     }
 }
@@ -117,20 +117,20 @@ fn scope_all_accepts_every_path() {
 }
 
 #[test]
-fn lint_excluded_honors_scope_lint_and_global_ignore() {
+fn inspect_excluded_honors_scope_lint_and_global_ignore() {
     let mut daily = scope("daily/**", ScopePriority::Muted, true);
-    daily.lint = false;
+    daily.inspect = false;
     let mut cfg = config_with(vec![
         ("daily", daily),
         ("wiki", scope("wiki/**", ScopePriority::Boosted, true)),
     ]);
-    cfg.lint = LintConfig {
+    cfg.inspect = InspectConfig {
         ignore: vec!["README.md".to_string()],
     };
 
-    assert!(cfg.lint_excluded(std::path::Path::new("daily/2026-04-29.md")));
-    assert!(cfg.lint_excluded(std::path::Path::new("README.md")));
-    assert!(!cfg.lint_excluded(std::path::Path::new("wiki/Sauce.md")));
+    assert!(cfg.inspect_excluded(std::path::Path::new("daily/2026-04-29.md")));
+    assert!(cfg.inspect_excluded(std::path::Path::new("README.md")));
+    assert!(!cfg.inspect_excluded(std::path::Path::new("wiki/Sauce.md")));
 }
 
 #[test]

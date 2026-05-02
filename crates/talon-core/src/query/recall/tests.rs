@@ -3,7 +3,7 @@ use rusqlite::{Connection, params};
 use super::budget::trim_to_budget;
 use super::*;
 use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig, RerankConfig,
     Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
 };
 use crate::contracts::VaultPath;
@@ -51,7 +51,7 @@ fn scoped_config() -> TalonConfig {
             glob: ScopeGlob::Single("wiki/**".to_string()),
             priority: ScopePriority::Boosted,
             default: true,
-            lint: true,
+            inspect: true,
         },
     );
     scopes.insert(
@@ -60,7 +60,7 @@ fn scoped_config() -> TalonConfig {
             glob: ScopeGlob::Single("private/**".to_string()),
             priority: ScopePriority::Buried,
             default: false,
-            lint: false,
+            inspect: false,
         },
     );
 
@@ -93,7 +93,7 @@ fn scoped_config() -> TalonConfig {
         mcp: crate::config::McpConfig::default(),
         scopes,
         search: SearchConfig::default(),
-        lint: LintConfig::default(),
+        inspect: InspectConfig::default(),
         chunker: ChunkerConfig::default(),
     }
 }

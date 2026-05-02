@@ -154,7 +154,7 @@ mod tests {
             mcp: crate::config::McpConfig::default(),
             scopes: ScopesConfig::new(),
             search: crate::config::SearchConfig::default(),
-            lint: crate::config::LintConfig::default(),
+            inspect: crate::config::InspectConfig::default(),
             chunker: crate::config::ChunkerConfig::default(),
         }
     }
@@ -232,7 +232,7 @@ mod tests {
                 glob: ScopeGlob::Single("Atlas/**".to_string()),
                 priority: ScopePriority::Normal,
                 default: true,
-                lint: true,
+                inspect: true,
             },
         );
 
@@ -265,7 +265,7 @@ mod tests {
             mcp: crate::config::McpConfig::default(),
             scopes,
             search: crate::config::SearchConfig::default(),
-            lint: crate::config::LintConfig::default(),
+            inspect: crate::config::InspectConfig::default(),
             chunker: crate::config::ChunkerConfig::default(),
         };
 

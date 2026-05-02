@@ -306,7 +306,7 @@ fn search_without_query_exits_nonzero() {
 fn lint_unknown_check_type_exits_nonzero() {
     Command::cargo_bin(BIN)
         .unwrap_or_else(|e| panic!("cargo_bin: {e}"))
-        .arg("lint")
+        .arg("inspect")
         .arg("not-a-check")
         .assert()
         .failure();

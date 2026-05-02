@@ -2,11 +2,11 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Lint check type.
+/// Inspect check type.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum LintCheck {
-    /// Run every lint check.
+pub enum InspectCheck {
+    /// Run all checks.
     All,
     /// Files with no incoming wikilinks.
     Orphans,
@@ -47,12 +47,12 @@ pub struct StatusInput {
     pub json: bool,
 }
 
-/// Lint check request.
+/// Inspect check request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LintInput {
-    /// Which lint check to run.
-    pub check: LintCheck,
+pub struct InspectInput {
+    /// Which inspect check to run.
+    pub check: InspectCheck,
     /// Scope names to include.
     #[serde(default)]
     pub scope: Vec<String>,

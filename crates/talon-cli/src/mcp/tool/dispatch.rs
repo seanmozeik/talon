@@ -2,10 +2,10 @@ use std::time::Instant;
 
 use color_eyre::eyre::{Result, WrapErr as _};
 use talon_core::{
-    ChangesInput, ExpansionClient, LintInput, MetaInput, ReadInput, RecallInput, RelatedInput,
+    ChangesInput, ExpansionClient, InspectInput, MetaInput, ReadInput, RecallInput, RelatedInput,
     ResponseMeta, SearchInput, SearchMode, SyncLockError, TalonEnvelope, TalonInput,
     TalonResponseData, acquire_sync_lock, find_related, inference::InferenceClient, open_database,
-    open_database_read_only, query_changes, query_lint, query_meta, run_read, run_recall,
+    open_database_read_only, query_changes, query_inspect, query_meta, run_read, run_recall,
     run_search, vec_ext::register_sqlite_vec,
 };
 
@@ -21,7 +21,7 @@ pub(super) fn dispatch_input(input: TalonInput) -> Result<TalonEnvelope> {
         TalonInput::Related(input) => dispatch_related(&input),
         TalonInput::Meta(input) => dispatch_meta(&input),
         TalonInput::Changes(input) => dispatch_changes(&input),
-        TalonInput::Lint(input) => dispatch_lint(&input),
+        TalonInput::Inspect(input) => dispatch_inspect(&input),
         TalonInput::Recall(input) => dispatch_recall(&input),
     }
 }
@@ -210,13 +210,13 @@ fn dispatch_changes(input: &ChangesInput) -> Result<TalonEnvelope> {
     ))
 }
 
-fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
+fn dispatch_inspect(input: &InspectInput) -> Result<TalonEnvelope> {
     let started = Instant::now();
     let config = config::load_config(None)?;
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
     let mut conn = open_database(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
-    // Lint always refreshes — findings must reflect current vault state.
+    // Always refreshes — findings must reflect current vault state.
     crate::config::refresh_index_if_needed(
         &config,
         &mut conn,
@@ -224,7 +224,7 @@ fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
         RefreshLockPolicy::ErrorIfBusy,
     )?;
 
-    let response = query_lint(&conn, input, Some(&config));
+    let response = query_inspect(&conn, input, Some(&config));
     let result_count = count_u32(response.findings.len());
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
@@ -234,8 +234,8 @@ fn dispatch_lint(input: &LintInput) -> Result<TalonEnvelope> {
         since: None,
     };
     Ok(TalonEnvelope::ok(
-        "lint",
-        TalonResponseData::Lint(response),
+        "inspect",
+        TalonResponseData::Inspect(response),
         meta,
     ))
 }

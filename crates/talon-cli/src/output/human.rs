@@ -6,7 +6,7 @@ use super::search::format_search_human;
 use eyre::Result;
 use std::io::{self, Write};
 use talon_core::{
-    LintResponse, MetaResponse, ReadResponse, RelatedResponse, SyncResponse, TalonEnvelope,
+    InspectResponse, MetaResponse, ReadResponse, RelatedResponse, SyncResponse, TalonEnvelope,
     TalonResponseData,
 };
 
@@ -35,7 +35,7 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
         Some(TalonResponseData::Related(resp)) => emit_related(resp, opts)?,
         Some(TalonResponseData::Meta(resp)) => emit_meta(resp)?,
         Some(TalonResponseData::Changes(resp)) => emit_changes(resp)?,
-        Some(TalonResponseData::Lint(resp)) => format_lint_human(&mut io::stdout(), resp)?,
+        Some(TalonResponseData::Inspect(resp)) => format_inspect_human(&mut io::stdout(), resp)?,
         Some(TalonResponseData::Recall(resp)) => {
             format_recall_human(&mut io::stdout(), resp, opts)?;
         }
@@ -119,7 +119,7 @@ pub fn format_status_human(w: &mut impl Write, resp: &talon_core::StatusResponse
     Ok(())
 }
 
-/// Formats a lint response for human reading.
+/// Formats an inspect response for human reading.
 ///
 /// Mirrors `format_search_human`'s card style: a styled headline summarising
 /// the run, then per-check sections with numbered findings (rank + path on
@@ -128,9 +128,9 @@ pub fn format_status_human(w: &mut impl Write, resp: &talon_core::StatusResponse
 /// # Errors
 ///
 /// Returns an error if writing to `w` fails.
-pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> {
+pub fn format_inspect_human(w: &mut impl Write, resp: &InspectResponse) -> Result<()> {
     use anstyle::{AnsiColor, Effects, Style};
-    use talon_core::LintCheck;
+    use talon_core::InspectCheck;
 
     let opts = super::RenderOptions::for_terminal();
     let heading = super::style::cs(
@@ -145,7 +145,7 @@ pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> 
     writeln!(
         w,
         "{heading}Inspect{heading:#}  ·  {bold}{}{bold:#}  ·  {dim}{total} {finding_word}{dim:#}",
-        lint_label(resp.check)
+        inspect_label(resp.check)
     )?;
 
     if total == 0 {
@@ -155,14 +155,14 @@ pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> 
     }
 
     writeln!(w)?;
-    if resp.check == LintCheck::All {
+    if resp.check == InspectCheck::All {
         let mut first_section = true;
         for check in [
-            LintCheck::Orphans,
-            LintCheck::BrokenLinks,
-            LintCheck::DanglingRefs,
-            LintCheck::Unreferenced,
-            LintCheck::Graph,
+            InspectCheck::Orphans,
+            InspectCheck::BrokenLinks,
+            InspectCheck::DanglingRefs,
+            InspectCheck::Unreferenced,
+            InspectCheck::Graph,
         ] {
             let findings: Vec<_> = resp.findings.iter().filter(|f| f.check == check).collect();
             if findings.is_empty() {
@@ -175,36 +175,36 @@ pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> 
             writeln!(
                 w,
                 "{bold}{}{bold:#}  ·  {dim}{}{dim:#}",
-                lint_label(check),
+                inspect_label(check),
                 findings.len()
             )?;
             for (i, f) in findings.iter().take(20).enumerate() {
-                format_lint_card(w, i + 1, f, &bold, &dim)?;
+                format_inspect_card(w, i + 1, f, &bold, &dim)?;
             }
         }
     } else {
         for (i, f) in resp.findings.iter().take(20).enumerate() {
-            format_lint_card(w, i + 1, f, &bold, &dim)?;
+            format_inspect_card(w, i + 1, f, &bold, &dim)?;
         }
     }
     Ok(())
 }
 
-const fn lint_label(check: talon_core::LintCheck) -> &'static str {
+const fn inspect_label(check: talon_core::InspectCheck) -> &'static str {
     match check {
-        talon_core::LintCheck::All => "all",
-        talon_core::LintCheck::Orphans => "orphans",
-        talon_core::LintCheck::BrokenLinks => "broken-links",
-        talon_core::LintCheck::DanglingRefs => "dangling-refs",
-        talon_core::LintCheck::Unreferenced => "unreferenced",
-        talon_core::LintCheck::Graph => "graph",
+        talon_core::InspectCheck::All => "all",
+        talon_core::InspectCheck::Orphans => "orphans",
+        talon_core::InspectCheck::BrokenLinks => "broken-links",
+        talon_core::InspectCheck::DanglingRefs => "dangling-refs",
+        talon_core::InspectCheck::Unreferenced => "unreferenced",
+        talon_core::InspectCheck::Graph => "graph",
     }
 }
 
-fn format_lint_card(
+fn format_inspect_card(
     w: &mut impl Write,
     rank: usize,
-    f: &talon_core::LintFinding,
+    f: &talon_core::InspectFinding,
     bold: &anstyle::Style,
     dim: &anstyle::Style,
 ) -> Result<()> {
@@ -225,10 +225,10 @@ fn format_lint_card(
 /// Drops the leading `"<check>: "` prefix from a finding message when the
 /// section header already conveys it. Keeps the prefix for `--all` callers
 /// who consume the message without the section context.
-fn strip_redundant_prefix(check: talon_core::LintCheck, msg: &str) -> &str {
+fn strip_redundant_prefix(check: talon_core::InspectCheck, msg: &str) -> &str {
     let prefix = match check {
-        talon_core::LintCheck::BrokenLinks => "broken link: ",
-        talon_core::LintCheck::DanglingRefs => "dangling ref: ",
+        talon_core::InspectCheck::BrokenLinks => "broken link: ",
+        talon_core::InspectCheck::DanglingRefs => "dangling ref: ",
         _ => return msg,
     };
     msg.strip_prefix(prefix).unwrap_or(msg)

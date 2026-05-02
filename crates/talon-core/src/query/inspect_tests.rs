@@ -4,6 +4,7 @@ use crate::config::{
     ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
 };
 use crate::indexing::migrations::run_migrations;
+use crate::indexing::{InspectCheck, InspectInput};
 use rusqlite::{Connection, params};
 use std::path::PathBuf;
 
@@ -16,7 +17,7 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
                 glob: ScopeGlob::Single(glob.to_string()),
                 priority: ScopePriority::Normal,
                 default: true,
-                lint: true,
+                inspect: true,
             },
         );
     }
@@ -49,7 +50,7 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
         mcp: crate::config::McpConfig::default(),
         scopes: map,
         search: SearchConfig::default(),
-        lint: crate::config::LintConfig::default(),
+        inspect: crate::config::InspectConfig::default(),
         chunker: ChunkerConfig::default(),
     }
 }
@@ -91,8 +92,8 @@ fn last_insert_id(conn: &Connection) -> i64 {
     conn.last_insert_rowid()
 }
 
-fn lint_input(check: LintCheck) -> LintInput {
-    LintInput {
+fn lint_input(check: InspectCheck) -> InspectInput {
+    InspectInput {
         check,
         scope: Vec::new(),
         scope_only: Vec::new(),
@@ -100,8 +101,8 @@ fn lint_input(check: LintCheck) -> LintInput {
     }
 }
 
-fn lint_input_scoped(check: LintCheck, scope_only: Vec<String>) -> LintInput {
-    LintInput {
+fn lint_input_scoped(check: InspectCheck, scope_only: Vec<String>) -> InspectInput {
+    InspectInput {
         check,
         scope: Vec::new(),
         scope_only,
@@ -126,7 +127,7 @@ fn test_all_runs_every_lint_check() {
     insert_link(&conn, "Graph/Source.md", "Graph/Target.md", "[[Target]]");
     insert_link(&conn, "Graph/Source.md", "Graph/Missing.md", "[[Missing]]");
     insert_fm_field(&conn, source_id, "sources", "Graph/Ghost.md");
-    let resp = query_lint(&conn, &lint_input(LintCheck::All), None);
+    let resp = query_inspect(&conn, &lint_input(InspectCheck::All), None);
     let messages: Vec<&str> = resp.findings.iter().map(|f| f.message.as_str()).collect();
 
     assert!(messages.iter().any(|msg| msg.contains("no incoming links")));
@@ -147,7 +148,7 @@ fn test_orphans_detects_notes_with_no_incoming_links() {
     insert_note(&conn, "Graph/Grandchild.md");
     insert_link(&conn, "Graph/Parent.md", "Graph/Child.md", "[[Child]]");
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::Orphans), None);
+    let resp = query_inspect(&conn, &lint_input(InspectCheck::Orphans), None);
     let paths: Vec<&str> = resp.findings.iter().map(|f| f.path.as_str()).collect();
     assert!(
         paths.contains(&"Graph/Grandchild.md"),
@@ -181,7 +182,7 @@ fn test_broken_links_detects_missing_targets() {
         "[[Doomed]]",
     );
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::BrokenLinks), None);
+    let resp = query_inspect(&conn, &lint_input(InspectCheck::BrokenLinks), None);
     assert_eq!(resp.findings.len(), 1);
     assert_eq!(resp.findings[0].path.as_str(), "Lifecycle/Doomed.md");
     assert!(resp.findings[0].message.contains("Nonexistent"));
@@ -196,7 +197,7 @@ fn test_broken_links_ignores_targets_matching_ignore_patterns() {
     insert_link(&conn, "Graph/Source.md", "RealTarget.md", "[[RealTarget]]");
 
     let config = test_config_with_ignore(vec!["CLAUDE.md".into(), "PURPOSE.md".into()]);
-    let resp = query_lint(&conn, &lint_input(LintCheck::BrokenLinks), Some(&config));
+    let resp = query_inspect(&conn, &lint_input(InspectCheck::BrokenLinks), Some(&config));
 
     // Links to ignored files are NOT broken; only the real missing target is.
     assert_eq!(resp.findings.len(), 1);
@@ -215,7 +216,7 @@ fn test_dangling_refs_detects_missing_frontmatter_paths() {
     insert_fm_field(&conn, node_id, "sources", "Atlas/Real.md");
     insert_fm_field(&conn, node_id, "sources", "Atlas/Ghost.md");
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::DanglingRefs), None);
+    let resp = query_inspect(&conn, &lint_input(InspectCheck::DanglingRefs), None);
     assert_eq!(resp.findings.len(), 1);
     assert_eq!(resp.findings[0].path.as_str(), "Atlas/Node.md");
     assert!(resp.findings[0].message.contains("Ghost.md"));
@@ -231,7 +232,11 @@ fn test_dangling_refs_ignores_targets_matching_ignore_patterns() {
     insert_fm_field(&conn, node_id, "sources", "Ghost.md");
 
     let config = test_config_with_ignore(vec!["CLAUDE.md".into()]);
-    let resp = query_lint(&conn, &lint_input(LintCheck::DanglingRefs), Some(&config));
+    let resp = query_inspect(
+        &conn,
+        &lint_input(InspectCheck::DanglingRefs),
+        Some(&config),
+    );
 
     // Frontmatter to ignored file is NOT dangling; only the real missing one.
     assert_eq!(resp.findings.len(), 1);
@@ -247,7 +252,7 @@ fn test_unreferenced_requires_both_no_incoming_and_no_outgoing() {
     insert_note(&conn, "Search/Target.md");
     insert_link(&conn, "Search/Linker.md", "Search/Target.md", "[[Target]]");
 
-    let resp = query_lint(&conn, &lint_input(LintCheck::Unreferenced), None);
+    let resp = query_inspect(&conn, &lint_input(InspectCheck::Unreferenced), None);
     let paths: Vec<&str> = resp.findings.iter().map(|f| f.path.as_str()).collect();
     assert!(
         paths.contains(&"Search/Isolated.md"),
@@ -270,9 +275,9 @@ fn test_scope_filter_limits_orphan_findings() {
     insert_note(&conn, "Graph/B.md");
 
     let config = test_config_with_scopes(vec![("atlas", "Atlas/**"), ("graph", "Graph/**")]);
-    let resp = query_lint(
+    let resp = query_inspect(
         &conn,
-        &lint_input_scoped(LintCheck::Orphans, vec!["atlas".to_string()]),
+        &lint_input_scoped(InspectCheck::Orphans, vec!["atlas".to_string()]),
         Some(&config),
     );
     let paths: Vec<&str> = resp.findings.iter().map(|f| f.path.as_str()).collect();

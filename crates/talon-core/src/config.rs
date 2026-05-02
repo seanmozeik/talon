@@ -141,14 +141,14 @@ pub struct Scope {
     pub priority: ScopePriority,
     /// Whether this scope is included in the default search set.
     pub default: bool,
-    /// Whether `talon lint` reports findings for files in this scope.
+    /// Whether `talon inspect` reports findings for files in this scope.
     ///
-    /// Files in `lint = false` scopes are still indexed and used for link
+    /// Files in `inspect = false` scopes are still indexed and used for link
     /// resolution (so a wikilink target in `daily/` still satisfies a wiki
     /// note's link), but no findings are emitted with `from_path` in this
     /// scope. Defaults to true.
     #[serde(default = "default_true")]
-    pub lint: bool,
+    pub inspect: bool,
 }
 
 const fn default_true() -> bool {
@@ -190,7 +190,7 @@ pub struct TalonConfig {
     pub search: SearchConfig,
     /// Lint settings (global ignore globs, etc.).
     #[serde(default)]
-    pub lint: LintConfig,
+    pub inspect: InspectConfig,
     /// Chunker settings from the `[indexer]` table.
     #[serde(default, rename = "indexer")]
     pub chunker: ChunkerConfig,
@@ -239,18 +239,18 @@ impl TalonConfig {
         None
     }
 
-    /// Returns true when `path` should be excluded from `lint` findings.
+    /// Returns true when `path` should be excluded from `inspect` findings.
     ///
-    /// Excludes paths that are either (1) in a scope with `lint = false`, or
-    /// (2) matched by any glob in `[lint].ignore`. The global ignore list takes
-    /// precedence — even paths in `lint = true` scopes are excluded if they
+    /// Excludes paths that are either (1) in a scope with `inspect = false`, or
+    /// (2) matched by any glob in `[inspect].ignore`. The global ignore list takes
+    /// precedence — even paths in `inspect = true` scopes are excluded if they
     /// match an ignore glob. Excluded paths remain in the index and continue
     /// to satisfy link-target resolution.
     #[must_use]
-    pub fn lint_excluded(&self, path: &Path) -> bool {
+    pub fn inspect_excluded(&self, path: &Path) -> bool {
         let path_str = path.to_string_lossy();
         let ignored = self
-            .lint
+            .inspect
             .ignore
             .iter()
             .any(|glob| glob_matches_path(glob, path_str.as_ref()));
@@ -259,7 +259,7 @@ impl TalonConfig {
         }
         for scope in self.scopes.values() {
             if matches_path_glob(path, &scope.glob) {
-                return !scope.lint;
+                return !scope.inspect;
             }
         }
         false
@@ -304,9 +304,9 @@ fn glob_matches_path(pattern: &str, path: &str) -> bool {
 /// Lint settings.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LintConfig {
-    /// Glob-style patterns of file paths to skip when reporting lint findings.
-    /// Takes precedence over per-scope `lint = true`. Files matching these
+pub struct InspectConfig {
+    /// Glob-style patterns of file paths to skip when reporting inspect findings.
+    /// Takes precedence over per-scope `inspect = true`. Files matching these
     /// globs are still indexed for link resolution.
     #[serde(default)]
     pub ignore: Vec<String>,

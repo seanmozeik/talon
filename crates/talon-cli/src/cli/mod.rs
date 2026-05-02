@@ -21,7 +21,7 @@ pub use changes_args::ChangesArgs;
 use clap::{Parser, Subcommand};
 pub use init_args::InitArgs;
 pub use inspect_args::InspectArgs;
-pub use inspect_args::LintCheck;
+pub use inspect_args::InspectCheck;
 pub use meta_args::MetaArgs;
 pub use read_args::ReadArgs;
 pub use recall_args::RecallArgs;

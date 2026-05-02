@@ -155,7 +155,7 @@ fn fixture_vault_meta_where_archived() {
 #[test]
 fn fixture_vault_lint_orphans() {
     register_sqlite_vec().unwrap();
-    let vault = unique_path("lint");
+    let vault = unique_path("inspect");
     seed_fixture_vault(&vault);
     let db = vault.join("idx.sqlite");
     let lock = vault.join(".talon").join("sync.lock");
@@ -193,14 +193,14 @@ fn fixture_vault_lint_orphans() {
     )
     .unwrap();
 
-    let input = LintInput {
-        check: LintCheck::Orphans,
+    let input = InspectInput {
+        check: InspectCheck::Orphans,
         scope: Vec::new(),
         scope_only: Vec::new(),
         scope_all: false,
     };
 
-    let response = query_lint(&conn, &input, None);
+    let response = query_inspect(&conn, &input, None);
 
     assert!(
         !response.findings.is_empty(),

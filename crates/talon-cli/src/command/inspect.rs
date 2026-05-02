@@ -1,5 +1,5 @@
 use super::{output_mode, should_spin};
-use crate::cli::{Cli, InspectArgs, LintCheck};
+use crate::cli::{Cli, InspectArgs, InspectCheck};
 use crate::config::{self, RefreshLockPolicy, refresh_index_if_needed, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
@@ -8,14 +8,14 @@ use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
-    LintInput, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData, open_database,
-    query_lint, vec_ext::register_sqlite_vec,
+    InspectInput, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData, open_database,
+    query_inspect, vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
-    let check = args.check.unwrap_or(LintCheck::All).into();
+    let check = args.check.unwrap_or(InspectCheck::All).into();
 
-    let input = LintInput {
+    let input = InspectInput {
         check,
         scope: args.scope.scope.clone(),
         scope_only: args.scope.scope_only.clone(),
@@ -40,7 +40,7 @@ pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
         // `false` for `fast`: inspect never opts out of refresh.
         refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::ErrorIfBusy)?;
 
-        let mut response = query_lint(&conn, &input, Some(&config));
+        let mut response = query_inspect(&conn, &input, Some(&config));
         response.vault = vault;
         let result_count = count_u32(response.findings.len());
         let meta = ResponseMeta {
@@ -50,8 +50,8 @@ pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
             scope_set,
             since: None,
         };
-        let data = TalonResponseData::Lint(response);
-        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("lint", data, meta))
+        let data = TalonResponseData::Inspect(response);
+        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("inspect", data, meta))
     };
     let response = if should_spin(cli) {
         spinner::with_spinner("Inspecting vault...".to_string(), work).await?

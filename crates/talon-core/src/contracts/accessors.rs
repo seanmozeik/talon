@@ -1,6 +1,6 @@
 //! Accessor impls for `TalonResponseData` and `TalonResponseTrait`.
 
-use crate::indexing::{LintResponse, StatusResponse, SyncResponse};
+use crate::indexing::{InspectResponse, StatusResponse, SyncResponse};
 use crate::query::{AskResponse, ChangesResponse, MetaResponse, ReadResponse, RelatedResponse};
 use crate::search::SearchResponse;
 
@@ -17,7 +17,7 @@ impl TalonResponseTrait for TalonResponseData {
             Self::Related(_) => "related",
             Self::Meta(_) => "meta",
             Self::Changes(_) => "changes",
-            Self::Lint(_) => "lint",
+            Self::Inspect(_) => "inspect",
             Self::Recall(_) => "recall",
         }
     }
@@ -89,11 +89,11 @@ impl TalonResponseData {
         }
     }
 
-    /// Returns a reference to the inner `LintResponse`, if present.
+    /// Returns a reference to the inner `InspectResponse`, if present.
     #[must_use]
-    pub const fn as_lint(&self) -> Option<&LintResponse> {
+    pub const fn as_inspect(&self) -> Option<&InspectResponse> {
         match self {
-            Self::Lint(r) => Some(r),
+            Self::Inspect(r) => Some(r),
             _ => None,
         }
     }

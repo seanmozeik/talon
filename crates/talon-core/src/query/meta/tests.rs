@@ -19,7 +19,7 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
                 glob: ScopeGlob::Single(glob.to_string()),
                 priority: ScopePriority::Normal,
                 default: true,
-                lint: true,
+                inspect: true,
             },
         );
     }
@@ -52,7 +52,7 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
         mcp: crate::config::McpConfig::default(),
         scopes: map,
         search: SearchConfig::default(),
-        lint: crate::config::LintConfig::default(),
+        inspect: crate::config::InspectConfig::default(),
         chunker: ChunkerConfig::default(),
     }
 }

@@ -168,7 +168,7 @@ pub struct ErrorEnvelope {
 
 // ── Response data envelope ──────────────────────────────────────────────────
 
-use crate::indexing::{LintResponse, StatusResponse, SyncResponse};
+use crate::indexing::{InspectResponse, StatusResponse, SyncResponse};
 use crate::query::{ChangesResponse, MetaResponse, ReadResponse, RecallResponse, RelatedResponse};
 use crate::search::SearchResponse;
 
@@ -196,8 +196,8 @@ pub enum TalonResponseData {
     Meta(MetaResponse),
     /// Change feed response.
     Changes(ChangesResponse),
-    /// Lint check response.
-    Lint(LintResponse),
+    /// Inspect check response.
+    Inspect(InspectResponse),
     /// Vault-native context recall response.
     Recall(RecallResponse),
 }
@@ -294,7 +294,7 @@ pub trait TalonResponseTrait {
 
 // ── Tool input envelope ─────────────────────────────────────────────────────
 
-use crate::indexing::{LintInput, StatusInput, SyncInput};
+use crate::indexing::{InspectInput, StatusInput, SyncInput};
 use crate::query::{ChangesInput, MetaInput, ReadInput, RecallInput, RelatedInput};
 use crate::search::SearchInput;
 
@@ -316,8 +316,8 @@ pub enum TalonInput {
     Meta(MetaInput),
     /// Change feed request.
     Changes(ChangesInput),
-    /// Lint check request.
-    Lint(LintInput),
+    /// Inspect check request.
+    Inspect(InspectInput),
     /// Vault-native context recall request.
     Recall(RecallInput),
 }

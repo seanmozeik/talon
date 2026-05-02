@@ -7,7 +7,7 @@ use talon_core::{
 };
 
 mod ask;
-mod lint;
+mod inspect;
 mod read;
 mod recall;
 mod search;
@@ -34,7 +34,9 @@ pub(super) fn emit(envelope: &TalonEnvelope) -> Result<()> {
         Some(TalonResponseData::Changes(changes)) => {
             super::emit_compact(&AgentChanges::from(changes))
         }
-        Some(TalonResponseData::Lint(lint)) => super::emit_compact(&lint::AgentLint::from(lint)),
+        Some(TalonResponseData::Inspect(resp)) => {
+            super::emit_compact(&inspect::AgentInspect::from(resp))
+        }
         Some(TalonResponseData::Recall(recall)) => {
             super::emit_compact(&recall::AgentRecall::from(recall))
         }

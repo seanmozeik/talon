@@ -1,11 +1,14 @@
 //! Query handlers for the Talon CLI.
 //!
 //! This module contains the real implementations of search, read, related,
-//! meta, changes, and lint handlers — replacing the CLI stubs.
+//! meta, changes, and inspect handlers — replacing the CLI stubs.
 
 pub mod changes;
 pub mod input;
-pub mod lint;
+pub mod inspect;
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod inspect_tests;
 pub mod meta;
 pub mod mtime;
 pub mod output;
@@ -24,7 +27,7 @@ pub(crate) mod where_filter;
 
 pub use changes::query_changes;
 pub use input::{ChangesInput, MetaInput, ReadInput, RecallFormat, RecallInput};
-pub use lint::query_lint;
+pub use inspect::query_inspect;
 pub use meta::query_meta;
 pub use output::{
     AskDiagnostics, AskLlmStageDiagnostics, AskResponse, AskSearchDiagnostics, AskSource,

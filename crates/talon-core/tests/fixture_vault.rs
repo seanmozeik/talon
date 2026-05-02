@@ -1,7 +1,7 @@
 //! Integration test: 21-note fixture vault exercises the full query layer.
 //!
 //! Ports the fixture vault from the TS reference and exercises search (fulltext,
-//! title, hybrid), related-graph traversal, meta --where filtering, lint orphan
+//! title, hybrid), related-graph traversal, meta --where filtering, inspect orphan
 //! detection, and status counts end-to-end with a mocked sidecar.
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
@@ -10,7 +10,7 @@ use serde_json::json;
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
 use talon_core::{
-    AnchorKind, ChunkerConfig, Direction, LintCheck, LintInput, MetaInput, PositiveCount,
+    AnchorKind, ChunkerConfig, Direction, InspectCheck, InspectInput, MetaInput, PositiveCount,
     RecallInput, RelatedInput, SearchInput, SearchMode, WhereClause, WhereOperator,
     config::{
         ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, ScopesConfig, TalonConfig,
@@ -18,7 +18,7 @@ use talon_core::{
     embed::EmbedPassOptions,
     indexer::IndexerConfig,
     inference::InferenceClient,
-    open_database, query_lint, query_meta, query_status, run_recall, run_search,
+    open_database, query_inspect, query_meta, query_status, run_recall, run_search,
     run_sync_with_chunker,
     vec_ext::register_sqlite_vec,
 };
@@ -139,7 +139,7 @@ fn minimal_config(vault: &std::path::Path) -> TalonConfig {
         mcp: talon_core::McpConfig::default(),
         scopes: ScopesConfig::default(),
         search: talon_core::SearchConfig::default(),
-        lint: talon_core::LintConfig::default(),
+        inspect: talon_core::InspectConfig::default(),
         chunker: talon_core::ChunkerConfig::default(),
     }
 }

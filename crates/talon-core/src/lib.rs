@@ -28,7 +28,7 @@ pub mod vec_ext;
 
 pub use ask::{AskClient, AskError, AskPlan, AskSynthesis};
 pub use config::{
-    AskConfig, ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig,
+    AskConfig, ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig,
     McpConfig, McpHooksConfig, RerankConfig, RerankRequestShape, RerankScoreScale, Scope,
     ScopeFilter, ScopeGlob, ScopePriority, ScopeResolution, ScopesConfig, SearchConfig,
     TalonConfig,
@@ -50,13 +50,13 @@ pub use indexer::{
 };
 pub use indexing::{
     ChangeFeed, ChangeIndex, ChangeTrackingEntry, ChangeTrackingTombstoneEntry, ChunkUpsertRow,
-    DB_VERSION_KEY, FileChangeState, FileState, IndexMetadata, IndexStats, LintCheck, LintFinding,
-    LintInput, LintResponse, NoteUpsertResult, REBUILD_MIGRATIONS, SCHEMA_MIGRATIONS, ScopeReport,
-    StatusInput, StatusResponse, StatusState, SyncInput, SyncResponse, SyncStatus,
-    TALON_SQLITE_BUSY_TIMEOUT_MS, TOMBSTONE_RETENTION_MS, TRIGGER_MIGRATIONS, UpsertNoteParams,
-    bump_db_version, now_ms, parse_since, perform_note_deletion, read_db_version, run_migrations,
-    upsert_aliases, upsert_chunks, upsert_frontmatter_fields, upsert_links, upsert_note,
-    upsert_tags,
+    DB_VERSION_KEY, FileChangeState, FileState, IndexMetadata, IndexStats, InspectCheck,
+    InspectFinding, InspectInput, InspectResponse, NoteUpsertResult, REBUILD_MIGRATIONS,
+    SCHEMA_MIGRATIONS, ScopeReport, StatusInput, StatusResponse, StatusState, SyncInput,
+    SyncResponse, SyncStatus, TALON_SQLITE_BUSY_TIMEOUT_MS, TOMBSTONE_RETENTION_MS,
+    TRIGGER_MIGRATIONS, UpsertNoteParams, bump_db_version, now_ms, parse_since,
+    perform_note_deletion, read_db_version, run_migrations, upsert_aliases, upsert_chunks,
+    upsert_frontmatter_fields, upsert_links, upsert_note, upsert_tags,
 };
 pub use links::{
     LinkEdge, LinkGraphStats, NoteReference, ResolvedLink, build_link_edges, compute_backlinks,
@@ -68,7 +68,7 @@ pub use query::{
     ChangeEntry, ChangesInput, ChangesResponse, LinkedNote, MetaEntry, MetaInput, MetaResponse,
     NoteExcerpt, ReadInput, ReadResponse, ReadResult, ReadSection, RecallFormat, RecallInput,
     RecallResponse, RelatedInput, RelatedResponse, RelatedResult, RelationKind, TombstoneEntry,
-    VaultRecall, find_related, query_changes, query_lint, query_meta, query_status, run_read,
+    VaultRecall, find_related, query_changes, query_inspect, query_meta, query_status, run_read,
     run_recall, run_search, run_search_with_expanded_queries,
 };
 pub use rusqlite::Connection;

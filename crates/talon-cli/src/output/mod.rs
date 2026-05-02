@@ -14,7 +14,7 @@ use std::io::{self, Write};
 use talon_core::TalonEnvelope;
 
 pub use ask::format_ask_human;
-pub use human::{format_lint_human, format_status_human, format_sync_human};
+pub use human::{format_inspect_human, format_status_human, format_sync_human};
 pub use recall::{format_recall_human, format_recall_prompt_xml};
 pub use search::format_search_human;
 

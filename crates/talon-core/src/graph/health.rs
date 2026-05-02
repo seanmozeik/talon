@@ -1,4 +1,4 @@
-//! Graph-health lint findings from the persisted graph snapshot.
+//! Graph-health inspect findings from the persisted graph snapshot.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -6,14 +6,14 @@ use rusqlite::Connection;
 
 use crate::config::ScopeFilter;
 use crate::contracts::VaultPath;
-use crate::indexing::{LintCheck, LintFinding};
+use crate::indexing::{InspectCheck, InspectFinding};
 
 use super::{GraphSnapshot, load_graph_snapshot};
 
 const OVERCENTRAL_DEGREE: u32 = 12;
 const SPARSE_COMMUNITY_COHESION: f64 = 0.25;
 
-pub fn graph_health(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+pub fn graph_health(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<InspectFinding> {
     let Ok(snapshot) = load_graph_snapshot(conn) else {
         return Vec::new();
     };
@@ -33,25 +33,20 @@ pub fn graph_health(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<
 fn isolated_findings(
     snapshot: &GraphSnapshot,
     filter: Option<&ScopeFilter<'_>>,
-) -> Vec<LintFinding> {
+) -> Vec<InspectFinding> {
     snapshot
         .nodes
         .values()
         .filter(|node| !node.structural && node.total_degree == 0)
         .filter(|node| accepts(filter, &node.vault_path))
-        .filter_map(|node| {
-            finding(
-                &node.vault_path,
-                "graph-isolated: add at least one useful wikilink",
-            )
-        })
+        .filter_map(|node| finding(&node.vault_path, "graph-isolated: no links in this note"))
         .collect()
 }
 
 fn sparse_community_findings(
     snapshot: &GraphSnapshot,
     filter: Option<&ScopeFilter<'_>>,
-) -> Vec<LintFinding> {
+) -> Vec<InspectFinding> {
     let mut communities: BTreeMap<u32, Vec<&super::GraphNode>> = BTreeMap::new();
     for node in snapshot.nodes.values() {
         if let Some(id) = node.community_id {
@@ -71,7 +66,7 @@ fn sparse_community_findings(
         .filter_map(|node| {
             finding(
                 &node.vault_path,
-                "graph-sparse-community: add links between notes in this cluster",
+                "graph-sparse-community: low cohesion within community",
             )
         })
         .collect()
@@ -80,7 +75,7 @@ fn sparse_community_findings(
 fn overcentral_findings(
     snapshot: &GraphSnapshot,
     filter: Option<&ScopeFilter<'_>>,
-) -> Vec<LintFinding> {
+) -> Vec<InspectFinding> {
     snapshot
         .nodes
         .values()
@@ -89,13 +84,16 @@ fn overcentral_findings(
         .filter_map(|node| {
             finding(
                 &node.vault_path,
-                "graph-overcentral: split or downscope this structural hub",
+                "graph-overcentral: high degree on structural node",
             )
         })
         .collect()
 }
 
-fn bridge_findings(snapshot: &GraphSnapshot, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+fn bridge_findings(
+    snapshot: &GraphSnapshot,
+    filter: Option<&ScopeFilter<'_>>,
+) -> Vec<InspectFinding> {
     snapshot
         .nodes
         .values()
@@ -104,7 +102,7 @@ fn bridge_findings(snapshot: &GraphSnapshot, filter: Option<&ScopeFilter<'_>>) -
         .filter_map(|node| {
             finding(
                 &node.vault_path,
-                "graph-bridge-thin: strengthen this cross-community bridge",
+                "graph-bridge-thin: connects multiple communities",
             )
         })
         .collect()
@@ -113,7 +111,7 @@ fn bridge_findings(snapshot: &GraphSnapshot, filter: Option<&ScopeFilter<'_>>) -
 fn surprising_connection_findings(
     snapshot: &GraphSnapshot,
     filter: Option<&ScopeFilter<'_>>,
-) -> Vec<LintFinding> {
+) -> Vec<InspectFinding> {
     let mut seen = BTreeSet::new();
     snapshot
         .edges
@@ -133,7 +131,7 @@ fn surprising_connection_findings(
             finding(
                 &edge.from_path,
                 &format!(
-                    "graph-surprising-connection: review link to {}",
+                    "graph-surprising-connection: cross-community link → {}",
                     edge.to_path
                 ),
             )
@@ -145,16 +143,19 @@ fn accepts(filter: Option<&ScopeFilter<'_>>, path: &str) -> bool {
     filter.is_none_or(|scope| scope.accepts(path))
 }
 
-fn finding(path: &str, message: &str) -> Option<LintFinding> {
-    Some(LintFinding {
-        check: LintCheck::Graph,
+fn finding(path: &str, message: &str) -> Option<InspectFinding> {
+    Some(InspectFinding {
+        check: InspectCheck::Graph,
         path: VaultPath::parse(path).ok()?,
         message: message.to_string(),
         line: None,
     })
 }
 
-fn missing_link_findings(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+fn missing_link_findings(
+    conn: &Connection,
+    filter: Option<&ScopeFilter<'_>>,
+) -> Vec<InspectFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT path, target, term, line FROM graph_missing_links
          ORDER BY path, target, term",
@@ -174,8 +175,8 @@ fn missing_link_findings(conn: &Connection, filter: Option<&ScopeFilter<'_>>) ->
     rows.flatten()
         .filter(|(path, _target, _term, _line)| accepts(filter, path))
         .filter_map(|(path, target, term, line)| {
-            Some(LintFinding {
-                check: LintCheck::Graph,
+            Some(InspectFinding {
+                check: InspectCheck::Graph,
                 path: VaultPath::parse(&path).ok()?,
                 message: format!("graph-missing-link: possible wikilink: \"{term}\" -> {target}"),
                 line,

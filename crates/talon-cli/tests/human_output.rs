@@ -5,11 +5,13 @@
 
 use color_eyre::eyre::Result;
 use talon_cli::output::{
-    RenderOptions, format_lint_human, format_search_human, format_status_human, format_sync_human,
+    RenderOptions, format_inspect_human, format_search_human, format_status_human,
+    format_sync_human,
 };
 use talon_core::{
-    ContainerPath, IndexStats, LintCheck, LintFinding, LintResponse, MatchKind, SearchDiagnostics,
-    SearchMode, SearchResponse, SearchResult, StatusResponse, StatusState, SyncResponse, VaultPath,
+    ContainerPath, IndexStats, InspectCheck, InspectFinding, InspectResponse, MatchKind,
+    SearchDiagnostics, SearchMode, SearchResponse, SearchResult, StatusResponse, StatusState,
+    SyncResponse, VaultPath,
 };
 
 const fn opts() -> RenderOptions {
@@ -262,22 +264,22 @@ fn snapshot_status_ready() -> Result<()> {
     Ok(())
 }
 
-// ── lint ──────────────────────────────────────────────────────────────────────
+// ── inspect ─────────────────────────────────────────────────────────────────────────
 
 #[test]
 fn snapshot_lint_orphans() -> Result<()> {
-    let resp = LintResponse {
+    let resp = InspectResponse {
         vault: None,
-        check: LintCheck::Orphans,
+        check: InspectCheck::Orphans,
         findings: vec![
-            LintFinding {
-                check: LintCheck::Orphans,
+            InspectFinding {
+                check: InspectCheck::Orphans,
                 path: make_vault_path("Graph/Orphan.md")?,
                 line: None,
                 message: "no incoming links".to_string(),
             },
-            LintFinding {
-                check: LintCheck::Orphans,
+            InspectFinding {
+                check: InspectCheck::Orphans,
                 path: make_vault_path("Lifecycle/Doomed.md")?,
                 line: None,
                 message: "no incoming links".to_string(),
@@ -285,7 +287,7 @@ fn snapshot_lint_orphans() -> Result<()> {
         ],
     };
     let mut buf = Vec::new();
-    format_lint_human(&mut buf, &resp)?;
+    format_inspect_human(&mut buf, &resp)?;
     insta::assert_snapshot!(String::from_utf8(buf)?);
     Ok(())
 }

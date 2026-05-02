@@ -61,7 +61,12 @@ fn examples_config_sync_builds_graph_tables() {
     assert_eq!(results[0]["signals"]["typeAffinity"], 1.0);
 
     let output = Command::new(env!("CARGO_BIN_EXE_talon"))
-        .args(["inspect", "--agent", "--config", "../../examples/config.toml"])
+        .args([
+            "inspect",
+            "--agent",
+            "--config",
+            "../../examples/config.toml",
+        ])
         .output()
         .unwrap_or_else(|err| panic!("spawn talon inspect: {err}"));
     assert!(

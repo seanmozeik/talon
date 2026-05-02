@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::contracts::{ContainerPath, VaultPath};
 
-use super::input::LintCheck;
+use super::input::InspectCheck;
 
 /// Sync status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -134,30 +134,30 @@ pub struct StatusResponse {
     pub db_path: Option<String>,
 }
 
-/// A single lint finding.
+/// A single inspect finding.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LintFinding {
-    /// Lint check that produced this finding.
-    pub check: LintCheck,
+pub struct InspectFinding {
+    /// Inspect check that produced this finding.
+    pub check: InspectCheck,
     /// Vault-relative path of the file.
     pub path: VaultPath,
-    /// Description of the issue.
+    /// Description of the finding.
     pub message: String,
     /// Line number, if applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub line: Option<u32>,
 }
 
-/// Lint check response.
+/// Inspect check response.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct LintResponse {
+pub struct InspectResponse {
     /// Vault root (absolute container path).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub vault: Option<ContainerPath>,
     /// The check that was run.
-    pub check: LintCheck,
-    /// Lint findings.
-    pub findings: Vec<LintFinding>,
+    pub check: InspectCheck,
+    /// Inspect findings.
+    pub findings: Vec<InspectFinding>,
 }

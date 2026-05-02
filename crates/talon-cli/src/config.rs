@@ -244,7 +244,7 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
         mcp: talon_core::McpConfig::default(),
         scopes: default_karpathy_scopes(),
         search: talon_core::SearchConfig::default(),
-        lint: talon_core::LintConfig::default(),
+        inspect: talon_core::InspectConfig::default(),
         chunker: talon_core::ChunkerConfig::default(),
     }
 }

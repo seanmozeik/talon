@@ -80,14 +80,14 @@ recall_deadline_ms = 45000
 #   _meta/     vault infrastructure — only via --scope meta
 #
 # Three knobs per scope:
-#   priority   scope label for filtering, lint behavior, and ranking
+#   priority   scope label for filtering, inspect behavior, and ranking
 #              weights. Positive boosts are gated by relevance so weak high-
 #              priority hits do not shout over stronger matches.
 #              Defaults: boosted=1.2, elevated=1.1, normal=1.0,
 #              muted=0.85, buried=0.5.
 #   default    if false, the scope is excluded from default queries entirely
 #              (not just down-ranked); re-include via --scope NAME or --scope-all
-#   lint       if false, files in this scope don't appear in `talon lint`
+#   lint       if false, files in this scope don't appear in `talon inspect`
 #              findings — but stay indexed and continue to satisfy link-target
 #              resolution. Useful for ephemeral/closed/sensitive areas.
 #
@@ -98,52 +98,52 @@ recall_deadline_ms = 45000
 glob = ["wiki/**"]
 priority = "boosted"
 default = true
-lint = true
+inspect = true
 
 [scopes.projects]
 glob = ["projects/**"]
 priority = "elevated"
 default = true
-lint = true
+inspect = true
 
 [scopes.artifacts]
 glob = ["artifacts/**"]
 priority = "elevated"
 default = true
-lint = true
+inspect = true
 
 [scopes.daily]
 glob = ["daily/**"]
 priority = "muted"
 default = false
-lint = false        # daily notes are written-from, not written-to
+inspect = false        # daily notes are written-from, not written-to
 
 [scopes.raw]
 glob = ["raw/**"]
 priority = "muted"
 default = false
-lint = true         # raw clips can have broken links worth catching
+inspect = true         # raw clips can have broken links worth catching
 
 [scopes.archive]
 glob = ["archive/**"]
 priority = "buried"
 default = false
-lint = false        # closed projects don't need ongoing curation
+inspect = false        # closed projects don't need ongoing curation
 
 [scopes.private]
 glob = ["private/**"]
 priority = "buried"
 default = false
-lint = false
+inspect = false
 
 [scopes.meta]
 glob = ["_meta/**"]
 priority = "buried"
 default = false
-lint = false
+inspect = false
 
 # ── Lint global ignore ─────────────────────────────────────────────────────
-# Globs of paths to skip when reporting lint findings. Takes precedence over
-# per-scope `lint = true`. Excluded paths remain indexed and link-resolvable.
-[lint]
+# Globs of paths to skip when reporting inspect findings. Takes precedence over
+# per-scope `inspect = true`. Excluded paths remain indexed and link-resolvable.
+[inspect]
 ignore = ["**/_drafts/**", "**/scratch.md"]

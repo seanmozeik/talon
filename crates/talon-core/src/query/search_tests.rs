@@ -1,7 +1,7 @@
 use super::super::search_hybrid::infer_hybrid_match_kind;
 use super::*;
 use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, LintConfig, RerankConfig,
+    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig, RerankConfig,
     Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig,
 };
 use crate::search::types::SearchScores;
@@ -71,7 +71,7 @@ fn config_with_wiki_scope() -> TalonConfig {
             glob: ScopeGlob::Single("wiki/**".to_string()),
             priority: ScopePriority::Boosted,
             default: true,
-            lint: true,
+            inspect: true,
         },
     );
 
@@ -104,7 +104,7 @@ fn config_with_wiki_scope() -> TalonConfig {
         mcp: crate::config::McpConfig::default(),
         scopes,
         search: SearchConfig::default(),
-        lint: LintConfig::default(),
+        inspect: InspectConfig::default(),
         chunker: ChunkerConfig::default(),
     }
 }
@@ -178,7 +178,7 @@ fn additive_scope_request_neutralizes_requested_scope_penalty() {
             glob: ScopeGlob::Single("raw/**".to_string()),
             priority: ScopePriority::Muted,
             default: false,
-            lint: true,
+            inspect: true,
         },
     );
     let mut raw_email = raw("raw/email.md", "quote", false, None);

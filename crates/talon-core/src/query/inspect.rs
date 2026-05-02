@@ -1,19 +1,19 @@
-//! Lint checks for vault graph health.
+//! Inspect checks for vault graph health.
 
 use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::graph::graph_health;
 use crate::indexer::prelude::{build_ignore_globset, file_matches_ignore};
-use crate::indexing::{LintCheck, LintFinding, LintInput, LintResponse};
+use crate::indexing::{InspectCheck, InspectFinding, InspectInput, InspectResponse};
 use crate::sync::relink_unresolved;
 use globset::GlobSet;
 use rusqlite::Connection;
 
-pub fn query_lint(
+pub fn query_inspect(
     conn: &Connection,
-    input: &LintInput,
+    input: &InspectInput,
     config: Option<&TalonConfig>,
-) -> LintResponse {
+) -> InspectResponse {
     // Re-resolve any stale links before reporting. Sync also does this, but
     // running it here too means lint output is fresh regardless of whether
     // sync was the last operation. Cost: one SELECT plus an UPDATE per
@@ -32,21 +32,23 @@ pub fn query_lint(
         )
         .ok();
     let findings = match input.check {
-        LintCheck::All => find_all(conn, filter.as_ref(), ignore_set.as_ref()),
-        LintCheck::Orphans => find_orphans(conn, filter.as_ref()),
-        LintCheck::BrokenLinks => find_broken_links(conn, filter.as_ref(), ignore_set.as_ref()),
-        LintCheck::DanglingRefs => find_dangling_refs(conn, filter.as_ref(), ignore_set.as_ref()),
-        LintCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
-        LintCheck::Graph => graph_health(conn, filter.as_ref()),
+        InspectCheck::All => find_all(conn, filter.as_ref(), ignore_set.as_ref()),
+        InspectCheck::Orphans => find_orphans(conn, filter.as_ref()),
+        InspectCheck::BrokenLinks => find_broken_links(conn, filter.as_ref(), ignore_set.as_ref()),
+        InspectCheck::DanglingRefs => {
+            find_dangling_refs(conn, filter.as_ref(), ignore_set.as_ref())
+        }
+        InspectCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
+        InspectCheck::Graph => graph_health(conn, filter.as_ref()),
     };
     let findings = match config {
         Some(cfg) => findings
             .into_iter()
-            .filter(|f| !cfg.lint_excluded(std::path::Path::new(f.path.as_str())))
+            .filter(|f| !cfg.inspect_excluded(std::path::Path::new(f.path.as_str())))
             .collect(),
         None => findings,
     };
-    LintResponse {
+    InspectResponse {
         vault: None,
         check: input.check,
         findings,
@@ -57,7 +59,7 @@ fn find_all(
     conn: &Connection,
     filter: Option<&ScopeFilter<'_>>,
     ignore_set: Option<&GlobSet>,
-) -> Vec<LintFinding> {
+) -> Vec<InspectFinding> {
     let mut findings = find_orphans(conn, filter);
     findings.extend(find_broken_links(conn, filter, ignore_set));
     findings.extend(find_dangling_refs(conn, filter, ignore_set));
@@ -66,7 +68,7 @@ fn find_all(
     findings
 }
 
-fn find_orphans(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+fn find_orphans(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<InspectFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT vault_path FROM notes \
          WHERE active = 1 \
@@ -85,8 +87,8 @@ fn find_orphans(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<Lint
         .into_iter()
         .filter(|p| filter.is_none_or(|f| f.accepts(p)))
         .filter_map(|path| {
-            VaultPath::parse(&path).ok().map(|vp| LintFinding {
-                check: LintCheck::Orphans,
+            VaultPath::parse(&path).ok().map(|vp| InspectFinding {
+                check: InspectCheck::Orphans,
                 path: vp,
                 message: "no incoming links".to_string(),
                 line: None,
@@ -99,7 +101,7 @@ fn find_broken_links(
     conn: &Connection,
     filter: Option<&ScopeFilter<'_>>,
     ignore_set: Option<&GlobSet>,
-) -> Vec<LintFinding> {
+) -> Vec<InspectFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT DISTINCT from_path, to_path, raw_target FROM links \
          WHERE to_path NOT IN (SELECT vault_path FROM notes WHERE active = 1) \
@@ -135,8 +137,8 @@ fn find_broken_links(
             } else {
                 format!("broken link: [[{raw}]] → {to} (not found)")
             };
-            VaultPath::parse(&from).ok().map(|vp| LintFinding {
-                check: LintCheck::BrokenLinks,
+            VaultPath::parse(&from).ok().map(|vp| InspectFinding {
+                check: InspectCheck::BrokenLinks,
                 path: vp,
                 message,
                 line: None,
@@ -149,7 +151,7 @@ fn find_dangling_refs(
     conn: &Connection,
     filter: Option<&ScopeFilter<'_>>,
     ignore_set: Option<&GlobSet>,
-) -> Vec<LintFinding> {
+) -> Vec<InspectFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT n.vault_path, f.field, f.value \
          FROM notes n \
@@ -180,8 +182,8 @@ fn find_dangling_refs(
         // intentionally excluded from indexing.
         .filter(|(_, _, value)| !ignored_by_set(value, ignore_set))
         .filter_map(|(path, field, value)| {
-            VaultPath::parse(&path).ok().map(|vp| LintFinding {
-                check: LintCheck::DanglingRefs,
+            VaultPath::parse(&path).ok().map(|vp| InspectFinding {
+                check: InspectCheck::DanglingRefs,
                 path: vp,
                 message: format!("dangling ref: {field}: {value} (not found)"),
                 line: None,
@@ -194,7 +196,7 @@ fn ignored_by_set(path: &str, ignore_set: Option<&GlobSet>) -> bool {
     ignore_set.is_some_and(|set| file_matches_ignore(path, set))
 }
 
-fn find_unreferenced(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+fn find_unreferenced(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<InspectFinding> {
     let Ok(mut stmt) = conn.prepare(
         "SELECT vault_path FROM notes \
          WHERE active = 1 \
@@ -214,8 +216,8 @@ fn find_unreferenced(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec
         .into_iter()
         .filter(|p| filter.is_none_or(|f| f.accepts(p)))
         .filter_map(|path| {
-            VaultPath::parse(&path).ok().map(|vp| LintFinding {
-                check: LintCheck::Unreferenced,
+            VaultPath::parse(&path).ok().map(|vp| InspectFinding {
+                check: InspectCheck::Unreferenced,
                 path: vp,
                 message: "no incoming or outgoing links".to_string(),
                 line: None,
@@ -223,7 +225,3 @@ fn find_unreferenced(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec
         })
         .collect()
 }
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used)]
-mod tests;
