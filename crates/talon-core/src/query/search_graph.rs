@@ -230,6 +230,30 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn graph_expansion_does_not_displace_strong_retrieval_hit()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut conn = Connection::open_in_memory()?;
+        run_migrations(&mut conn)?;
+        insert_graph_node(&conn, "Strong.md")?;
+        insert_graph_node(&conn, "Seed.md")?;
+        insert_graph_node(&conn, "GraphOnly.md")?;
+        insert_graph_edge(&conn, "Seed.md", "GraphOnly.md", 4)?;
+        let mut scored = vec![scored("Strong.md", 0.95), scored("Seed.md", 0.9)];
+
+        refine_graph_results(&conn, &SearchInput::default(), None, &mut scored)
+            .ok_or_else(|| std::io::Error::other("graph refinement should add candidate"))?;
+        scored.sort_by(|a, b| b.raw.score.total_cmp(&a.raw.score));
+
+        assert_eq!(scored[0].raw.path, "Strong.md");
+        assert!(
+            scored
+                .iter()
+                .any(|result| result.raw.path == "GraphOnly.md")
+        );
+        Ok(())
+    }
+
     fn scored(path: &str, score: f64) -> ScoredRawSearchResult {
         ScoredRawSearchResult {
             raw: RawSearchResult {
