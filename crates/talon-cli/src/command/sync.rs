@@ -65,17 +65,9 @@ fn run_sync_blocking(
 ) -> Result<SyncResponse> {
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
 
-    // Build graph suggestion client inside the blocking task so reqwest's
-    // internal runtime is created outside any async context.
     let indexer_config = IndexerConfig {
         include_patterns: config.include_patterns.clone(),
         ignore_patterns: config.ignore_patterns.clone(),
-        graph_suggester: if input.fast {
-            None
-        } else {
-            talon_core::GraphSuggestionClient::from_config(config)
-                .wrap_err("building graph suggestion client")?
-        },
         talon_config: Some(config.clone()),
     };
 

@@ -1,18 +1,25 @@
 use rusqlite::Connection;
 
 use super::suggest::LinkSuggestion;
-use super::suggest_llm::GraphSuggestionClient;
+use super::suggest_llm::{self, GraphSuggestionClient};
 use super::{GraphSnapshot, build_missing_link_suggestions};
 use crate::TalonError;
 
-pub(super) fn build_link_suggestions(
+/// Builds deterministic + optional LLM-assisted missing-link suggestions.
+///
+/// When `suggester` is `None`, only deterministic suggestions are returned.
+///
+/// # Errors
+///
+/// Returns [`TalonError::Sqlite`] when note content cannot be read.
+pub fn build_link_suggestions(
     conn: &Connection,
     snapshot: &GraphSnapshot,
     suggester: Option<&GraphSuggestionClient>,
 ) -> Result<Vec<LinkSuggestion>, TalonError> {
     let mut suggestions = build_missing_link_suggestions(conn, snapshot)?;
     if let Some(suggester) = suggester {
-        suggestions.extend(super::suggest_llm::build_llm_link_suggestions(
+        suggestions.extend(suggest_llm::build_llm_link_suggestions(
             conn, snapshot, suggester,
         )?);
         suggestions.sort_by(|left, right| {

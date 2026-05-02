@@ -10,7 +10,7 @@ use crate::TalonError;
 use super::GraphSnapshot;
 
 const PROVENANCE_DETERMINISTIC: &str = "deterministic";
-pub(super) const PROVENANCE_LLM: &str = "ask-llm";
+pub const PROVENANCE_LLM: &str = "ask-llm";
 
 /// Persisted read-only link suggestion.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

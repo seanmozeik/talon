@@ -22,6 +22,8 @@ struct AgentInspectChecks<'a> {
     unreferenced: Vec<AgentInspectFinding<'a>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     graph: Vec<AgentInspectFinding<'a>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    missing_links: Vec<AgentInspectFinding<'a>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -60,6 +62,7 @@ impl<'a> AgentInspectChecks<'a> {
             InspectCheck::DanglingRefs => self.dangling_refs.push(compact),
             InspectCheck::Unreferenced => self.unreferenced.push(compact),
             InspectCheck::Graph => self.graph.push(compact),
+            InspectCheck::MissingLinks => self.missing_links.push(compact),
         }
     }
 }

@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 
 use crate::TalonError;
 use crate::config::{ChunkerConfig, TalonConfig};
-use crate::graph::{GraphBuildStats, GraphSuggestionClient};
+use crate::graph::GraphBuildStats;
 use crate::indexing::perform_note_deletion;
 
 use super::prelude::{
@@ -33,8 +33,6 @@ pub struct IndexerConfig {
     pub ignore_patterns: Vec<String>,
     /// Optional Talon config used to resolve per-note scope names during indexing.
     pub talon_config: Option<TalonConfig>,
-    /// Optional ask-mode graph suggestion client for read-only inspect candidates.
-    pub graph_suggester: Option<GraphSuggestionClient>,
 }
 
 impl IndexerConfig {
@@ -47,7 +45,6 @@ impl IndexerConfig {
             include_patterns: vec!["**/*.md".into()],
             ignore_patterns: Vec::new(),
             talon_config: None,
-            graph_suggester: None,
         }
     }
 }

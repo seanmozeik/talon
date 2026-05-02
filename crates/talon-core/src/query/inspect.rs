@@ -2,7 +2,9 @@
 
 use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
-use crate::graph::graph_health;
+use crate::graph::{
+    GraphSuggestionClient, build_link_suggestions, graph_health, load_graph_snapshot,
+};
 use crate::indexer::prelude::{build_ignore_globset, file_matches_ignore};
 use crate::indexing::{InspectCheck, InspectFinding, InspectInput, InspectResponse};
 use crate::sync::relink_unresolved;
@@ -40,6 +42,7 @@ pub fn query_inspect(
         }
         InspectCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
         InspectCheck::Graph => graph_health(conn, filter.as_ref()),
+        InspectCheck::MissingLinks => find_missing_links(conn, config, filter.as_ref()),
     };
     let findings = match config {
         Some(cfg) => findings
@@ -65,6 +68,7 @@ fn find_all(
     findings.extend(find_dangling_refs(conn, filter, ignore_set));
     findings.extend(find_unreferenced(conn, filter));
     findings.extend(graph_health(conn, filter));
+    findings.extend(find_missing_links_deterministic(conn, filter));
     findings
 }
 
@@ -221,6 +225,71 @@ fn find_unreferenced(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec
                 path: vp,
                 message: "no incoming or outgoing links".to_string(),
                 line: None,
+            })
+        })
+        .collect()
+}
+
+/// Missing-link suggestions: deterministic + optional LLM-assisted.
+fn find_missing_links(
+    conn: &Connection,
+    config: Option<&TalonConfig>,
+    filter: Option<&ScopeFilter<'_>>,
+) -> Vec<InspectFinding> {
+    // Build deterministic suggestions first.
+    let Ok(snapshot) = load_graph_snapshot(conn) else {
+        return Vec::new();
+    };
+    let mut suggestions = build_link_suggestions(conn, &snapshot, None).unwrap_or_default();
+
+    // Append LLM-assisted suggestions if ask model is configured.
+    let Some(client) = config
+        .and_then(|cfg| GraphSuggestionClient::from_config(cfg).ok())
+        .flatten()
+    else {
+        return suggestion_to_findings(&suggestions, filter);
+    };
+    suggestions.extend(
+        crate::graph::build_llm_link_suggestions(conn, &snapshot, &client).unwrap_or_default(),
+    );
+
+    suggestion_to_findings(&suggestions, filter)
+}
+
+/// Deterministic-only missing links (used by `find_all`).
+fn find_missing_links_deterministic(
+    conn: &Connection,
+    filter: Option<&ScopeFilter<'_>>,
+) -> Vec<InspectFinding> {
+    let Ok(snapshot) = load_graph_snapshot(conn) else {
+        return Vec::new();
+    };
+    let suggestions = build_link_suggestions(conn, &snapshot, None).unwrap_or_default();
+    suggestion_to_findings(&suggestions, filter)
+}
+
+fn suggestion_to_findings(
+    suggestions: &[crate::graph::LinkSuggestion],
+    filter: Option<&ScopeFilter<'_>>,
+) -> Vec<InspectFinding> {
+    suggestions
+        .iter()
+        .filter(|s| filter.is_none_or(|f| f.accepts(&s.path)))
+        .filter_map(|s| {
+            let provenance = if s.provenance == crate::graph::PROVENANCE_LLM {
+                "llm"
+            } else {
+                "deterministic"
+            };
+            VaultPath::parse(&s.path).ok().map(|vp| InspectFinding {
+                check: InspectCheck::MissingLinks,
+                path: vp,
+                message: format!(
+                    "missing-link ({provenance}): \"{term}\" → {target}",
+                    term = s.term,
+                    target = s.target
+                ),
+                line: Some(s.line),
             })
         })
         .collect()

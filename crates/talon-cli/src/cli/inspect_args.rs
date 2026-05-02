@@ -19,6 +19,8 @@ pub enum InspectCheck {
     Unreferenced,
     /// Find graph health signals.
     Graph,
+    /// Suggest missing wikilinks (deterministic + optional LLM-assisted).
+    MissingLinks,
 }
 
 impl From<InspectCheck> for talon_core::InspectCheck {
@@ -30,6 +32,7 @@ impl From<InspectCheck> for talon_core::InspectCheck {
             InspectCheck::DanglingRefs => Self::DanglingRefs,
             InspectCheck::Unreferenced => Self::Unreferenced,
             InspectCheck::Graph => Self::Graph,
+            InspectCheck::MissingLinks => Self::MissingLinks,
         }
     }
 }

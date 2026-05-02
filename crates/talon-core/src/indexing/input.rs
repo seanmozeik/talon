@@ -18,6 +18,8 @@ pub enum InspectCheck {
     Unreferenced,
     /// Persisted graph health findings.
     Graph,
+    /// Suggest missing wikilinks (deterministic + optional LLM-assisted).
+    MissingLinks,
 }
 
 /// Sync request.
