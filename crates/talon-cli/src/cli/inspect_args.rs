@@ -48,4 +48,8 @@ pub struct InspectArgs {
     /// Skip LLM-assisted suggestions (faster, deterministic only).
     #[arg(long, short = 'F', global = true)]
     pub fast: bool,
+
+    /// Maximum number of findings to display.
+    #[arg(long, short = 'n', global = true)]
+    pub limit: Option<u16>,
 }

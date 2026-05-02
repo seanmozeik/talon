@@ -123,31 +123,49 @@ fn surprising_connection_findings(
     snapshot: &GraphSnapshot,
     filter: Option<&ScopeFilter<'_>>,
 ) -> Vec<InspectFinding> {
+    // Group cross-community targets by source note.
+    let mut groups: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
     let mut seen = BTreeSet::new();
-    snapshot
-        .edges
-        .iter()
-        .filter_map(|edge| {
-            let from = snapshot.nodes.get(&edge.from_path)?;
-            let to = snapshot.nodes.get(&edge.to_path)?;
-            if from.community_id == to.community_id || from.structural || to.structural {
-                return None;
-            }
-            if !seen.insert((edge.from_path.clone(), edge.to_path.clone())) {
-                return None;
-            }
-            if !accepts(filter, &edge.from_path) {
-                return None;
-            }
-            finding(
-                &edge.from_path,
-                &format!(
-                    "graph-surprising-connection: cross-community link → {}",
-                    edge.to_path
-                ),
-            )
-        })
-        .collect()
+    for edge in &snapshot.edges {
+        let Some(from) = snapshot.nodes.get(&edge.from_path) else {
+            continue;
+        };
+        let Some(to) = snapshot.nodes.get(&edge.to_path) else {
+            continue;
+        };
+        // Skip intra-community, structural, or duplicate edges.
+        if from.community_id == to.community_id || from.structural || to.structural {
+            continue;
+        }
+        if !seen.insert((edge.from_path.as_str(), edge.to_path.as_str())) {
+            continue;
+        }
+        if !accepts(filter, &edge.from_path) {
+            continue;
+        }
+        groups
+            .entry(edge.from_path.as_str())
+            .or_default()
+            .push(edge.to_path.as_str());
+    }
+    let mut findings = Vec::with_capacity(groups.len());
+    for (path, targets) in groups {
+        let targets_list = targets.join(", ");
+        let Ok(path) = VaultPath::parse(path) else {
+            continue;
+        };
+        findings.push(InspectFinding {
+            check: InspectCheck::Graph,
+            path,
+            message: format!(
+                "graph-surprising-connection: cross-community links → {} ({})",
+                targets_list,
+                targets.len()
+            ),
+            line: None,
+        });
+    }
+    findings
 }
 
 fn accepts(filter: Option<&ScopeFilter<'_>>, path: &str) -> bool {

@@ -178,12 +178,12 @@ pub fn format_inspect_human(w: &mut impl Write, resp: &InspectResponse) -> Resul
                 inspect_label(check),
                 findings.len()
             )?;
-            for (i, f) in findings.iter().take(20).enumerate() {
+            for (i, f) in findings.iter().enumerate() {
                 format_inspect_card(w, i + 1, f, &bold, &dim)?;
             }
         }
     } else {
-        for (i, f) in resp.findings.iter().take(20).enumerate() {
+        for (i, f) in resp.findings.iter().enumerate() {
             format_inspect_card(w, i + 1, f, &bold, &dim)?;
         }
     }

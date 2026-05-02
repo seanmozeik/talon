@@ -65,4 +65,7 @@ pub struct InspectInput {
     /// Skip LLM-assisted suggestions (used by --fast).
     #[serde(default)]
     pub skip_llm_suggestions: bool,
+    /// Maximum number of findings to return.
+    #[serde(default)]
+    pub limit: Option<u16>,
 }

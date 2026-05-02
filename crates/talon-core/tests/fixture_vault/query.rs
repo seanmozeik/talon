@@ -199,6 +199,7 @@ fn fixture_vault_inspect_orphans() {
         scope_only: Vec::new(),
         scope_all: false,
         skip_llm_suggestions: false,
+        limit: None,
     };
 
     let response = query_inspect(&conn, &input, None);

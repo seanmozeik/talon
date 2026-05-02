@@ -56,6 +56,10 @@ pub fn query_inspect(
             .collect(),
         None => findings,
     };
+    let findings = match input.limit {
+        Some(n) => findings.into_iter().take(n as usize).collect(),
+        None => findings,
+    };
     InspectResponse {
         vault: None,
         check: input.check,
