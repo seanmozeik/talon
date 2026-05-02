@@ -101,6 +101,12 @@ fn format_diagnostics_line(diag: &SearchDiagnostics) -> Option<String> {
     } else if let Some(count) = diag.rerank_candidates {
         parts.push(format!("rerank {count}c"));
     }
+    if let Some(graph) = diag.graph.as_ref() {
+        parts.push(format!(
+            "graph +{} expanded +{} boosted +{:.2} score",
+            graph.expanded_results, graph.boosted_results, graph.score_contribution
+        ));
+    }
     if parts.is_empty() {
         None
     } else {

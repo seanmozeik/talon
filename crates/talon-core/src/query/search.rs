@@ -132,21 +132,13 @@ fn run_search_inner(
     };
 
     // Step 1.5: post-filter glob where clauses (can't be expressed in SQL).
-    let raw_results =
-        if crate::search::pre_filter::has_glob_where_clauses(&pre_filter.where_clauses) {
-            crate::search::pre_filter::filter_results_by_glob(
-                conn,
-                &raw_results,
-                &pre_filter.where_clauses,
-            )
-        } else {
-            raw_results
-        };
+    let raw_results = super::search_filter::apply_glob_post_filter(conn, raw_results, &pre_filter);
 
     // Step 2: scope priority multiplication (score modifier, not filter).
     let mut scored = apply_scope_priority(raw_results, config, &input.scope);
     apply_index_page_preference(&mut scored);
-    super::search_graph::refine_graph_results(conn, input, config, &mut scored);
+    let graph_diagnostics =
+        super::search_graph::refine_graph_results(conn, input, config, &mut scored);
     scored.sort_by(|a, b| b.raw.score.total_cmp(&a.raw.score));
 
     // Step 6: total is post-filter, pre-truncate.
@@ -160,6 +152,9 @@ fn run_search_inner(
     let reranked = input.mode == SearchMode::Hybrid && !input.fast;
 
     let anchors_requested = input.anchors.unwrap_or(false);
+    let diagnostics =
+        with_graph_diagnostics(diagnostics, graph_diagnostics, include_expanded_queries);
+
     let response = SearchResponse {
         vault: None,
         query: Some(raw_query),
@@ -190,6 +185,17 @@ fn run_search_inner(
         search_cache::store(conn, input, config, &response);
     }
     response
+}
+
+fn with_graph_diagnostics(
+    mut diagnostics: Option<crate::search::SearchDiagnostics>,
+    graph_diagnostics: Option<crate::search::GraphSearchDiagnostics>,
+    include_expanded_queries: bool,
+) -> Option<crate::search::SearchDiagnostics> {
+    if include_expanded_queries && let Some(graph) = graph_diagnostics {
+        diagnostics.get_or_insert_with(Default::default).graph = Some(graph);
+    }
+    diagnostics
 }
 
 /// Converts a [`RawSearchResult`] to a [`SearchResult`] for the response.

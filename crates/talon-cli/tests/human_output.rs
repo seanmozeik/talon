@@ -145,6 +145,7 @@ fn snapshot_search_verbose_diagnostics() -> Result<()> {
             strong_signal_score: None,
             rerank_candidates: Some(30),
             rerank_ms: Some(88),
+            graph: None,
         }),
     };
     let mut buf = Vec::new();
@@ -171,6 +172,7 @@ fn snapshot_search_verbose_strong_signal() -> Result<()> {
             strong_signal_score: Some(0.93),
             rerank_candidates: None,
             rerank_ms: None,
+            graph: None,
         }),
     };
     let mut buf = Vec::new();

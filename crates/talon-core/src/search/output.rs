@@ -121,6 +121,9 @@ pub struct SearchDiagnostics {
     /// Wall-clock time spent reranking.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rerank_ms: Option<u64>,
+    /// Graph refinement impact after lexical/semantic retrieval.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<GraphSearchDiagnostics>,
 }
 
 impl SearchDiagnostics {
@@ -131,7 +134,20 @@ impl SearchDiagnostics {
             && self.strong_signal_score.is_none()
             && self.rerank_candidates.is_none()
             && self.rerank_ms.is_none()
+            && self.graph.is_none()
     }
+}
+
+/// Search graph-refinement diagnostics.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GraphSearchDiagnostics {
+    /// Existing retrieval candidates whose score was boosted by graph evidence.
+    pub boosted_results: u32,
+    /// New candidates added from the persisted graph artifact.
+    pub expanded_results: u32,
+    /// Sum of graph score contribution before final sorting/truncation.
+    pub score_contribution: f64,
 }
 
 /// Search response.

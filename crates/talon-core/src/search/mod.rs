@@ -60,7 +60,8 @@ pub use input::{
     WhereClause, WhereOperator,
 };
 pub use output::{
-    AnchorKind, MatchAnchor, MatchKind, SearchDiagnostics, SearchResponse, SearchResult,
+    AnchorKind, GraphSearchDiagnostics, MatchAnchor, MatchKind, SearchDiagnostics, SearchResponse,
+    SearchResult,
 };
 pub use rerank_pipeline::rerank_candidates;
 pub use rrf::{RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};

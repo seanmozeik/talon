@@ -6,6 +6,8 @@ use rusqlite::Connection;
 
 use crate::config::TalonConfig;
 use crate::graph::{GraphRankInput, GraphSnapshot, load_graph_snapshot, rank_related};
+use crate::numeric::count_u32;
+use crate::search::GraphSearchDiagnostics;
 use crate::search::types::{RawSearchResult, SearchScores};
 use crate::search::{Direction, SearchInput, SearchMode};
 
@@ -22,17 +24,19 @@ pub(super) fn refine_graph_results(
     input: &SearchInput,
     config: Option<&TalonConfig>,
     scored: &mut Vec<ScoredRawSearchResult>,
-) {
+) -> Option<GraphSearchDiagnostics> {
     if !graph_refinement_enabled(input) {
-        return;
+        return None;
     }
     let Ok(snapshot) = load_graph_snapshot(conn) else {
-        return;
+        return None;
     };
     if snapshot.nodes.is_empty() || snapshot.edges.is_empty() {
-        return;
+        return None;
     }
 
+    let mut boosted_results = 0_u32;
+    let mut score_contribution = 0.0_f64;
     let existing = scored
         .iter()
         .map(|result| result.raw.path.clone())
@@ -66,7 +70,10 @@ pub(super) fn refine_graph_results(
         for candidate in ranked {
             let contribution = seed_score * candidate.score;
             if let Some(index) = by_path.get(&candidate.vault_path).copied() {
-                scored[index].raw.score += contribution * GRAPH_EXISTING_BLEND;
+                let boost = contribution * GRAPH_EXISTING_BLEND;
+                scored[index].raw.score += boost;
+                boosted_results = boosted_results.saturating_add(1);
+                score_contribution += boost;
                 continue;
             }
             if graph_only.len() >= GRAPH_ONLY_LIMIT
@@ -89,15 +96,22 @@ pub(super) fn refine_graph_results(
             };
             *count = count.saturating_add(1);
             graph_only_paths.insert(candidate.vault_path);
+            score_contribution += raw.raw.score;
             graph_only.push(raw);
         }
     }
 
+    let expanded_results = count_u32(graph_only.len());
     scored.extend(graph_only);
+    (boosted_results > 0 || expanded_results > 0).then_some(GraphSearchDiagnostics {
+        boosted_results,
+        expanded_results,
+        score_contribution,
+    })
 }
 
 fn graph_refinement_enabled(input: &SearchInput) -> bool {
-    input.related || (input.mode == SearchMode::Hybrid && !input.fast)
+    input.related || input.mode == SearchMode::Hybrid
 }
 
 fn scope_priorities(
@@ -146,7 +160,7 @@ mod tests {
 
     use crate::indexing::migrations::run_migrations;
     use crate::query::search::ScoredRawSearchResult;
-    use crate::search::input::SearchInput;
+    use crate::search::input::{SearchInput, SearchMode};
     use crate::search::types::{RawSearchResult, SearchScores};
 
     use super::refine_graph_results;
@@ -161,10 +175,15 @@ mod tests {
         insert_graph_edge(&conn, "Seed.md", "Neighbor.md", 2)?;
         let mut scored = vec![scored("Seed.md", 0.9)];
 
-        refine_graph_results(&conn, &SearchInput::default(), None, &mut scored);
+        let diagnostics =
+            refine_graph_results(&conn, &SearchInput::default(), None, &mut scored)
+                .ok_or_else(|| std::io::Error::other("graph refinement should report expansion"))?;
 
         assert_eq!(scored.len(), 2);
         assert_eq!(scored[1].raw.path, "Neighbor.md");
+        assert_eq!(diagnostics.expanded_results, 1);
+        assert_eq!(diagnostics.boosted_results, 0);
+        assert!(diagnostics.score_contribution > 0.0);
         Ok(())
     }
 
@@ -177,9 +196,37 @@ mod tests {
         insert_graph_edge(&conn, "Seed.md", "Neighbor.md", 2)?;
         let mut scored = vec![scored("Seed.md", 0.9), scored("Neighbor.md", 0.2)];
 
-        refine_graph_results(&conn, &SearchInput::default(), None, &mut scored);
+        let diagnostics =
+            refine_graph_results(&conn, &SearchInput::default(), None, &mut scored)
+                .ok_or_else(|| std::io::Error::other("graph refinement should report boost"))?;
 
         assert!(scored[1].raw.score > 0.2);
+        assert_eq!(diagnostics.expanded_results, 0);
+        assert_eq!(diagnostics.boosted_results, 1);
+        assert!(diagnostics.score_contribution > 0.0);
+        Ok(())
+    }
+
+    #[test]
+    fn graph_refinement_uses_snapshot_in_fast_hybrid_mode() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut conn = Connection::open_in_memory()?;
+        run_migrations(&mut conn)?;
+        insert_graph_node(&conn, "Seed.md")?;
+        insert_graph_node(&conn, "Neighbor.md")?;
+        insert_graph_edge(&conn, "Seed.md", "Neighbor.md", 2)?;
+        let input = SearchInput {
+            fast: true,
+            mode: SearchMode::Hybrid,
+            ..SearchInput::default()
+        };
+        let mut scored = vec![scored("Seed.md", 0.9)];
+
+        let diagnostics = refine_graph_results(&conn, &input, None, &mut scored)
+            .ok_or_else(|| std::io::Error::other("fast hybrid should still use persisted graph"))?;
+
+        assert_eq!(scored.len(), 2);
+        assert_eq!(diagnostics.expanded_results, 1);
         Ok(())
     }
 

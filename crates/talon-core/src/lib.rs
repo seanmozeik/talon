@@ -72,8 +72,9 @@ pub use query::{
 };
 pub use rusqlite::Connection;
 pub use search::{
-    AnchorKind, Direction, FrontmatterFilter, MatchAnchor, MatchKind, SearchDiagnostics,
-    SearchHooks, SearchInput, SearchMode, SearchResponse, SearchResult, WhereClause, WhereOperator,
+    AnchorKind, Direction, FrontmatterFilter, GraphSearchDiagnostics, MatchAnchor, MatchKind,
+    SearchDiagnostics, SearchHooks, SearchInput, SearchMode, SearchResponse, SearchResult,
+    WhereClause, WhereOperator,
 };
 pub use store::{open_database, open_database_read_only};
 pub use sync::{

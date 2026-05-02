@@ -55,6 +55,7 @@ pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
             strong_signal_score: output.strong_signal_score,
             rerank_candidates: output.rerank_candidates,
             rerank_ms: output.rerank_ms,
+            graph: None,
         };
         let diag = (!diag.is_empty()).then_some(diag);
         (output.expanded_queries, diag)
