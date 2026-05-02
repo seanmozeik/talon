@@ -9,9 +9,6 @@
 - Upstream project: <https://github.com/nashsu/llm_wiki>
 - Local source snapshot reviewed: `/home/yolo/.opensrc/repos/github.com/nashsu/llm_wiki/main`
 - Karpathy LLM Wiki pattern referenced by both projects: <https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f>
-- LLM Wiki license in the reviewed snapshot: GPL-3.0, `LICENSE`
-
-Important license note: this document is for product and architecture inspiration. Do not copy LLM Wiki source code into Talon. If any scoring math or algorithmic constants are later ported rather than independently designed, follow the repository rule: cite the exact source file and line in an inline code comment and update `LICENSE-3RD-PARTY.md`. Because the LLM Wiki snapshot is GPL-3.0, exact code reuse would need explicit license review.
 
 ## 1. Why This Document Exists
 
@@ -524,7 +521,7 @@ score =
   - structural_page_penalty
 ```
 
-Avoid copying exact LLM Wiki constants. Design Talon constants and tune with fixtures.
+Design Talon constants and tune with fixtures.
 
 Potential diagnostics per result:
 
@@ -796,7 +793,6 @@ Do not copy these directly:
 - Auto-ingest as default. Talon should not silently write generated wiki pages.
 - Broad LLM rewrites. Prefer constrained suggestions and explicit patches.
 - Web search API coupling in core.
-- Exact GPL-licensed source code.
 
 ## 10. Design Principles For Any Future Work
 
