@@ -1,0 +1,10 @@
+---
+source: crates/talon-cli/tests/human_output.rs
+expression: "String::from_utf8(buf)?"
+---
+Inspect  ·  orphans  ·  2 findings
+
+  1  Graph/Orphan.md
+     no incoming links
+  2  Lifecycle/Doomed.md
+     no incoming links

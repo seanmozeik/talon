@@ -1991,7 +1991,7 @@ dependencies = [
 
 [[package]]
 name = "talon-cli"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "anstream",
  "anstyle",
@@ -2022,7 +2022,7 @@ dependencies = [
 
 [[package]]
 name = "talon-core"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "criterion",
  "fs-err",
