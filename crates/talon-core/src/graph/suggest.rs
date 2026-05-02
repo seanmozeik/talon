@@ -9,8 +9,6 @@ use crate::TalonError;
 
 use super::GraphSnapshot;
 
-const PROVENANCE_DETERMINISTIC: &str = "deterministic";
-
 /// Persisted read-only link suggestion.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -23,8 +21,6 @@ pub struct LinkSuggestion {
     pub term: String,
     /// 1-based body line number.
     pub line: Option<u32>,
-    /// Suggestion source.
-    pub provenance: String,
 }
 
 /// Builds deterministic missing-link suggestions for active notes.
@@ -67,7 +63,6 @@ pub fn build_missing_link_suggestions(
                         target: target.clone(),
                         term: term.clone(),
                         line: Some(u32::try_from(line_index + 1).unwrap_or(u32::MAX)),
-                        provenance: PROVENANCE_DETERMINISTIC.into(),
                     });
                 }
             }

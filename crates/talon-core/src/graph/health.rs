@@ -192,12 +192,7 @@ fn missing_link_findings(
         findings.push(InspectFinding {
             check: InspectCheck::Graph,
             path,
-            message: format!(
-                "graph-missing-link: \"{term}\" -> {target} ({provenance})",
-                term = s.term,
-                target = s.target,
-                provenance = "det"
-            ),
+            message: format!("graph-missing-link: \"{}\" -> {}", s.term, s.target),
             line: s.line,
         });
     }

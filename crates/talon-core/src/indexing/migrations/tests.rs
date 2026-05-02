@@ -113,6 +113,12 @@ fn migrations_create_frontmatter_value_type_column() {
 }
 
 #[test]
+fn graph_missing_links_has_no_provenance_column() {
+    let conn = fresh_db();
+    assert!(!column_exists(&conn, "graph_missing_links", "provenance"));
+}
+
+#[test]
 fn migrations_seed_db_version_setting() {
     let conn = fresh_db();
     let value: String = conn

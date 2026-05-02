@@ -48,6 +48,11 @@ pub(super) fn build_ask_sources(
         }
     }
 
+    sort_ranked_sources(&mut sources);
+    Ok(sources.into_iter().map(|ranked| ranked.source).collect())
+}
+
+fn sort_ranked_sources(sources: &mut [RankedAskSource]) {
     sources.sort_by(|left, right| {
         right
             .source
@@ -57,7 +62,6 @@ pub(super) fn build_ask_sources(
             .then_with(|| left.result_rank.cmp(&right.result_rank))
             .then_with(|| left.chunk_index.cmp(&right.chunk_index))
     });
-    Ok(sources.into_iter().map(|ranked| ranked.source).collect())
 }
 
 fn matching_chunks(
@@ -208,5 +212,47 @@ mod tests {
             },
         );
         assert_eq!(source.snippet, "Cook\nBraise gently.");
+    }
+
+    #[test]
+    fn ranked_sources_keep_multiple_strong_chunks_ahead_of_weaker_notes() {
+        let mut sources = vec![
+            ranked_source("weak.md", 0.4, 3, 1, 0),
+            ranked_source("strong.md", 0.9, 1, 0, 0),
+            ranked_source("strong.md", 0.9, 2, 0, 1),
+            ranked_source("middle.md", 0.7, 4, 2, 0),
+        ];
+
+        sort_ranked_sources(&mut sources);
+
+        let paths: Vec<&str> = sources
+            .iter()
+            .map(|ranked| ranked.source.vault_path.as_str())
+            .collect();
+        assert_eq!(
+            paths,
+            vec!["strong.md", "strong.md", "middle.md", "weak.md"]
+        );
+    }
+
+    fn ranked_source(
+        path: &str,
+        score: f64,
+        chunk_rank: u32,
+        result_rank: usize,
+        chunk_index: u32,
+    ) -> RankedAskSource {
+        RankedAskSource {
+            source: AskSource {
+                vault_path: VaultPath::parse(path)
+                    .unwrap_or_else(|err| panic!("valid vault path: {err}")),
+                title: path.to_string(),
+                snippet: path.to_string(),
+                score,
+            },
+            chunk_rank,
+            result_rank,
+            chunk_index,
+        }
     }
 }

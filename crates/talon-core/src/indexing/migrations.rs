@@ -152,8 +152,7 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
        target     TEXT NOT NULL,
        term       TEXT NOT NULL,
        line       INTEGER,
-       provenance TEXT NOT NULL,
-       PRIMARY KEY (path, target, term, provenance)
+       PRIMARY KEY (path, target, term)
      )",
     "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts_bm25 USING fts5(
        title, aliases, content,
