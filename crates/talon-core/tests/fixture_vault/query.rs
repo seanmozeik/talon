@@ -153,7 +153,7 @@ fn fixture_vault_meta_where_archived() {
 }
 
 #[test]
-fn fixture_vault_lint_orphans() {
+fn fixture_vault_inspect_orphans() {
     register_sqlite_vec().unwrap();
     let vault = unique_path("inspect");
     seed_fixture_vault(&vault);

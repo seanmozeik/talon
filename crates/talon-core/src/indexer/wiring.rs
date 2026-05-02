@@ -119,7 +119,7 @@ pub fn index_one_note_with_config(
         extract_wikilinks(&format!("{}\n{}", parsed.frontmatter_raw, parsed.body))
     };
     let mut resolved = resolve_wiki_links(vault_path, &full_for_links, &updated_cache);
-    // Record unresolved links too: the broken-link lint and `links.to_path`
+    // Record unresolved links too: the broken-link inspect and `links.to_path`
     // schema both require a non-empty target. Using `raw_target` as the
     // placeholder keeps the row addressable while clearly signaling that no
     // matching note was found.

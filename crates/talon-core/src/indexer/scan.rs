@@ -33,7 +33,7 @@ pub struct IndexerConfig {
     pub ignore_patterns: Vec<String>,
     /// Optional Talon config used to resolve per-note scope names during indexing.
     pub talon_config: Option<TalonConfig>,
-    /// Optional ask-mode graph suggestion client for read-only lint candidates.
+    /// Optional ask-mode graph suggestion client for read-only inspect candidates.
     pub graph_suggester: Option<GraphSuggestionClient>,
 }
 

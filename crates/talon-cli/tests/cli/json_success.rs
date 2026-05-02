@@ -76,7 +76,7 @@ fn agent_outputs_omit_envelope_metadata_for_query_commands() {
 }
 
 #[test]
-fn agent_lint_groups_findings_by_check() {
+fn agent_inspect_groups_findings_by_check() {
     let vault = TempVault::new("agent-inspect");
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
         .args(["inspect", "--agent", "--config"])
@@ -164,7 +164,7 @@ fn json_envelope_changes_success() {
 }
 
 #[test]
-fn json_envelope_lint_success() {
+fn json_envelope_inspect_success() {
     let vault = TempVault::new("inspect");
     let out = vault.run(&["inspect", "orphans"]);
     assert!(out.status.success(), "talon inspect should exit 0");
@@ -173,7 +173,7 @@ fn json_envelope_lint_success() {
 }
 
 #[test]
-fn json_envelope_lint_defaults_to_all() {
+fn json_envelope_inspect_defaults_to_all() {
     let vault = TempVault::new("inspect-all");
     let out = vault.run(&["inspect"]);
     assert!(out.status.success(), "talon inspect should exit 0");

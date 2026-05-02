@@ -175,7 +175,7 @@ fn changes_success_round_trip() {
 }
 
 #[test]
-fn lint_success_round_trip() {
+fn inspect_success_round_trip() {
     let data = TalonResponseData::Inspect(InspectResponse {
         vault: None,
         check: InspectCheck::Orphans,

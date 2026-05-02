@@ -117,7 +117,7 @@ fn scope_all_accepts_every_path() {
 }
 
 #[test]
-fn inspect_excluded_honors_scope_lint_and_global_ignore() {
+fn inspect_excluded_honors_scope_inspect_and_global_ignore() {
     let mut daily = scope("daily/**", ScopePriority::Muted, true);
     daily.inspect = false;
     let mut cfg = config_with(vec![

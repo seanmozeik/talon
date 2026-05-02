@@ -267,7 +267,7 @@ fn snapshot_status_ready() -> Result<()> {
 // ── inspect ─────────────────────────────────────────────────────────────────────────
 
 #[test]
-fn snapshot_lint_orphans() -> Result<()> {
+fn snapshot_inspect_orphans() -> Result<()> {
     let resp = InspectResponse {
         vault: None,
         check: InspectCheck::Orphans,

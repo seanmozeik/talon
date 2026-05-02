@@ -88,7 +88,7 @@ fn merged_chat_template_kwargs(
 ///
 /// Returns [`TalonError::Sqlite`] when note content cannot be read. Chat
 /// failures produce no suggestions because deterministic suggestions are still
-/// available and sync should remain best-effort for this read-only lint aid.
+/// available and sync should remain best-effort for this read-only inspect aid.
 pub fn build_llm_link_suggestions(
     conn: &rusqlite::Connection,
     snapshot: &GraphSnapshot,
