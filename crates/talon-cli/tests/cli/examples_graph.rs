@@ -59,4 +59,31 @@ fn examples_config_sync_builds_graph_tables() {
     assert!(results[0]["score"].as_f64().unwrap_or(0.0) > 0.0);
     assert!(results[0]["signals"]["directOut"].as_f64().unwrap_or(0.0) > 0.0);
     assert_eq!(results[0]["signals"]["typeAffinity"], 1.0);
+
+    let output = Command::new(env!("CARGO_BIN_EXE_talon"))
+        .args(["lint", "--agent", "--config", "../../examples/config.toml"])
+        .output()
+        .unwrap_or_else(|err| panic!("spawn talon lint: {err}"));
+    assert!(
+        output.status.success(),
+        "example lint failed:\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let json: Value = serde_json::from_slice(&output.stdout)
+        .unwrap_or_else(|err| panic!("parse lint JSON: {err}"));
+    let graph = json["checks"]["graph"]
+        .as_array()
+        .unwrap_or_else(|| panic!("lint output missing graph findings: {json}"));
+
+    assert!(graph.iter().any(|finding| {
+        finding["message"]
+            .as_str()
+            .is_some_and(|message| message.starts_with("graph-isolated:"))
+    }));
+    assert!(graph.iter().any(|finding| {
+        finding["message"]
+            .as_str()
+            .is_some_and(|message| message.starts_with("graph-missing-link:"))
+    }));
 }
