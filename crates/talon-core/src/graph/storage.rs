@@ -91,6 +91,23 @@ pub(super) fn replace_graph(conn: &Connection, graph: &BuiltGraph) -> Result<(),
             source,
         })?;
     }
+    for suggestion in &graph.missing_links {
+        conn.execute(
+            "INSERT INTO graph_missing_links (path, target, term, line, provenance)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                suggestion.path,
+                suggestion.target,
+                suggestion.term,
+                suggestion.line,
+                suggestion.provenance,
+            ],
+        )
+        .map_err(|source| TalonError::Sqlite {
+            context: "insert graph missing link",
+            source,
+        })?;
+    }
     Ok(())
 }
 

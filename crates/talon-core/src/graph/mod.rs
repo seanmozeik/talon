@@ -13,6 +13,9 @@ mod scoring_support;
 mod scoring_tests;
 mod snapshot;
 mod storage;
+mod suggest;
+#[cfg(test)]
+mod suggest_tests;
 
 pub use build::{GraphBuildInput, GraphBuildStats, rebuild_graph};
 pub use community::{CommunityInfo, detect_communities};
@@ -21,3 +24,4 @@ pub use scoring::{
     GraphRankInput, GraphRankedNode, GraphRelation, GraphSignalBreakdown, rank_related,
 };
 pub use snapshot::{GraphEdge, GraphNode, GraphSnapshot, load_graph_snapshot};
+pub use suggest::{LinkSuggestion, build_missing_link_suggestions};

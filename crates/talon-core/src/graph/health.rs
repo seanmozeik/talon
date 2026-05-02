@@ -26,6 +26,7 @@ pub fn graph_health(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<
     findings.extend(overcentral_findings(&snapshot, filter));
     findings.extend(bridge_findings(&snapshot, filter));
     findings.extend(surprising_connection_findings(&snapshot, filter));
+    findings.extend(missing_link_findings(conn, filter));
     findings
 }
 
@@ -151,6 +152,36 @@ fn finding(path: &str, message: &str) -> Option<LintFinding> {
         message: message.to_string(),
         line: None,
     })
+}
+
+fn missing_link_findings(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<LintFinding> {
+    let Ok(mut stmt) = conn.prepare(
+        "SELECT path, target, term, line FROM graph_missing_links
+         ORDER BY path, target, term",
+    ) else {
+        return Vec::new();
+    };
+    let Ok(rows) = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<u32>>(3)?,
+        ))
+    }) else {
+        return Vec::new();
+    };
+    rows.flatten()
+        .filter(|(path, _target, _term, _line)| accepts(filter, path))
+        .filter_map(|(path, target, term, line)| {
+            Some(LintFinding {
+                check: LintCheck::Graph,
+                path: VaultPath::parse(&path).ok()?,
+                message: format!("graph-missing-link: possible wikilink: \"{term}\" -> {target}"),
+                line,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

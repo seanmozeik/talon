@@ -32,6 +32,7 @@ pub(super) struct BuiltGraph {
     pub(super) edges: Vec<GraphEdge>,
     pub(super) source_citations: BTreeMap<String, BTreeSet<String>>,
     pub(super) communities: Vec<super::CommunityInfo>,
+    pub(super) missing_links: Vec<super::LinkSuggestion>,
 }
 
 /// Rebuilds graph tables from active notes and active-active resolved links.
@@ -75,6 +76,7 @@ fn build_graph(conn: &Connection) -> Result<BuiltGraph, TalonError> {
         source_citations: graph.source_citations.clone(),
     };
     graph.communities = super::detect_communities(&mut snapshot);
+    graph.missing_links = super::build_missing_link_suggestions(conn, &snapshot)?;
     graph.nodes = snapshot.nodes;
     Ok(graph)
 }
