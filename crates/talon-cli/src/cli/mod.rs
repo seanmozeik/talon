@@ -3,7 +3,7 @@
 mod ask_args;
 mod changes_args;
 mod init_args;
-mod lint_args;
+mod inspect_args;
 mod meta_args;
 mod read_args;
 mod recall_args;
@@ -20,8 +20,8 @@ pub use ask_args::AskArgs;
 pub use changes_args::ChangesArgs;
 use clap::{Parser, Subcommand};
 pub use init_args::InitArgs;
-pub use lint_args::LintArgs;
-pub use lint_args::LintCheck;
+pub use inspect_args::InspectArgs;
+pub use inspect_args::LintCheck;
 pub use meta_args::MetaArgs;
 pub use read_args::ReadArgs;
 pub use recall_args::RecallArgs;
@@ -107,8 +107,8 @@ pub enum Commands {
     #[command(about = "Show vault changes since a timestamp.")]
     Changes(ChangesArgs),
 
-    #[command(about = "Lint your vault for common issues.")]
-    Lint(LintArgs),
+    #[command(about = "Inspect your vault for structural signals and patterns.")]
+    Inspect(InspectArgs),
 
     #[command(about = "Recall relevant vault context for a message.")]
     Recall(RecallArgs),

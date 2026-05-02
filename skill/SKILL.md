@@ -1,6 +1,6 @@
 ---
 name: talon
-description: Agent-facing contract for Obsidian vault search, ask, read, sync, recall, related, meta, changes, lint, and status.
+description: Agent-facing contract for Obsidian vault search, ask, read, sync, recall, related, meta, changes, inspect, and status.
 ---
 
 # Talon
@@ -125,8 +125,8 @@ talon --agent search "<query>" --scope-all
 - `talon --agent sync --rebuild`: delete and recreate the SQLite index, then index the vault from scratch. Add global `--fast` for a lexical-only rebuild.
 - `talon --agent meta --tag-counts`: inspect tag distribution.
 - `talon --agent changes --since 7d`: inspect recent added/modified/deleted notes. `--since` accepts relative durations such as `7d`/`3h`, ISO 8601 timestamps, dates, or epoch milliseconds.
-- `talon --agent lint`: inspect broken links, orphan/unreferenced notes, graph health, and read-only missing-link opportunities.
-- `talon --agent lint graph`: inspect only graph-health and read-only missing-link findings; it does not edit files.
+- `talon --agent inspect`: inspect broken links, orphan/unreferenced notes, graph health, and read-only missing-link opportunities.
+- `talon --agent inspect graph`: inspect only graph-health and read-only missing-link findings; it does not edit files.
 - `talon --agent status`: inspect index readiness.
 
 Note: when MCP is active, the vault syncs in the background - no action needed.

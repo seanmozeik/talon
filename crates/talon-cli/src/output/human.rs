@@ -144,13 +144,13 @@ pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> 
     let finding_word = if total == 1 { "finding" } else { "findings" };
     writeln!(
         w,
-        "{heading}Lint{heading:#}  ·  {bold}{}{bold:#}  ·  {dim}{total} {finding_word}{dim:#}",
+        "{heading}Inspect{heading:#}  ·  {bold}{}{bold:#}  ·  {dim}{total} {finding_word}{dim:#}",
         lint_label(resp.check)
     )?;
 
     if total == 0 {
         writeln!(w)?;
-        writeln!(w, "  {dim}No issues found.{dim:#}")?;
+        writeln!(w, "  {dim}No findings.{dim:#}")?;
         return Ok(());
     }
 

@@ -1,5 +1,5 @@
 use super::{output_mode, should_spin};
-use crate::cli::{Cli, LintArgs, LintCheck};
+use crate::cli::{Cli, InspectArgs, LintCheck};
 use crate::config::{self, RefreshLockPolicy, refresh_index_if_needed, vault_container_path};
 use crate::output::emit_response;
 use crate::spinner;
@@ -12,7 +12,7 @@ use talon_core::{
     query_lint, vec_ext::register_sqlite_vec,
 };
 
-pub(super) async fn emit(args: &LintArgs, cli: &Cli) -> Result<()> {
+pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
     let check = args.check.unwrap_or(LintCheck::All).into();
 
     let input = LintInput {
@@ -36,8 +36,8 @@ pub(super) async fn emit(args: &LintArgs, cli: &Cli) -> Result<()> {
         register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
         let mut conn = open_database(&db_path)
             .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-        // Lint always refreshes — findings must reflect current vault state.
-        // `false` for `fast`: lint never opts out of refresh.
+        // Always refreshes — findings must reflect current vault state.
+        // `false` for `fast`: inspect never opts out of refresh.
         refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::ErrorIfBusy)?;
 
         let mut response = query_lint(&conn, &input, Some(&config));
@@ -54,7 +54,7 @@ pub(super) async fn emit(args: &LintArgs, cli: &Cli) -> Result<()> {
         Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("lint", data, meta))
     };
     let response = if should_spin(cli) {
-        spinner::with_spinner("Running lint...".to_string(), work).await?
+        spinner::with_spinner("Inspecting vault...".to_string(), work).await?
     } else {
         work.await?
     };

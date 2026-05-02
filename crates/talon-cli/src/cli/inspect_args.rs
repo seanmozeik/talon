@@ -1,10 +1,10 @@
-//! Arguments for `talon lint`.
+//! Arguments for `talon inspect`.
 
 use clap::{Args, ValueEnum};
 
 use crate::cli::SharedScopeArgs;
 
-/// Lint check type (clap derive wrapper).
+/// Inspect check type (clap derive wrapper).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum LintCheck {
     /// Run all checks.
@@ -17,7 +17,7 @@ pub enum LintCheck {
     DanglingRefs,
     /// Find unreferenced notes.
     Unreferenced,
-    /// Find graph health issues.
+    /// Find graph health signals.
     Graph,
 }
 
@@ -34,11 +34,11 @@ impl From<LintCheck> for talon_core::LintCheck {
     }
 }
 
-/// Arguments for the `lint` subcommand.
+/// Arguments for the `inspect` subcommand.
 #[derive(Debug, Clone, Args)]
-#[command(about = "Lint your vault for common issues.")]
-pub struct LintArgs {
-    /// Which lint check to run (default: all).
+#[command(about = "Inspect your vault for structural signals and patterns.")]
+pub struct InspectArgs {
+    /// Which inspect check to run (default: all).
     #[arg(value_enum, ignore_case = true)]
     pub check: Option<LintCheck>,
 

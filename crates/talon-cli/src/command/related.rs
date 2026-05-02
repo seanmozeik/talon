@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::time::Instant;
 use talon_core::{
     Direction, RelatedInput, ResponseMeta, ScopeFilter, TalonEnvelope, TalonResponseData,
-    find_related, open_database, open_database_read_only,
+    find_related, graph::load_graph_snapshot, open_database, open_database_read_only,
 };
 
 pub(super) async fn emit(args: &RelatedArgs, cli: &Cli) -> Result<()> {
@@ -54,6 +54,18 @@ pub(super) async fn emit(args: &RelatedArgs, cli: &Cli) -> Result<()> {
             fast,
             RefreshLockPolicy::ErrorIfBusy,
         )?;
+
+        // Validate source note exists before querying — prevents silent empty
+        // results that mask mis-typed paths.
+        let snapshot = load_graph_snapshot(&conn)
+            .ok()
+            .filter(|s| !s.nodes.is_empty());
+        if snapshot
+            .as_ref()
+            .is_some_and(|s| !s.nodes.contains_key(&input.path))
+        {
+            eyre::bail!("note not found: {}", input.path);
+        }
 
         let mut response = find_related(&conn, &input, Some(&config));
         response.vault = vault;

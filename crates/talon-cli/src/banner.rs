@@ -51,7 +51,7 @@ pub fn should_clear_fancy_prelude(cli: &Cli) -> bool {
                 | Commands::Related(_)
                 | Commands::Meta(_)
                 | Commands::Changes(_)
-                | Commands::Lint(_)
+                | Commands::Inspect(_)
                 | Commands::Recall(_)
         )
     )

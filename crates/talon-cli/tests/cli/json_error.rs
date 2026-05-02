@@ -1,10 +1,10 @@
 use super::assert_error_envelope;
 
 #[test]
-fn json_error_envelope_lint_config_missing() {
+fn json_error_envelope_inspect_config_missing() {
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
         .args([
-            "lint",
+            "inspect",
             "orphans",
             "--json",
             "--config",
@@ -14,7 +14,7 @@ fn json_error_envelope_lint_config_missing() {
         .unwrap_or_else(|e| panic!("spawn talon: {e}"));
     assert!(!out.status.success(), "should exit nonzero");
     let stdout = String::from_utf8_lossy(&out.stdout);
-    let v = assert_error_envelope(&stdout, "lint");
+    let v = assert_error_envelope(&stdout, "inspect");
     assert!(
         v["error"]["message"].is_string(),
         "error.message should be a string"

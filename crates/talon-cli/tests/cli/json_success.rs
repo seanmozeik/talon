@@ -55,7 +55,7 @@ fn agent_outputs_omit_envelope_metadata_for_query_commands() {
         vec!["related", "notes/hello.md"],
         vec!["meta"],
         vec!["changes", "--since", "2020-01-01T00:00:00Z"],
-        vec!["lint"],
+        vec!["inspect"],
     ] {
         let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
             .args(&args)
@@ -79,11 +79,11 @@ fn agent_outputs_omit_envelope_metadata_for_query_commands() {
 fn agent_lint_groups_findings_by_check() {
     let vault = TempVault::new("agent-lint");
     let out = std::process::Command::new(env!("CARGO_BIN_EXE_talon"))
-        .args(["lint", "--agent", "--config"])
+        .args(["inspect", "--agent", "--config"])
         .arg(&vault.config_path)
         .output()
-        .unwrap_or_else(|e| panic!("spawn talon lint: {e}"));
-    assert!(out.status.success(), "talon lint should exit 0");
+        .unwrap_or_else(|e| panic!("spawn talon inspect: {e}"));
+    assert!(out.status.success(), "talon inspect should exit 0");
     let stdout = String::from_utf8_lossy(&out.stdout);
     let v: serde_json::Value =
         serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
@@ -166,8 +166,8 @@ fn json_envelope_changes_success() {
 #[test]
 fn json_envelope_lint_success() {
     let vault = TempVault::new("lint");
-    let out = vault.run(&["lint", "orphans"]);
-    assert!(out.status.success(), "talon lint should exit 0");
+    let out = vault.run(&["inspect", "orphans"]);
+    assert!(out.status.success(), "talon inspect should exit 0");
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_success_envelope(&stdout, "lint");
 }
@@ -175,8 +175,8 @@ fn json_envelope_lint_success() {
 #[test]
 fn json_envelope_lint_defaults_to_all() {
     let vault = TempVault::new("lint-all");
-    let out = vault.run(&["lint"]);
-    assert!(out.status.success(), "talon lint should exit 0");
+    let out = vault.run(&["inspect"]);
+    assert!(out.status.success(), "talon inspect should exit 0");
     let stdout = String::from_utf8_lossy(&out.stdout);
     let envelope = assert_success_envelope(&stdout, "lint");
     assert_eq!(envelope["data"]["check"], "all");

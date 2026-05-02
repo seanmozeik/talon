@@ -5,7 +5,7 @@ mod ask_client;
 mod ask_sources;
 mod changes;
 mod init;
-mod lint;
+mod inspect;
 mod meta;
 mod read;
 mod recall;
@@ -77,7 +77,7 @@ pub async fn run(cli: &Cli) -> Result<()> {
         Commands::Status(args) => status::emit(args, cli),
         Commands::Meta(args) => meta::emit(args, cli).await,
         Commands::Changes(args) => changes::emit(args, cli).await,
-        Commands::Lint(args) => lint::emit(args, cli).await,
+        Commands::Inspect(args) => inspect::emit(args, cli).await,
         Commands::Recall(args) => recall::emit(args, cli).await,
     }
 }
