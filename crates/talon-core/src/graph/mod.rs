@@ -7,6 +7,7 @@ mod community;
 #[cfg(test)]
 mod community_tests;
 mod scoring;
+mod scoring_support;
 #[cfg(test)]
 mod scoring_tests;
 mod snapshot;

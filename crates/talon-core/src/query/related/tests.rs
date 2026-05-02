@@ -1,4 +1,4 @@
-use rusqlite::Connection;
+use rusqlite::{Connection, params};
 
 use super::*;
 use crate::indexing::migrations::run_migrations;

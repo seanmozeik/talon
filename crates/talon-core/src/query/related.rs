@@ -1,8 +1,6 @@
 //! Related-notes handler for the Talon CLI.
 
-use std::collections::{HashSet, VecDeque};
-
-use rusqlite::{Connection, params};
+use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use crate::config::{ScopeFilter, TalonConfig};
@@ -13,6 +11,8 @@ use crate::graph::{
     rank_related,
 };
 use crate::search::Direction;
+
+mod legacy;
 
 /// Related-note request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,95 +129,63 @@ pub fn find_related(
         && snapshot.nodes.contains_key(path)
         && !snapshot.edges.is_empty()
     {
-        let ranked = rank_related(
+        return graph_ranked_response(
+            conn,
+            input,
+            source_path,
+            depth,
+            config,
+            filter.as_ref(),
             &snapshot,
-            &GraphRankInput {
-                source_path: path.to_string(),
-                direction,
-                depth,
-                limit: input.limit.unwrap_or(usize::MAX),
-            },
         );
-        return RelatedResponse {
-            vault: None,
-            path: source_path,
-            direction,
-            results: ranked_to_results(conn, ranked, config, filter.as_ref()),
-        };
-    }
-
-    let mut visited: HashSet<String> = HashSet::new();
-    visited.insert(path.to_string());
-
-    // Queue holds (current_path, hops_from_source)
-    let mut queue: VecDeque<(String, u8)> = VecDeque::new();
-    queue.push_back((path.to_string(), 0));
-
-    let mut results: Vec<RelatedResult> = Vec::new();
-
-    while let Some((current_path, current_depth)) = queue.pop_front() {
-        if current_depth >= depth {
-            continue;
-        }
-
-        let neighbors = collect_neighbors(conn, &current_path, direction);
-
-        for (neighbor_path, link_text, relation, count) in neighbors {
-            if visited.contains(&neighbor_path) {
-                continue;
-            }
-            visited.insert(neighbor_path.clone());
-
-            if let Some(ref f) = filter
-                && !f.accepts(&neighbor_path)
-            {
-                continue;
-            }
-
-            let title = query_title(conn, &neighbor_path).unwrap_or_else(|| neighbor_path.clone());
-
-            let Ok(vault_path) = VaultPath::parse(&neighbor_path) else {
-                continue;
-            };
-
-            let scope = config
-                .and_then(|cfg| cfg.resolve_scope_name(std::path::Path::new(&neighbor_path)))
-                .map(str::to_string);
-            let mtime = super::mtime::local_mtime_for_path(conn, &neighbor_path);
-
-            results.push(RelatedResult {
-                vault_path,
-                title,
-                link_text,
-                relation,
-                count,
-                score: f64::from(count),
-                signals: GraphSignalBreakdown {
-                    direct_out: if relation == RelationKind::Outgoing {
-                        f64::from(count)
-                    } else {
-                        0.0
-                    },
-                    direct_backlink: if relation == RelationKind::Backlink {
-                        f64::from(count)
-                    } else {
-                        0.0
-                    },
-                    ..GraphSignalBreakdown::default()
-                },
-                scope,
-                mtime,
-            });
-
-            queue.push_back((neighbor_path, current_depth + 1));
-        }
     }
 
     RelatedResponse {
         vault: None,
         path: source_path,
         direction,
-        results,
+        results: legacy::legacy_related_results(
+            conn,
+            path,
+            depth,
+            direction,
+            filter.as_ref(),
+            config,
+        ),
+    }
+}
+
+fn graph_ranked_response(
+    conn: &Connection,
+    input: &RelatedInput,
+    source_path: VaultPath,
+    depth: u8,
+    config: Option<&TalonConfig>,
+    filter: Option<&ScopeFilter<'_>>,
+    snapshot: &crate::graph::GraphSnapshot,
+) -> RelatedResponse {
+    let ranked = rank_related(
+        snapshot,
+        &GraphRankInput {
+            source_path: input.path.trim().to_string(),
+            direction: input.direction,
+            depth,
+            limit: input.limit.unwrap_or(usize::MAX),
+            scope_priorities: config
+                .map(|cfg| {
+                    cfg.scopes
+                        .iter()
+                        .map(|(name, scope)| (name.clone(), scope.priority))
+                        .collect()
+                })
+                .unwrap_or_default(),
+        },
+    );
+    RelatedResponse {
+        vault: None,
+        path: source_path,
+        direction: input.direction,
+        results: ranked_to_results(conn, ranked, config, filter),
     }
 }
 
@@ -252,81 +220,6 @@ fn ranked_to_results(
             })
         })
         .collect()
-}
-
-/// Returns `(neighbor_path, link_text, relation, count)` tuples for a given path.
-fn collect_neighbors(
-    conn: &Connection,
-    path: &str,
-    direction: Direction,
-) -> Vec<(String, String, RelationKind, u32)> {
-    let mut neighbors = Vec::new();
-    if direction == Direction::Outgoing || direction == Direction::Both {
-        neighbors.extend(query_outgoing(conn, path));
-    }
-    if direction == Direction::Backlinks || direction == Direction::Both {
-        neighbors.extend(query_backlinks_neighbors(conn, path));
-    }
-    neighbors
-}
-
-fn query_outgoing(conn: &Connection, path: &str) -> Vec<(String, String, RelationKind, u32)> {
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT to_path, MIN(COALESCE(alias, raw_target, to_path)), COUNT(*) \
-         FROM links WHERE from_path = ? GROUP BY to_path ORDER BY to_path",
-    ) else {
-        return Vec::new();
-    };
-    stmt.query_map(params![path], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, u32>(2)?,
-        ))
-    })
-    .and_then(Iterator::collect)
-    .map(|rows: Vec<(String, String, u32)>| {
-        rows.into_iter()
-            .map(|(p, t, c)| (p, t, RelationKind::Outgoing, c))
-            .collect()
-    })
-    .unwrap_or_default()
-}
-
-fn query_backlinks_neighbors(
-    conn: &Connection,
-    path: &str,
-) -> Vec<(String, String, RelationKind, u32)> {
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT from_path, MIN(COALESCE(alias, raw_target, from_path)), COUNT(*) \
-         FROM links WHERE to_path = ? GROUP BY from_path ORDER BY from_path",
-    ) else {
-        return Vec::new();
-    };
-    stmt.query_map(params![path], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, u32>(2)?,
-        ))
-    })
-    .and_then(Iterator::collect)
-    .map(|rows: Vec<(String, String, u32)>| {
-        rows.into_iter()
-            .map(|(p, t, c)| (p, t, RelationKind::Backlink, c))
-            .collect()
-    })
-    .unwrap_or_default()
-}
-
-fn query_title(conn: &Connection, path: &str) -> Option<String> {
-    conn.query_row(
-        "SELECT title FROM notes WHERE vault_path = ? AND active = 1",
-        params![path],
-        |row| row.get(0),
-    )
-    .ok()
-    .flatten()
 }
 
 #[cfg(test)]
