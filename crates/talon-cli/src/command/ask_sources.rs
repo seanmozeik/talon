@@ -5,6 +5,16 @@ use talon_core::{AskSource, SearchResponse, SearchResult, TalonConfig};
 struct ChunkSource {
     text: String,
     heading_path: Option<String>,
+    chunk_index: u32,
+    term_matches: u32,
+}
+
+#[derive(Debug)]
+struct RankedAskSource {
+    source: AskSource,
+    chunk_rank: u32,
+    result_rank: usize,
+    chunk_index: u32,
 }
 
 pub(super) fn build_ask_sources(
@@ -17,18 +27,37 @@ pub(super) fn build_ask_sources(
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let mut sources = Vec::new();
 
-    for result in &search_response.results {
+    for (result_rank, result) in search_response.results.iter().enumerate() {
         let chunks = matching_chunks(&conn, result, &terms)?;
         if chunks.is_empty() {
-            sources.push(result_to_source(result));
+            sources.push(RankedAskSource {
+                source: result_to_source(result),
+                chunk_rank: 0,
+                result_rank,
+                chunk_index: 0,
+            });
             continue;
         }
         for chunk in chunks {
-            sources.push(chunk_to_source(result, chunk));
+            sources.push(RankedAskSource {
+                chunk_rank: chunk.term_matches,
+                chunk_index: chunk.chunk_index,
+                source: chunk_to_source(result, chunk),
+                result_rank,
+            });
         }
     }
 
-    Ok(sources)
+    sources.sort_by(|left, right| {
+        right
+            .source
+            .score
+            .total_cmp(&left.source.score)
+            .then_with(|| right.chunk_rank.cmp(&left.chunk_rank))
+            .then_with(|| left.result_rank.cmp(&right.result_rank))
+            .then_with(|| left.chunk_index.cmp(&right.chunk_index))
+    });
+    Ok(sources.into_iter().map(|ranked| ranked.source).collect())
 }
 
 fn matching_chunks(
@@ -38,7 +67,7 @@ fn matching_chunks(
 ) -> Result<Vec<ChunkSource>> {
     let mut stmt = conn
         .prepare(
-            "SELECT c.text, c.heading_path
+            "SELECT c.text, c.heading_path, c.chunk_index
              FROM chunks c
              JOIN notes n ON n.id = c.note_id
              WHERE n.vault_path = ? AND n.active = 1
@@ -50,13 +79,16 @@ fn matching_chunks(
             Ok(ChunkSource {
                 text: row.get(0)?,
                 heading_path: row.get(1)?,
+                chunk_index: row.get(2)?,
+                term_matches: 0,
             })
         })
         .wrap_err("querying ask chunks")?;
     let mut chunks = Vec::new();
     for row in rows {
-        let chunk = row.wrap_err("reading ask chunk")?;
-        if chunk_score(&chunk, terms) > 0 {
+        let mut chunk = row.wrap_err("reading ask chunk")?;
+        chunk.term_matches = chunk_score(&chunk, terms);
+        if chunk.term_matches > 0 {
             chunks.push(chunk);
         }
     }
@@ -137,6 +169,8 @@ mod tests {
         let chunk = ChunkSource {
             text: "Slow braise until tender.".to_string(),
             heading_path: Some("Lamb Neck".to_string()),
+            chunk_index: 0,
+            term_matches: 0,
         };
         assert_eq!(
             chunk_score(&chunk, &["lamb".to_string(), "braise".to_string()]),
@@ -169,6 +203,8 @@ mod tests {
             ChunkSource {
                 text: "Braise gently.".to_string(),
                 heading_path: Some("Cook".to_string()),
+                chunk_index: 0,
+                term_matches: 0,
             },
         );
         assert_eq!(source.snippet, "Cook\nBraise gently.");
