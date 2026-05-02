@@ -98,6 +98,8 @@ struct AgentSync<'a> {
     dimension_mismatch: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
     remediation: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    graph: Option<&'a talon_core::GraphBuildStats>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     diagnostics: Vec<&'a str>,
 }
@@ -112,6 +114,7 @@ impl<'a> From<&'a SyncResponse> for AgentSync<'a> {
             embed_failed: non_zero(sync.embed_failed),
             dimension_mismatch: sync.dimension_mismatch.then_some(true),
             remediation: sync.embed_remediation.as_deref(),
+            graph: sync.graph.as_ref(),
             diagnostics: sync.embed_diagnostics.iter().map(String::as_str).collect(),
         }
     }

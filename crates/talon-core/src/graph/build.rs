@@ -15,7 +15,8 @@ use super::snapshot::{GraphEdge, GraphNode};
 pub struct GraphBuildInput;
 
 /// Statistics returned after rebuilding the graph artifact.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GraphBuildStats {
     /// Active graph node count.
     pub node_count: u32,

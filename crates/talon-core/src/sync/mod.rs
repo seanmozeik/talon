@@ -193,7 +193,7 @@ pub fn run_sync_with_chunker_locked(
     // missing `to_path` and lets the new aliases / new target files satisfy
     // existing references.
     relink_unresolved(conn).map_err(SyncError::Indexer)?;
-    rebuild_graph(conn, &GraphBuildInput).map_err(SyncError::Indexer)?;
+    stats.graph = Some(rebuild_graph(conn, &GraphBuildInput).map_err(SyncError::Indexer)?);
 
     // Tombstone state currently lives in the in-memory `ChangeIndex` (see
     // `crate::indexing::change_tracking`); the persistent change-feed table will land in

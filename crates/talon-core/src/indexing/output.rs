@@ -58,6 +58,9 @@ pub struct SyncResponse {
     /// Up to 20 redacted detail strings from the embed pass.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub embed_diagnostics: Vec<String>,
+    /// Graph artifact stats from sync-time graph rebuild.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub graph: Option<crate::graph::GraphBuildStats>,
     /// Duration in milliseconds.
     pub duration_ms: u64,
 }

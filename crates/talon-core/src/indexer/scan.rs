@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 
 use crate::TalonError;
 use crate::config::{ChunkerConfig, TalonConfig};
+use crate::graph::GraphBuildStats;
 use crate::indexing::perform_note_deletion;
 
 use super::prelude::{
@@ -57,6 +58,8 @@ pub struct IndexerStats {
     pub skipped: u32,
     /// Files reconciled away (present in DB, missing on disk).
     pub deleted: u32,
+    /// Graph artifact stats from the post-scan rebuild.
+    pub graph: Option<GraphBuildStats>,
 }
 
 fn file_mtime_ms(path: &Path) -> Option<i64> {

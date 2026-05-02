@@ -82,6 +82,7 @@ fn sync_success_round_trip() {
         dimension_mismatch: false,
         embed_remediation: None,
         embed_diagnostics: Vec::new(),
+        graph: None,
         duration_ms: 100,
     });
     let envelope = TalonEnvelope::ok("sync", data, success_meta());

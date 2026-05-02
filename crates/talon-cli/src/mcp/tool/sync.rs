@@ -70,6 +70,7 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
         dimension_mismatch,
         embed_remediation,
         embed_diagnostics,
+        graph: stats.graph,
         duration_ms: elapsed_ms(started),
     };
     let meta = ResponseMeta {

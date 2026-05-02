@@ -200,6 +200,7 @@ fn snapshot_sync_fast() -> Result<()> {
         dimension_mismatch: false,
         embed_remediation: None,
         embed_diagnostics: vec![],
+        graph: None,
         duration_ms: 42,
     };
     let mut buf = Vec::new();
@@ -225,6 +226,7 @@ fn snapshot_sync_with_embed() -> Result<()> {
         dimension_mismatch: false,
         embed_remediation: Some("Re-run talon sync --force to reset vectors.".to_string()),
         embed_diagnostics: vec!["failed: Atlas/Overview.md".to_string()],
+        graph: None,
         duration_ms: 1234,
     };
     let mut buf = Vec::new();

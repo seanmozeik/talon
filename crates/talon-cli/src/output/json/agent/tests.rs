@@ -109,6 +109,7 @@ fn to_agent_value_returns_none_for_sync() {
             dimension_mismatch: false,
             embed_remediation: None,
             embed_diagnostics: vec![],
+            graph: None,
             duration_ms: 100,
         })),
         error: None,
