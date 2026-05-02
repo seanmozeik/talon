@@ -190,11 +190,6 @@ fn missing_link_findings(
         if !accepts(filter, &s.path) {
             continue;
         }
-        let provenance = if s.provenance == super::PROVENANCE_LLM {
-            "llm"
-        } else {
-            "det"
-        };
         let Ok(path) = VaultPath::parse(&s.path) else {
             continue;
         };
@@ -202,9 +197,14 @@ fn missing_link_findings(
             check: InspectCheck::Graph,
             path,
             message: format!(
-                "graph-missing-link ({provenance}): \"{term}\" -> {target}",
+                "graph-missing-link: \"{term}\" -> {target} ({provenance})",
                 term = s.term,
-                target = s.target
+                target = s.target,
+                provenance = if s.provenance == super::PROVENANCE_LLM {
+                    "llm"
+                } else {
+                    "det"
+                }
             ),
             line: Some(s.line),
         });
