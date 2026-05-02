@@ -30,7 +30,7 @@ use crate::search::types::RawSearchResult;
 
 pub(super) struct ScoredRawSearchResult {
     pub(super) raw: RawSearchResult,
-    raw_score: f64,
+    pub(super) raw_score: f64,
 }
 
 /// Runs a search query and returns a [`SearchResponse`].
@@ -146,6 +146,7 @@ fn run_search_inner(
     // Step 2: scope priority multiplication (score modifier, not filter).
     let mut scored = apply_scope_priority(raw_results, config, &input.scope);
     apply_index_page_preference(&mut scored);
+    super::search_graph::refine_graph_results(conn, input, config, &mut scored);
     scored.sort_by(|a, b| b.raw.score.total_cmp(&a.raw.score));
 
     // Step 6: total is post-filter, pre-truncate.

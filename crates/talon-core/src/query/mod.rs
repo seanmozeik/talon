@@ -15,6 +15,7 @@ pub mod recall_scoring;
 pub mod related;
 pub mod search;
 mod search_affordances;
+mod search_graph;
 mod search_hybrid;
 mod search_retrieval;
 pub mod status;
