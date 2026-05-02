@@ -87,12 +87,13 @@ fn agent_lint_groups_findings_by_check() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     let v: serde_json::Value =
         serde_json::from_str(&stdout).unwrap_or_else(|e| panic!("invalid JSON: {e}\n{stdout}"));
-    assert_eq!(v["total"], 2);
+    assert_eq!(v["total"], 3);
     assert_eq!(v["checks"]["orphans"].as_array().map(Vec::len), Some(1));
     assert_eq!(
         v["checks"]["unreferenced"].as_array().map(Vec::len),
         Some(1)
     );
+    assert_eq!(v["checks"]["graph"].as_array().map(Vec::len), Some(1));
     assert!(v.get("meta").is_none());
 }
 

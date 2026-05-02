@@ -16,6 +16,8 @@ pub enum LintCheck {
     DanglingRefs,
     /// Files with no incoming AND no outgoing wikilinks.
     Unreferenced,
+    /// Persisted graph health findings.
+    Graph,
 }
 
 /// Sync request.

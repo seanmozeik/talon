@@ -2,6 +2,7 @@
 
 use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
+use crate::graph::graph_health;
 use crate::indexer::prelude::{build_ignore_globset, file_matches_ignore};
 use crate::indexing::{LintCheck, LintFinding, LintInput, LintResponse};
 use crate::sync::relink_unresolved;
@@ -36,6 +37,7 @@ pub fn query_lint(
         LintCheck::BrokenLinks => find_broken_links(conn, filter.as_ref(), ignore_set.as_ref()),
         LintCheck::DanglingRefs => find_dangling_refs(conn, filter.as_ref(), ignore_set.as_ref()),
         LintCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
+        LintCheck::Graph => graph_health(conn, filter.as_ref()),
     };
     let findings = match config {
         Some(cfg) => findings
@@ -60,6 +62,7 @@ fn find_all(
     findings.extend(find_broken_links(conn, filter, ignore_set));
     findings.extend(find_dangling_refs(conn, filter, ignore_set));
     findings.extend(find_unreferenced(conn, filter));
+    findings.extend(graph_health(conn, filter));
     findings
 }
 

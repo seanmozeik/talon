@@ -162,6 +162,7 @@ pub fn format_lint_human(w: &mut impl Write, resp: &LintResponse) -> Result<()> 
             LintCheck::BrokenLinks,
             LintCheck::DanglingRefs,
             LintCheck::Unreferenced,
+            LintCheck::Graph,
         ] {
             let findings: Vec<_> = resp.findings.iter().filter(|f| f.check == check).collect();
             if findings.is_empty() {
@@ -196,6 +197,7 @@ const fn lint_label(check: talon_core::LintCheck) -> &'static str {
         talon_core::LintCheck::BrokenLinks => "broken-links",
         talon_core::LintCheck::DanglingRefs => "dangling-refs",
         talon_core::LintCheck::Unreferenced => "unreferenced",
+        talon_core::LintCheck::Graph => "graph",
     }
 }
 

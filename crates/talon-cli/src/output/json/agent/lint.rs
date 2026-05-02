@@ -20,6 +20,8 @@ struct AgentLintChecks<'a> {
     dangling_refs: Vec<AgentLintFinding<'a>>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     unreferenced: Vec<AgentLintFinding<'a>>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    graph: Vec<AgentLintFinding<'a>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -57,6 +59,7 @@ impl<'a> AgentLintChecks<'a> {
             LintCheck::BrokenLinks => self.broken_links.push(compact),
             LintCheck::DanglingRefs => self.dangling_refs.push(compact),
             LintCheck::Unreferenced => self.unreferenced.push(compact),
+            LintCheck::Graph => self.graph.push(compact),
         }
     }
 }

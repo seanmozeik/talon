@@ -17,6 +17,8 @@ pub enum LintCheck {
     DanglingRefs,
     /// Find unreferenced notes.
     Unreferenced,
+    /// Find graph health issues.
+    Graph,
 }
 
 impl From<LintCheck> for talon_core::LintCheck {
@@ -27,6 +29,7 @@ impl From<LintCheck> for talon_core::LintCheck {
             LintCheck::BrokenLinks => Self::BrokenLinks,
             LintCheck::DanglingRefs => Self::DanglingRefs,
             LintCheck::Unreferenced => Self::Unreferenced,
+            LintCheck::Graph => Self::Graph,
         }
     }
 }
