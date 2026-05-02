@@ -21,7 +21,7 @@ Use normal search first:
 talon --agent search "<natural language query>"
 ```
 
-Search defaults to hybrid retrieval. It combines lexical matching, semantic/vector search, title and alias matching, query expansion, reranking, and scope-aware ranking when the configured sidecar is available. A good natural-language query is usually the highest-value call.
+Search defaults to hybrid retrieval. It combines lexical matching, semantic/vector search, title and alias matching, query expansion, reranking, graph-refined ranking, and scope-aware ranking when the configured sidecar is available. A good natural-language query is usually the highest-value call.
 
 Only switch modes when there is a reason:
 
@@ -78,7 +78,7 @@ Search and read results expose resolved Obsidian graph metadata. Use it instead 
 
 - Search hits may include `citations`, `links`, `backlinks`, `tags`, and `aliases`.
 - Read results include `links`, `backlinks`, `tags`, and `aliases`.
-- Use `related` for graph traversal from a known note.
+- Use `related` for ranked graph/provenance exploration from a known note. Related results use links, backlinks, shared sources, common neighbors, communities, and bridge signals; they are not raw traversal order.
 
 ```bash
 talon --agent related "<vault/path.md>" --direction both --depth 1
@@ -96,7 +96,7 @@ Pass the actual current user request, not a generic meta-prompt about what conte
 talon --agent recall "<current user request>"
 ```
 
-Recall returns active notes plus graph-neighborhood linked context when evidence is strong enough.
+Recall returns active notes plus community-diverse graph-ranked linked context when evidence is strong enough.
 
 **Note:** MCP users get automatic recall injection before each turn — no manual call needed.
 
@@ -125,7 +125,8 @@ talon --agent search "<query>" --scope-all
 - `talon --agent sync --rebuild`: delete and recreate the SQLite index, then index the vault from scratch. Add global `--fast` for a lexical-only rebuild.
 - `talon --agent meta --tag-counts`: inspect tag distribution.
 - `talon --agent changes --since 7d`: inspect recent added/modified/deleted notes. `--since` accepts relative durations such as `7d`/`3h`, ISO 8601 timestamps, dates, or epoch milliseconds.
-- `talon --agent lint broken-links`: inspect graph health.
+- `talon --agent lint`: inspect broken links, orphan/unreferenced notes, graph health, and read-only missing-link opportunities.
+- `talon --agent lint graph`: inspect only graph-health and read-only missing-link findings; it does not edit files.
 - `talon --agent status`: inspect index readiness.
 
 Note: when MCP is active, the vault syncs in the background - no action needed.
@@ -176,6 +177,6 @@ To see more metadata, pass `--json` instead:
 
 Read results include `path`, `title`, `content`, `links`, `backlinks`, `tags`, and `aliases`. Heading reads also include `section`.
 
-Related results include `path`, `title`, `relation`, and `linkText`.
+Related results include `path`, `title`, `relation`, `linkText`, rounded `score`, and compact `reasons`.
 
 Ask results include `answer`, `queries`, and `sources`. Sources use plain vault paths; they are not Obsidian wikilinks.

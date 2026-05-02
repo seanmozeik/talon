@@ -138,7 +138,11 @@ fn related_input_schema() -> Value {
             "path": { "type": "string" },
             "direction": { "type": "string", "enum": ["outgoing", "backlinks", "both"] },
             "depth": { "type": "integer", "default": 1 },
-            "limit": { "type": "integer", "default": 10 }
+            "limit": {
+                "type": "integer",
+                "default": 10,
+                "description": "MCP-only cap for ranked related results after graph scoring."
+            }
         },
         "required": ["path"]
     })
