@@ -110,6 +110,30 @@ fn configured_scope_priority_affects_ranking() {
 }
 
 #[test]
+fn matching_note_type_boosts_related_candidates() {
+    let mut snapshot = snapshot_with_nodes(["Seed.md", "Different.md", "Same.md"]);
+    node_mut(&mut snapshot, "Seed.md").note_type = Some("case-study".into());
+    node_mut(&mut snapshot, "Same.md").note_type = Some("case-study".into());
+    node_mut(&mut snapshot, "Different.md").note_type = Some("reference".into());
+    snapshot.edges = vec![
+        edge("Seed.md", "Different.md", 1),
+        edge("Seed.md", "Same.md", 1),
+    ];
+    let ranked = rank_related(
+        &snapshot,
+        &GraphRankInput {
+            source_path: "Seed.md".into(),
+            direction: Direction::Outgoing,
+            depth: 1,
+            limit: 10,
+            scope_priorities: BTreeMap::new(),
+        },
+    );
+    assert_eq!(ranked[0].vault_path, "Same.md");
+    assert!(ranked[0].signals.type_affinity > 0.99);
+}
+
+#[test]
 fn deterministic_sort_order_uses_vault_path_tie_breaker() {
     let snapshot = tie_snapshot();
     let ranked = rank_related(

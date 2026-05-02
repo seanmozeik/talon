@@ -56,6 +56,8 @@ pub struct GraphSignalBreakdown {
     pub common_neighbors: f64,
     /// Same-community support.
     pub community_affinity: f64,
+    /// Same frontmatter `type` support.
+    pub type_affinity: f64,
     /// Structural page penalty.
     pub structural_penalty: f64,
 }
@@ -110,6 +112,8 @@ pub fn rank_related(snapshot: &GraphSnapshot, input: &GraphRankInput) -> Vec<Gra
             snapshot,
             source_community: source.community_id,
             candidate_community: node.community_id,
+            source_type: source.note_type.as_deref(),
+            candidate_type: node.note_type.as_deref(),
             source_sources: source.sources.as_slice(),
             candidate_sources: node.sources.as_slice(),
             source_neighbors: &source_neighbors,

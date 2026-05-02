@@ -12,6 +12,7 @@ const DIRECT_BACKLINK_WEIGHT: f64 = 3.5;
 const SOURCE_OVERLAP_WEIGHT: f64 = 2.0;
 const COMMON_NEIGHBOR_WEIGHT: f64 = 1.4;
 const COMMUNITY_WEIGHT: f64 = 0.9;
+const TYPE_AFFINITY_WEIGHT: f64 = 0.7;
 const TWO_HOP_WEIGHT: f64 = 0.35;
 const STRUCTURAL_PENALTY: f64 = 1.5;
 const BRIDGE_BONUS: f64 = 0.6;
@@ -89,6 +90,8 @@ pub(super) struct SignalInput<'a> {
     pub(super) snapshot: &'a GraphSnapshot,
     pub(super) source_community: Option<u32>,
     pub(super) candidate_community: Option<u32>,
+    pub(super) source_type: Option<&'a str>,
+    pub(super) candidate_type: Option<&'a str>,
     pub(super) source_sources: &'a [String],
     pub(super) candidate_sources: &'a [String],
     pub(super) source_neighbors: &'a BTreeSet<String>,
@@ -119,6 +122,7 @@ pub(super) fn build_signals(input: &SignalInput<'_>) -> GraphSignalBreakdown {
             input.community_neighbor_count,
             input.bridge_weight,
         ),
+        type_affinity: type_affinity(input.source_type, input.candidate_type),
         structural_penalty: if input.structural {
             STRUCTURAL_PENALTY
         } else {
@@ -267,6 +271,20 @@ fn community_affinity(
     same + bridge
 }
 
+const fn type_affinity(source_type: Option<&str>, candidate_type: Option<&str>) -> f64 {
+    let Some(source_type) = source_type else {
+        return 0.0;
+    };
+    let Some(candidate_type) = candidate_type else {
+        return 0.0;
+    };
+    if source_type.eq_ignore_ascii_case(candidate_type) {
+        1.0
+    } else {
+        0.0
+    }
+}
+
 fn score_signals(signals: &GraphSignalBreakdown) -> f64 {
     DIRECT_OUT_WEIGHT.mul_add(
         signals.direct_out,
@@ -276,8 +294,11 @@ fn score_signals(signals: &GraphSignalBreakdown) -> f64 {
                 signals.shared_sources,
                 COMMON_NEIGHBOR_WEIGHT.mul_add(
                     signals.common_neighbors,
-                    COMMUNITY_WEIGHT
-                        .mul_add(signals.community_affinity, -signals.structural_penalty),
+                    COMMUNITY_WEIGHT.mul_add(
+                        signals.community_affinity,
+                        TYPE_AFFINITY_WEIGHT
+                            .mul_add(signals.type_affinity, -signals.structural_penalty),
+                    ),
                 ),
             ),
         ),
