@@ -198,7 +198,6 @@ const fn inspect_label(check: talon_core::InspectCheck) -> &'static str {
         talon_core::InspectCheck::DanglingRefs => "dangling-refs",
         talon_core::InspectCheck::Unreferenced => "unreferenced",
         talon_core::InspectCheck::Graph => "graph",
-        talon_core::InspectCheck::MissingLinks => "missing-links",
     }
 }
 

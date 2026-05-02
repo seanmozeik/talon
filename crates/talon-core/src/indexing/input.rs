@@ -16,10 +16,8 @@ pub enum InspectCheck {
     DanglingRefs,
     /// Files with no incoming AND no outgoing wikilinks.
     Unreferenced,
-    /// Persisted graph health findings.
+    /// Persisted graph health findings and missing-link suggestions.
     Graph,
-    /// Suggest missing wikilinks (deterministic + optional LLM-assisted).
-    MissingLinks,
 }
 
 /// Sync request.
@@ -64,4 +62,7 @@ pub struct InspectInput {
     /// Include every configured scope, overriding `default = false`.
     #[serde(default)]
     pub scope_all: bool,
+    /// Skip LLM-assisted suggestions (used by --fast).
+    #[serde(default)]
+    pub skip_llm_suggestions: bool,
 }

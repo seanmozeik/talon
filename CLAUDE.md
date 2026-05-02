@@ -1,6 +1,7 @@
 Ensure all rust code conforms to `rust` skill.
 
 Use `just check` for formatting and linting.
+Use `just test` to run tests.
 
 Never touch linter config without express user approval.
 Always prefer refactors to suppressions, even when tedious. If suppressions are necessary, flag to the user.

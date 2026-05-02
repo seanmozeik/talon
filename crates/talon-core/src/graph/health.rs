@@ -4,16 +4,21 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use rusqlite::Connection;
 
-use crate::config::ScopeFilter;
+use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::indexing::{InspectCheck, InspectFinding};
 
-use super::{GraphSnapshot, load_graph_snapshot};
+use super::{GraphSnapshot, GraphSuggestionClient, load_graph_snapshot};
 
 const OVERCENTRAL_DEGREE: u32 = 12;
 const SPARSE_COMMUNITY_COHESION: f64 = 0.25;
 
-pub fn graph_health(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<InspectFinding> {
+pub fn graph_health(
+    conn: &Connection,
+    config: Option<&TalonConfig>,
+    filter: Option<&ScopeFilter<'_>>,
+    skip_llm_suggestions: bool,
+) -> Vec<InspectFinding> {
     let Ok(snapshot) = load_graph_snapshot(conn) else {
         return Vec::new();
     };
@@ -26,7 +31,13 @@ pub fn graph_health(conn: &Connection, filter: Option<&ScopeFilter<'_>>) -> Vec<
     findings.extend(overcentral_findings(&snapshot, filter));
     findings.extend(bridge_findings(&snapshot, filter));
     findings.extend(surprising_connection_findings(&snapshot, filter));
-    findings.extend(missing_link_findings(conn, filter));
+    findings.extend(missing_link_findings(
+        conn,
+        &snapshot,
+        config,
+        filter,
+        skip_llm_suggestions,
+    ));
     findings
 }
 
@@ -154,35 +165,51 @@ fn finding(path: &str, message: &str) -> Option<InspectFinding> {
 
 fn missing_link_findings(
     conn: &Connection,
+    snapshot: &GraphSnapshot,
+    config: Option<&TalonConfig>,
     filter: Option<&ScopeFilter<'_>>,
+    skip_llm_suggestions: bool,
 ) -> Vec<InspectFinding> {
-    let Ok(mut stmt) = conn.prepare(
-        "SELECT path, target, term, line FROM graph_missing_links
-         ORDER BY path, target, term",
-    ) else {
-        return Vec::new();
-    };
-    let Ok(rows) = stmt.query_map([], |row| {
-        Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, String>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, Option<u32>>(3)?,
-        ))
-    }) else {
-        return Vec::new();
-    };
-    rows.flatten()
-        .filter(|(path, _target, _term, _line)| accepts(filter, path))
-        .filter_map(|(path, target, term, line)| {
-            Some(InspectFinding {
-                check: InspectCheck::Graph,
-                path: VaultPath::parse(&path).ok()?,
-                message: format!("graph-missing-link: possible wikilink: \"{term}\" -> {target}"),
-                line,
-            })
-        })
-        .collect()
+    let mut suggestions = super::build_link_suggestions(conn, snapshot, None).unwrap_or_default();
+
+    // Append LLM-assisted suggestions if ask model is configured and not skipped.
+    #[allow(clippy::collapsible_if)]
+    if !skip_llm_suggestions {
+        if let Some(client) = config
+            .and_then(|cfg| GraphSuggestionClient::from_config(cfg).ok())
+            .flatten()
+        {
+            suggestions.extend(
+                super::build_llm_link_suggestions(conn, snapshot, &client).unwrap_or_default(),
+            );
+        }
+    }
+
+    let mut findings = Vec::new();
+    for s in &suggestions {
+        if !accepts(filter, &s.path) {
+            continue;
+        }
+        let provenance = if s.provenance == super::PROVENANCE_LLM {
+            "llm"
+        } else {
+            "det"
+        };
+        let Ok(path) = VaultPath::parse(&s.path) else {
+            continue;
+        };
+        findings.push(InspectFinding {
+            check: InspectCheck::Graph,
+            path,
+            message: format!(
+                "graph-missing-link ({provenance}): \"{term}\" -> {target}",
+                term = s.term,
+                target = s.target
+            ),
+            line: Some(s.line),
+        });
+    }
+    findings
 }
 
 #[cfg(test)]
@@ -200,7 +227,7 @@ mod tests {
         insert_node(&conn, "Isolated.md", 0, false, None, 0.0, 0)?;
         insert_node(&conn, "Index.md", 12, true, None, 0.0, 0)?;
 
-        let findings = graph_health(&conn, None);
+        let findings = graph_health(&conn, None, None, false);
 
         assert!(
             findings
@@ -226,7 +253,7 @@ mod tests {
         insert_node(&conn, "Bridge.md", 2, false, Some(1), 0.4, 2)?;
         insert_edge(&conn, "A.md", "Bridge.md")?;
 
-        let findings = graph_health(&conn, None);
+        let findings = graph_health(&conn, None, None, false);
 
         assert!(
             findings

@@ -17,10 +17,8 @@ pub enum InspectCheck {
     DanglingRefs,
     /// Find unreferenced notes.
     Unreferenced,
-    /// Find graph health signals.
+    /// Find graph health signals and missing-link suggestions.
     Graph,
-    /// Suggest missing wikilinks (deterministic + optional LLM-assisted).
-    MissingLinks,
 }
 
 impl From<InspectCheck> for talon_core::InspectCheck {
@@ -32,7 +30,6 @@ impl From<InspectCheck> for talon_core::InspectCheck {
             InspectCheck::DanglingRefs => Self::DanglingRefs,
             InspectCheck::Unreferenced => Self::Unreferenced,
             InspectCheck::Graph => Self::Graph,
-            InspectCheck::MissingLinks => Self::MissingLinks,
         }
     }
 }
@@ -47,4 +44,8 @@ pub struct InspectArgs {
 
     #[command(flatten)]
     pub scope: SharedScopeArgs,
+
+    /// Skip LLM-assisted suggestions (faster, deterministic only).
+    #[arg(long, short = 'F', global = true)]
+    pub fast: bool,
 }
