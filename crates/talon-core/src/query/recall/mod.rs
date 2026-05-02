@@ -24,6 +24,8 @@ mod budget;
 mod distill;
 mod retrieval;
 mod sections;
+#[cfg(test)]
+mod sections_tests;
 
 use budget::{estimate_payload_tokens, trim_to_budget};
 use distill::plan_recall_queries;
