@@ -158,7 +158,7 @@ fn surprising_connection_findings(
             check: InspectCheck::Graph,
             path,
             message: format!(
-                "graph-surprising-connection: cross-community links → {} ({})",
+                "graph-surprising-connection: {} ({})",
                 targets_list,
                 targets.len()
             ),
