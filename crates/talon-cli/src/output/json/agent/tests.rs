@@ -1,6 +1,8 @@
+use talon_core::graph::GraphSignalBreakdown;
 use talon_core::{
-    MatchKind, ResponseMeta, SearchMode, SearchResponse, SearchResult, SyncResponse, SyncStatus,
-    TalonEnvelope, TalonResponseData, VaultPath,
+    MatchKind, RelatedResponse, RelatedResult, RelationKind, ResponseMeta, SearchMode,
+    SearchResponse, SearchResult, SyncResponse, SyncStatus, TalonEnvelope, TalonResponseData,
+    VaultPath,
 };
 
 #[test]
@@ -139,4 +141,56 @@ fn to_agent_value_returns_none_for_empty_envelope() {
 
     let value = super::to_agent_value(&envelope);
     assert!(value.is_none());
+}
+
+#[test]
+fn related_agent_value_stays_compact_with_score_and_reasons() {
+    let envelope = TalonEnvelope {
+        action: "related".to_string(),
+        version: "0.1.0".to_string(),
+        ok: true,
+        data: Some(TalonResponseData::Related(RelatedResponse {
+            vault: None,
+            path: VaultPath::parse("wiki/Sauce Mothers.md")
+                .unwrap_or_else(|err| panic!("valid path: {err}")),
+            direction: talon_core::Direction::Both,
+            results: vec![RelatedResult {
+                vault_path: VaultPath::parse("wiki/Stock Theory.md")
+                    .unwrap_or_else(|err| panic!("valid path: {err}")),
+                title: "Stock Theory".to_string(),
+                link_text: "Stock Theory".to_string(),
+                relation: RelationKind::Outgoing,
+                count: 2,
+                score: 1.234_56,
+                signals: GraphSignalBreakdown {
+                    direct_out: 2.0,
+                    shared_sources: 1.0,
+                    common_neighbors: 1.0,
+                    ..GraphSignalBreakdown::default()
+                },
+                scope: Some("wiki".to_string()),
+                mtime: None,
+            }],
+        })),
+        error: None,
+        meta: Some(ResponseMeta {
+            duration_ms: 10,
+            result_count: Some(1),
+            warnings: vec![],
+            scope_set: None,
+            since: None,
+        }),
+    };
+
+    let value = super::to_agent_value(&envelope)
+        .unwrap_or_else(|| panic!("agent related value should exist"));
+    let hit = &value["results"][0];
+
+    assert_eq!(hit["path"], "wiki/Stock Theory.md");
+    assert_eq!(hit["score"], 1.23);
+    assert_eq!(
+        hit["reasons"],
+        serde_json::json!(["direct_link", "shared_source"])
+    );
+    assert!(hit.get("signals").is_none());
 }
