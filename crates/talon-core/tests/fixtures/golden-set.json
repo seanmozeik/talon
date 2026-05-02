@@ -249,5 +249,26 @@
     "expected_paths": ["Lifecycle/Support.md"],
     "partial_paths": ["Lifecycle/Mutable.md", "Lifecycle/Delete-Me.md"],
     "category": "multi"
+  },
+  {
+    "id": "q036",
+    "query": "side graph branch",
+    "expected_paths": ["Graph/Side.md"],
+    "partial_paths": ["Graph/Hub.md"],
+    "category": "graph"
+  },
+  {
+    "id": "q037",
+    "query": "graph hub backlink inbound",
+    "expected_paths": ["Graph/Inbound.md", "Graph/Hub.md"],
+    "partial_paths": ["Graph/Child.md", "Graph/Side.md"],
+    "category": "graph"
+  },
+  {
+    "id": "q038",
+    "query": "graph child chain grandchild",
+    "expected_paths": ["Graph/Child.md", "Graph/Grandchild.md"],
+    "partial_paths": ["Graph/Hub.md"],
+    "category": "graph"
   }
 ]
