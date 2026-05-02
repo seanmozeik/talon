@@ -7,6 +7,7 @@ use crate::numeric::count_u32;
 use crate::text::frontmatter::{WikiLink, normalize_keyword, normalize_vault_path};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::hash::BuildHasher;
 
 // ── Link graph types ────────────────────────────────────────────────────────
 
@@ -233,15 +234,18 @@ pub fn compute_backlinks(edges: &[LinkEdge]) -> std::collections::BTreeMap<Strin
 
 /// Finds unresolved links (links whose targets don't resolve to any indexed note).
 #[must_use]
-pub fn find_unresolved_links(
+pub fn find_unresolved_links<S: BuildHasher>(
     from_path: &str,
     links: &[WikiLink],
     notes: &[NoteReference],
+    ignored_link_targets: &HashSet<String, S>,
 ) -> Vec<ResolvedLink> {
     let mut unresolved = Vec::new();
 
     for link in links {
-        if resolve_wiki_link_target(&link.target, notes).is_none() {
+        if resolve_wiki_link_target(&link.target, notes).is_none()
+            && !is_ignored_link_target(&link.target, ignored_link_targets)
+        {
             unresolved.push(ResolvedLink {
                 from_path: from_path.to_string(),
                 to_path: String::new(),
@@ -253,6 +257,21 @@ pub fn find_unresolved_links(
     }
 
     unresolved
+}
+
+fn is_ignored_link_target<S: BuildHasher>(
+    target: &str,
+    ignored_link_targets: &HashSet<String, S>,
+) -> bool {
+    let normalized_target = normalize_keyword(&normalize_vault_path(target));
+    if ignored_link_targets.contains(&normalized_target) {
+        return true;
+    }
+
+    normalized_target
+        .rsplit('/')
+        .next()
+        .is_some_and(|name| ignored_link_targets.contains(name))
 }
 
 /// Computes link graph statistics.

@@ -6,6 +6,8 @@
 //! `'index'` row to `event_log`. All work happens inside a single
 //! transaction so a partial failure does not leave the index inconsistent.
 
+use std::collections::HashSet;
+
 use rusqlite::{Connection, params};
 
 use crate::TalonError;
@@ -31,6 +33,8 @@ pub struct NoteIndexConfig<'a> {
     pub chunker: &'a ChunkerConfig,
     /// Optional Talon config used to resolve the note's scope name.
     pub talon_config: Option<&'a TalonConfig>,
+    /// Normalized paths and basenames for ignored files that wikilinks may target.
+    pub ignored_link_targets: HashSet<String>,
 }
 
 /// Outcome of [`index_one_note`].
@@ -46,16 +50,6 @@ pub struct IndexNoteOutcome {
 }
 
 /// Runs the full per-note indexing pipeline against `conn`.
-///
-/// Steps:
-///
-/// 1. Parse frontmatter, body, aliases, tags, and wikilinks from `content`.
-/// 2. Extract the display title (frontmatter `title` field or filename stem).
-/// 3. Chunk the markdown body using [`chunk_markdown`].
-/// 4. Resolve wikilinks against `existing_for_linking` plus the current note.
-/// 5. Upsert the note row, its chunks, links, aliases, tags, and frontmatter
-///    fields, all inside a single transaction.
-/// 6. Append an `'index'` event-log row.
 ///
 /// # Errors
 ///
@@ -80,6 +74,7 @@ pub fn index_one_note(
         &NoteIndexConfig {
             chunker: &ChunkerConfig::default(),
             talon_config: None,
+            ignored_link_targets: HashSet::new(),
         },
     )
 }
@@ -128,7 +123,12 @@ pub fn index_one_note_with_config(
     // schema both require a non-empty target. Using `raw_target` as the
     // placeholder keeps the row addressable while clearly signaling that no
     // matching note was found.
-    for mut unresolved in find_unresolved_links(vault_path, &parsed.links, &updated_cache) {
+    for mut unresolved in find_unresolved_links(
+        vault_path,
+        &parsed.links,
+        &updated_cache,
+        &note_config.ignored_link_targets,
+    ) {
         unresolved.to_path.clone_from(&unresolved.raw_target);
         resolved.push(unresolved);
     }

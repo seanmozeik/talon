@@ -1,10 +1,12 @@
 //! Full-vault scan and deletion reconciliation.
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::time::UNIX_EPOCH;
 
 use fs_err as fs;
 use rusqlite::Connection;
+use walkdir::WalkDir;
 
 use crate::TalonError;
 use crate::config::{ChunkerConfig, TalonConfig};
@@ -16,6 +18,8 @@ use super::prelude::{
     scan_vault_markdown,
 };
 use super::wiring::{NoteIndexConfig, index_one_note_with_config};
+use crate::text::frontmatter::normalize_keyword;
+use crate::text::normalize_vault_path;
 
 /// Configuration for a vault scan.
 #[derive(Debug, Clone, Default)]
@@ -106,6 +110,7 @@ pub fn run_full_scan_with_chunker(
     let note_config = NoteIndexConfig {
         chunker: chunker_config,
         talon_config: config.talon_config.as_ref(),
+        ignored_link_targets: collect_ignored_link_targets(vault_root, &ignore_set),
     };
     let mut stats = IndexerStats::default();
     let mut linking_cache = load_notes_for_linking(conn).map_err(|source| TalonError::Sqlite {
@@ -196,6 +201,40 @@ fn existing_is_up_to_date(
         row,
         Some((existing_mtime, existing_size, 1)) if existing_mtime == mtime_ms && existing_size == size_bytes
     )
+}
+
+fn collect_ignored_link_targets(
+    vault_root: &Path,
+    ignore_set: &globset::GlobSet,
+) -> HashSet<String> {
+    WalkDir::new(vault_root)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_file())
+        .filter_map(|entry| {
+            let rel = entry.path().strip_prefix(vault_root).ok()?;
+            let rel_path = rel.to_string_lossy().replace('\\', "/");
+            file_matches_ignore(&rel_path, ignore_set).then_some(rel_path)
+        })
+        .flat_map(|rel_path| ignored_link_target_variants(&rel_path))
+        .collect()
+}
+
+fn ignored_link_target_variants(rel_path: &str) -> Vec<String> {
+    let normalized_path = normalize_keyword(&normalize_vault_path(rel_path));
+    let mut variants = Vec::with_capacity(4);
+    variants.push(normalized_path.clone());
+    if let Some(path_stem) = normalized_path.rsplit_once('.').map(|(stem, _)| stem) {
+        variants.push(path_stem.to_string());
+    }
+    if let Some(file_name) = normalized_path.rsplit('/').next() {
+        variants.push(file_name.to_string());
+        if let Some(file_stem) = file_name.rsplit_once('.').map(|(stem, _)| stem) {
+            variants.push(file_stem.to_string());
+        }
+    }
+    variants
 }
 
 /// Soft-deletes any active note in the index whose source file no longer

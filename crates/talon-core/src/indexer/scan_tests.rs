@@ -39,6 +39,15 @@ fn active_paths(conn: &Connection) -> Vec<String> {
         .collect()
 }
 
+fn link_targets(conn: &Connection) -> Vec<String> {
+    conn.prepare_cached("SELECT to_path FROM links ORDER BY to_path")
+        .unwrap()
+        .query_map([], |r| r.get::<_, String>(0))
+        .unwrap()
+        .filter_map(Result::ok)
+        .collect()
+}
+
 #[test]
 fn full_scan_indexes_every_markdown_file() {
     let vault = unique_dir("full");
@@ -86,6 +95,55 @@ fn ignore_patterns_skip_matching_paths_case_insensitively() {
     let stats = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
     assert_eq!(stats.indexed, 1);
     assert_eq!(active_paths(&conn), vec!["keep.md"]);
+
+    drop(conn);
+    cleanup_db(&db);
+    fs::remove_dir_all(&vault).unwrap();
+}
+
+#[test]
+fn full_scan_does_not_store_unresolved_links_to_ignored_existing_files() {
+    let vault = unique_dir("ignored-links");
+    fs::create_dir_all(&vault).unwrap();
+    write_note(
+        &vault,
+        "source.md",
+        "[[menu-board]] [[templates/Recipe Template]] [[nonexistent]]",
+    );
+    write_note(&vault, "templates/Recipe Template.md", "# Recipe");
+    fs::write(vault.join("menu-board.canvas"), "{}").unwrap();
+    let db = vault.join("idx.sqlite");
+    let mut conn = open_database(&db).unwrap();
+
+    let config = IndexerConfig {
+        ignore_patterns: vec!["*.canvas".into()],
+        ..IndexerConfig::index_all()
+    };
+    let stats = run_full_scan(&mut conn, &vault, &config).unwrap();
+
+    assert_eq!(stats.indexed, 1);
+    assert_eq!(link_targets(&conn), vec!["nonexistent"]);
+
+    drop(conn);
+    cleanup_db(&db);
+    fs::remove_dir_all(&vault).unwrap();
+}
+
+#[test]
+fn full_scan_keeps_unresolved_links_that_only_match_ignored_extensions() {
+    let vault = unique_dir("missing-canvas");
+    fs::create_dir_all(&vault).unwrap();
+    write_note(&vault, "source.md", "[[nonexistent]]");
+    let db = vault.join("idx.sqlite");
+    let mut conn = open_database(&db).unwrap();
+
+    let config = IndexerConfig {
+        ignore_patterns: vec!["*.canvas".into()],
+        ..IndexerConfig::index_all()
+    };
+    run_full_scan(&mut conn, &vault, &config).unwrap();
+
+    assert_eq!(link_targets(&conn), vec!["nonexistent"]);
 
     drop(conn);
     cleanup_db(&db);

@@ -178,7 +178,7 @@ fn test_find_unresolved_links() {
         },
     ];
 
-    let unresolved = find_unresolved_links("a.md", &links, &notes);
+    let unresolved = find_unresolved_links("a.md", &links, &notes, &HashSet::new());
     assert_eq!(unresolved.len(), 1);
     assert_eq!(unresolved[0].raw_target, "nonexistent");
 }
