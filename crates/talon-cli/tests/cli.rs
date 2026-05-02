@@ -4,6 +4,8 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::path::PathBuf;
 
+#[path = "cli/examples_graph.rs"]
+mod examples_graph;
 #[path = "cli/json_error.rs"]
 mod json_error;
 #[path = "cli/json_success.rs"]

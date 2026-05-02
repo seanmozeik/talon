@@ -59,6 +59,7 @@ pub fn rebuild_graph_with_suggester(
     _input: &GraphBuildInput,
     suggester: Option<&GraphSuggestionClient>,
 ) -> Result<GraphBuildStats, TalonError> {
+    crate::indexing::migrations::run_migrations(conn)?;
     let graph = build_graph(conn, suggester)?;
     let stats = GraphBuildStats {
         node_count: graph.nodes.len().try_into().unwrap_or(u32::MAX),
