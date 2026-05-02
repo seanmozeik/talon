@@ -1,12 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use rusqlite::{Connection, params};
 
 use crate::config::TalonConfig;
 use crate::contracts::VaultPath;
+use crate::graph::load_graph_snapshot;
 use crate::numeric::count_u32;
-use crate::query::related::RelationKind;
-use crate::query::related::find_related;
+use crate::query::related::{RelationKind, find_related};
 use crate::query::{LinkedNote, NoteExcerpt, RecallInput, RelatedInput};
 use crate::search::Direction;
 use crate::search::types::RawSearchResult;
@@ -59,6 +59,8 @@ fn scope_affinity(scope: &str) -> f64 {
 /// Same as the suppression confidence gate — marginal active notes
 /// don't get to pollute the graph neighbourhood.
 const LINKED_CTX_MIN_SCORE: f64 = 0.55;
+const LINKED_CTX_PER_SOURCE_LIMIT: usize = 4;
+const LINKED_CTX_PER_COMMUNITY_LIMIT: usize = 3;
 
 /// Builds linked context by aggregating graph links from all active notes
 /// that score above [`LINKED_CTX_MIN_SCORE`].
@@ -76,8 +78,6 @@ pub(super) fn build_linked_context(
     excluded_set: &HashSet<String>,
     config: Option<&TalonConfig>,
 ) -> (Vec<LinkedNote>, u32) {
-    use std::collections::HashMap;
-
     struct Entry {
         vault_path: VaultPath,
         title: String,
@@ -88,6 +88,7 @@ pub(super) fn build_linked_context(
     }
 
     let mut by_path: HashMap<String, Entry> = HashMap::new();
+    let graph = load_graph_snapshot(conn).ok();
 
     for source in pipeline_results {
         if source.score < LINKED_CTX_MIN_SCORE {
@@ -105,10 +106,24 @@ pub(super) fn build_linked_context(
             scope_all: input.scope_all,
             limit: None,
         };
+        let mut per_source = 0_usize;
+        let mut per_community: BTreeMap<Option<u32>, usize> = BTreeMap::new();
         for r in find_related(conn, &ri, config).results {
             if excluded_set.contains(r.vault_path.as_str()) {
                 continue;
             }
+            let community = graph
+                .as_ref()
+                .and_then(|snapshot| snapshot.nodes.get(r.vault_path.as_str()))
+                .and_then(|node| node.community_id);
+            let community_count = per_community.entry(community).or_default();
+            if per_source >= LINKED_CTX_PER_SOURCE_LIMIT
+                || *community_count >= LINKED_CTX_PER_COMMUNITY_LIMIT
+            {
+                continue;
+            }
+            per_source = per_source.saturating_add(1);
+            *community_count = community_count.saturating_add(1);
             let key = r.vault_path.as_str().to_owned();
             let entry = by_path.entry(key).or_insert_with(|| Entry {
                 vault_path: r.vault_path.clone(),
@@ -130,7 +145,7 @@ pub(super) fn build_linked_context(
             let affinity = scope_affinity(r.scope.as_deref().unwrap_or(""));
             entry
                 .source_notes
-                .push((source_vpath.clone(), source.score * affinity));
+                .push((source_vpath.clone(), source.score * r.score * affinity));
         }
     }
 
@@ -205,6 +220,7 @@ fn now_millis() -> u64 {
 mod tests {
     use super::*;
     use crate::indexing::migrations::run_migrations;
+    use crate::search::types::SearchScores;
     use rusqlite::Connection;
 
     #[test]
@@ -269,5 +285,65 @@ mod tests {
         )
         .unwrap();
         assert_eq!(mtime_date(&conn, "test.md"), "2026-04-15");
+    }
+
+    #[test]
+    fn linked_context_uses_graph_score_for_aggregation() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        run_migrations(&mut conn).unwrap();
+        insert_graph_node(&conn, "Source.md", "Source", None);
+        insert_graph_node(&conn, "Strong.md", "Strong", None);
+        insert_graph_node(&conn, "Weak.md", "Weak", None);
+        insert_graph_edge(&conn, "Source.md", "Strong.md", 2);
+        insert_graph_edge(&conn, "Source.md", "Weak.md", 1);
+
+        let source = raw_result("Source.md", 0.8);
+        let (linked, raw_count) = build_linked_context(
+            &conn,
+            &[source],
+            &RecallInput::default(),
+            &HashSet::new(),
+            None,
+        );
+
+        assert_eq!(raw_count, 2);
+        assert_eq!(linked[0].vault_path.as_str(), "Strong.md");
+        assert!(linked[0].aggregated_score > linked[1].aggregated_score);
+    }
+
+    fn raw_result(path: &str, score: f64) -> RawSearchResult {
+        RawSearchResult {
+            path: path.into(),
+            title: path.into(),
+            tags: Vec::new(),
+            aliases: Vec::new(),
+            snippet: String::new(),
+            score,
+            scores: SearchScores::default(),
+            semantic_heading: None,
+            semantic_char_start: None,
+            semantic_char_end: None,
+        }
+    }
+
+    fn insert_graph_node(conn: &Connection, path: &str, title: &str, community_id: Option<u32>) {
+        conn.execute(
+            "INSERT INTO graph_nodes (
+               vault_path, title, aliases, tags, scope, note_type, sources,
+               outgoing_degree, backlink_degree, total_degree, structural,
+               community_id, community_cohesion, community_neighbor_count, bridge_weight
+             ) VALUES (?1, ?2, '[]', '[]', '', NULL, '[]', 0, 0, 0, 0, ?3, 0.0, 0, 0.0)",
+            params![path, title, community_id],
+        )
+        .unwrap();
+    }
+
+    fn insert_graph_edge(conn: &Connection, from_path: &str, to_path: &str, weight: u32) {
+        conn.execute(
+            "INSERT INTO graph_edges (from_path, to_path, link_text, weight)
+             VALUES (?1, ?2, ?2, ?3)",
+            params![from_path, to_path, weight],
+        )
+        .unwrap();
     }
 }
