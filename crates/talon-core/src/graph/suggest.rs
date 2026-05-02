@@ -10,7 +10,6 @@ use crate::TalonError;
 use super::GraphSnapshot;
 
 const PROVENANCE_DETERMINISTIC: &str = "deterministic";
-pub const PROVENANCE_LLM: &str = "ask-llm";
 
 /// Persisted read-only link suggestion.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,7 +22,7 @@ pub struct LinkSuggestion {
     /// Matched title or alias term.
     pub term: String,
     /// 1-based body line number.
-    pub line: u32,
+    pub line: Option<u32>,
     /// Suggestion source.
     pub provenance: String,
 }
@@ -67,7 +66,7 @@ pub fn build_missing_link_suggestions(
                         path: path.clone(),
                         target: target.clone(),
                         term: term.clone(),
-                        line: u32::try_from(line_index + 1).unwrap_or(u32::MAX),
+                        line: Some(u32::try_from(line_index + 1).unwrap_or(u32::MAX)),
                         provenance: PROVENANCE_DETERMINISTIC.into(),
                     });
                 }

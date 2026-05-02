@@ -29,7 +29,7 @@ fn suggestions_skip_existing_links_code_and_markdown() -> Result<(), Box<dyn std
     assert_eq!(suggestions.len(), 1);
     assert_eq!(suggestions[0].path, "Source.md");
     assert_eq!(suggestions[0].target, "Target.md");
-    assert_eq!(suggestions[0].line, 2);
+    assert_eq!(suggestions[0].line, Some(2));
     Ok(())
 }
 

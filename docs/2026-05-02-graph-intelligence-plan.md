@@ -806,8 +806,7 @@ Unit tests:
 - `graph::health`: isolated, sparse community, overcentral, brittle bridge,
   surprising connection.
 - `graph::suggest`: no frontmatter, no fences, no inline code, no existing
-  wikilinks, ask-mode constrained LLM validation, line numbers, one suggestion
-  per target.
+  wikilinks, line numbers, one suggestion per target.
 - agent output tests assert graph additions stay compact and omit detailed
   signal/community diagnostics.
 
@@ -866,12 +865,10 @@ Risk: recall latency increases.
   candidates during sync; query handlers load the persisted `GraphSnapshot` once
   per request, cap candidates per source, and benchmark related/recall/search.
 
-Risk: sync latency increases from graph construction or ask-mode link
-suggestions.
+Risk: sync latency increases from graph construction.
 
-- Mitigation: keep deterministic graph construction cheap, bound ask-mode
-  suggestion batches and token budgets, validate/cache suggestion candidates by
-  note hash, and report graph build stats in sync diagnostics.
+- Mitigation: keep deterministic graph construction cheap and report graph build
+  stats in sync diagnostics.
 
 Risk: Louvain output becomes unstable across equivalent graphs.
 
@@ -914,8 +911,7 @@ The plan is complete when all of these are true:
    `search --fast` can use the last sync-built graph artifact when present.
 6. Default lint reports graph health, sparse communities, bridges, surprising
    connections, and missing-link opportunities.
-7. Read-only missing-link suggestions include deterministic and ask-mode
-   constrained LLM paths, with deterministic validation after any LLM output.
+7. Read-only missing-link suggestions are deterministic.
 8. `skill/SKILL.md`, MCP tool contracts, and MCP schemas describe the new
    graph-aware behavior accurately.
 9. Human output stays quiet; normal JSON exposes scores and signals where graph

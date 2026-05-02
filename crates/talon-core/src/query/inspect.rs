@@ -32,22 +32,14 @@ pub fn query_inspect(
         )
         .ok();
     let findings = match input.check {
-        InspectCheck::All => find_all(
-            conn,
-            filter.as_ref(),
-            ignore_set.as_ref(),
-            config,
-            input.skip_llm_suggestions,
-        ),
+        InspectCheck::All => find_all(conn, filter.as_ref(), ignore_set.as_ref(), config),
         InspectCheck::Orphans => find_orphans(conn, filter.as_ref()),
         InspectCheck::BrokenLinks => find_broken_links(conn, filter.as_ref(), ignore_set.as_ref()),
         InspectCheck::DanglingRefs => {
             find_dangling_refs(conn, filter.as_ref(), ignore_set.as_ref())
         }
         InspectCheck::Unreferenced => find_unreferenced(conn, filter.as_ref()),
-        InspectCheck::Graph => {
-            graph_health(conn, config, filter.as_ref(), input.skip_llm_suggestions)
-        }
+        InspectCheck::Graph => graph_health(conn, config, filter.as_ref()),
     };
     let findings = match config {
         Some(cfg) => findings
@@ -72,13 +64,12 @@ fn find_all(
     filter: Option<&ScopeFilter<'_>>,
     ignore_set: Option<&GlobSet>,
     config: Option<&TalonConfig>,
-    skip_llm: bool,
 ) -> Vec<InspectFinding> {
     let mut findings = find_orphans(conn, filter);
     findings.extend(find_broken_links(conn, filter, ignore_set));
     findings.extend(find_dangling_refs(conn, filter, ignore_set));
     findings.extend(find_unreferenced(conn, filter));
-    findings.extend(graph_health(conn, config, filter, skip_llm));
+    findings.extend(graph_health(conn, config, filter));
     findings
 }
 

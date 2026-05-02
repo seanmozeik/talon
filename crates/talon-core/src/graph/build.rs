@@ -9,7 +9,6 @@ use crate::TalonError;
 use crate::indexing::migrations::read_db_version;
 
 use super::snapshot::{GraphEdge, GraphNode};
-use super::suggest_llm::GraphSuggestionClient;
 
 /// Graph rebuild options.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -46,21 +45,15 @@ pub fn rebuild_graph(
     conn: &mut Connection,
     input: &GraphBuildInput,
 ) -> Result<GraphBuildStats, TalonError> {
-    rebuild_graph_with_suggester(conn, input, None)
+    rebuild_graph_inner(conn, input)
 }
 
-/// Rebuilds graph tables with optional ask-mode link suggestions.
-///
-/// # Errors
-///
-/// Returns [`TalonError::Sqlite`] when the index cannot be queried or written.
-pub fn rebuild_graph_with_suggester(
+fn rebuild_graph_inner(
     conn: &mut Connection,
     _input: &GraphBuildInput,
-    suggester: Option<&GraphSuggestionClient>,
 ) -> Result<GraphBuildStats, TalonError> {
     crate::indexing::migrations::run_migrations(conn)?;
-    let graph = build_graph(conn, suggester)?;
+    let graph = build_graph(conn)?;
     let stats = GraphBuildStats {
         node_count: graph.nodes.len().try_into().unwrap_or(u32::MAX),
         edge_count: graph.edges.len().try_into().unwrap_or(u32::MAX),
@@ -76,10 +69,7 @@ pub fn rebuild_graph_with_suggester(
     Ok(stats)
 }
 
-fn build_graph(
-    conn: &Connection,
-    suggester: Option<&GraphSuggestionClient>,
-) -> Result<BuiltGraph, TalonError> {
+fn build_graph(conn: &Connection) -> Result<BuiltGraph, TalonError> {
     let mut graph = BuiltGraph {
         db_version: read_db_version(conn),
         ..BuiltGraph::default()
@@ -95,8 +85,7 @@ fn build_graph(
         source_citations: graph.source_citations.clone(),
     };
     graph.communities = super::detect_communities(&mut snapshot);
-    graph.missing_links =
-        super::build_suggestions::build_link_suggestions(conn, &snapshot, suggester)?;
+    graph.missing_links = super::build_suggestions::build_link_suggestions(conn, &snapshot)?;
     graph.nodes = snapshot.nodes;
     Ok(graph)
 }

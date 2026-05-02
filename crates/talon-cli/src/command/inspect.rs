@@ -21,7 +21,6 @@ pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
         scope: args.scope.scope.clone(),
         scope_only: args.scope.scope_only.clone(),
         scope_all: args.scope.scope_all,
-        skip_llm_suggestions: args.fast,
         limit: args.limit,
     };
 

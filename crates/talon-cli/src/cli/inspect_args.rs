@@ -45,10 +45,6 @@ pub struct InspectArgs {
     #[command(flatten)]
     pub scope: SharedScopeArgs,
 
-    /// Skip LLM-assisted suggestions (faster, deterministic only).
-    #[arg(long, short = 'F', global = true)]
-    pub fast: bool,
-
     /// Maximum number of findings to display.
     #[arg(long, short = 'n', global = true)]
     pub limit: Option<u16>,

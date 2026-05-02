@@ -8,16 +8,15 @@ use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::indexing::{InspectCheck, InspectFinding};
 
-use super::{GraphSnapshot, GraphSuggestionClient, load_graph_snapshot};
+use super::{GraphSnapshot, load_graph_snapshot};
 
 const OVERCENTRAL_DEGREE: u32 = 12;
 const SPARSE_COMMUNITY_COHESION: f64 = 0.25;
 
 pub fn graph_health(
     conn: &Connection,
-    config: Option<&TalonConfig>,
+    _config: Option<&TalonConfig>,
     filter: Option<&ScopeFilter<'_>>,
-    skip_llm_suggestions: bool,
 ) -> Vec<InspectFinding> {
     let Ok(snapshot) = load_graph_snapshot(conn) else {
         return Vec::new();
@@ -31,13 +30,7 @@ pub fn graph_health(
     findings.extend(overcentral_findings(&snapshot, filter));
     findings.extend(bridge_findings(&snapshot, filter));
     findings.extend(surprising_connection_findings(&snapshot, filter));
-    findings.extend(missing_link_findings(
-        conn,
-        &snapshot,
-        config,
-        filter,
-        skip_llm_suggestions,
-    ));
+    findings.extend(missing_link_findings(conn, &snapshot, filter));
     findings
 }
 
@@ -184,22 +177,9 @@ fn finding(path: &str, message: &str) -> Option<InspectFinding> {
 fn missing_link_findings(
     conn: &Connection,
     snapshot: &GraphSnapshot,
-    config: Option<&TalonConfig>,
     filter: Option<&ScopeFilter<'_>>,
-    skip_llm_suggestions: bool,
 ) -> Vec<InspectFinding> {
-    let mut suggestions = super::build_link_suggestions(conn, snapshot, None).unwrap_or_default();
-
-    // Append LLM-assisted suggestions if ask model is configured and not skipped.
-    #[allow(clippy::collapsible_if)]
-    if !skip_llm_suggestions {
-        if let Some(client) = config
-            .and_then(|cfg| GraphSuggestionClient::from_config(cfg).ok())
-            .flatten()
-        {
-            suggestions.extend(super::build_llm_link_suggestions(conn, snapshot, &client));
-        }
-    }
+    let suggestions = super::build_link_suggestions(conn, snapshot).unwrap_or_default();
 
     let mut findings = Vec::new();
     for s in &suggestions {
@@ -216,13 +196,9 @@ fn missing_link_findings(
                 "graph-missing-link: \"{term}\" -> {target} ({provenance})",
                 term = s.term,
                 target = s.target,
-                provenance = if s.provenance == super::PROVENANCE_LLM {
-                    "llm"
-                } else {
-                    "det"
-                }
+                provenance = "det"
             ),
-            line: Some(s.line),
+            line: s.line,
         });
     }
     findings
@@ -243,7 +219,7 @@ mod tests {
         insert_node(&conn, "Isolated.md", 0, false, None, 0.0, 0)?;
         insert_node(&conn, "Index.md", 12, true, None, 0.0, 0)?;
 
-        let findings = graph_health(&conn, None, None, false);
+        let findings = graph_health(&conn, None, None);
 
         assert!(
             findings
@@ -269,7 +245,7 @@ mod tests {
         insert_node(&conn, "Bridge.md", 2, false, Some(1), 0.4, 2)?;
         insert_edge(&conn, "A.md", "Bridge.md")?;
 
-        let findings = graph_health(&conn, None, None, false);
+        let findings = graph_health(&conn, None, None);
 
         assert!(
             findings

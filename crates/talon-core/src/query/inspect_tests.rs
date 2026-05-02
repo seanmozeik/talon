@@ -98,7 +98,6 @@ fn inspect_input(check: InspectCheck) -> InspectInput {
         scope: Vec::new(),
         scope_only: Vec::new(),
         scope_all: false,
-        skip_llm_suggestions: false,
         limit: None,
     }
 }
@@ -109,7 +108,6 @@ fn inspect_input_scoped(check: InspectCheck, scope_only: Vec<String>) -> Inspect
         scope: Vec::new(),
         scope_only,
         scope_all: false,
-        skip_llm_suggestions: false,
         limit: None,
     }
 }
