@@ -3,6 +3,9 @@
 mod build;
 #[cfg(test)]
 mod build_tests;
+mod community;
+#[cfg(test)]
+mod community_tests;
 mod scoring;
 #[cfg(test)]
 mod scoring_tests;
@@ -10,6 +13,7 @@ mod snapshot;
 mod storage;
 
 pub use build::{GraphBuildInput, GraphBuildStats, rebuild_graph};
+pub use community::{CommunityInfo, detect_communities};
 pub use scoring::{
     GraphRankInput, GraphRankedNode, GraphRelation, GraphSignalBreakdown, rank_related,
 };

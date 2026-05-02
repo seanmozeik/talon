@@ -31,6 +31,7 @@ pub(super) struct BuiltGraph {
     pub(super) nodes: BTreeMap<String, GraphNode>,
     pub(super) edges: Vec<GraphEdge>,
     pub(super) source_citations: BTreeMap<String, BTreeSet<String>>,
+    pub(super) communities: Vec<super::CommunityInfo>,
 }
 
 /// Rebuilds graph tables from active notes and active-active resolved links.
@@ -66,6 +67,15 @@ fn build_graph(conn: &Connection) -> Result<BuiltGraph, TalonError> {
     load_nodes(conn, &mut graph)?;
     load_edges(conn, &mut graph)?;
     populate_degrees(&mut graph);
+    let mut snapshot = super::GraphSnapshot {
+        db_version: graph.db_version,
+        built_at: None,
+        nodes: graph.nodes.clone(),
+        edges: graph.edges.clone(),
+        source_citations: graph.source_citations.clone(),
+    };
+    graph.communities = super::detect_communities(&mut snapshot);
+    graph.nodes = snapshot.nodes;
     Ok(graph)
 }
 

@@ -75,6 +75,22 @@ pub(super) fn replace_graph(conn: &Connection, graph: &BuiltGraph) -> Result<(),
             })?;
         }
     }
+    for community in &graph.communities {
+        conn.execute(
+            "INSERT INTO graph_communities (community_id, node_count, cohesion, top_nodes)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![
+                community.community_id,
+                community.node_count,
+                community.cohesion,
+                serde_json::to_string(&community.top_nodes).unwrap_or_else(|_| String::from("[]")),
+            ],
+        )
+        .map_err(|source| TalonError::Sqlite {
+            context: "insert graph community",
+            source,
+        })?;
+    }
     Ok(())
 }
 
