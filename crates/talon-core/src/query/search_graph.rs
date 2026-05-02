@@ -37,12 +37,13 @@ pub(super) fn refine_graph_results(
         .iter()
         .map(|result| result.raw.path.clone())
         .collect::<BTreeSet<_>>();
-    let mut by_path = scored
+    let by_path = scored
         .iter()
         .enumerate()
         .map(|(index, result)| (result.raw.path.clone(), index))
         .collect::<BTreeMap<_, _>>();
     let mut graph_only = Vec::new();
+    let mut graph_only_paths = BTreeSet::new();
     let mut community_counts: BTreeMap<Option<u32>, usize> = BTreeMap::new();
 
     let seeds = scored
@@ -68,7 +69,10 @@ pub(super) fn refine_graph_results(
                 scored[index].raw.score += contribution * GRAPH_EXISTING_BLEND;
                 continue;
             }
-            if graph_only.len() >= GRAPH_ONLY_LIMIT || existing.contains(&candidate.vault_path) {
+            if graph_only.len() >= GRAPH_ONLY_LIMIT
+                || existing.contains(&candidate.vault_path)
+                || graph_only_paths.contains(&candidate.vault_path)
+            {
                 continue;
             }
             let community = snapshot
@@ -84,7 +88,7 @@ pub(super) fn refine_graph_results(
                 continue;
             };
             *count = count.saturating_add(1);
-            by_path.insert(candidate.vault_path, scored.len() + graph_only.len());
+            graph_only_paths.insert(candidate.vault_path);
             graph_only.push(raw);
         }
     }
