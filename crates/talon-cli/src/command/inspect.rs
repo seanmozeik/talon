@@ -1,7 +1,8 @@
-use super::output_mode;
+use super::{output_mode, should_spin};
 use crate::cli::{Cli, InspectArgs, InspectCheck};
 use crate::config::{self, RefreshLockPolicy, refresh_index_if_needed, vault_container_path};
 use crate::output::emit_response;
+use crate::spinner;
 use crate::telemetry::{count_u32, elapsed_ms};
 use eyre::{Result, WrapErr as _};
 use std::path::PathBuf;
@@ -32,31 +33,37 @@ pub(super) async fn emit(args: &InspectArgs, cli: &Cli) -> Result<()> {
     );
 
     let started = Instant::now();
-    let work = tokio::task::spawn_blocking(move || {
-        register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
-        let mut conn = open_database(&db_path)
-            .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-        // Always refreshes — findings must reflect current vault state.
-        // `false` for `fast`: inspect never opts out of refresh.
-        refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::ErrorIfBusy)?;
+    let work = async move {
+        tokio::task::spawn_blocking(move || {
+            register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
+            let mut conn = open_database(&db_path)
+                .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
+            // Always refreshes — findings must reflect current vault state.
+            // `false` for `fast`: inspect never opts out of refresh.
+            refresh_index_if_needed(&config, &mut conn, false, RefreshLockPolicy::ErrorIfBusy)?;
 
-        let mut response = query_inspect(&conn, &input, Some(&config));
-        response.vault = vault;
-        let result_count = count_u32(response.findings.len());
-        let meta = ResponseMeta {
-            duration_ms: elapsed_ms(started),
-            result_count: Some(result_count),
-            warnings: Vec::new(),
-            scope_set,
-            since: None,
-        };
-        let data = TalonResponseData::Inspect(response);
-        Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("inspect", data, meta))
-    });
-    let response = work
+            let mut response = query_inspect(&conn, &input, Some(&config));
+            response.vault = vault;
+            let result_count = count_u32(response.findings.len());
+            let meta = ResponseMeta {
+                duration_ms: elapsed_ms(started),
+                result_count: Some(result_count),
+                warnings: Vec::new(),
+                scope_set,
+                since: None,
+            };
+            let data = TalonResponseData::Inspect(response);
+            Ok::<TalonEnvelope, eyre::Report>(TalonEnvelope::ok("inspect", data, meta))
+        })
         .await
         .wrap_err("inspect task join failed")?
-        .wrap_err("inspect failed")?;
+        .wrap_err("inspect failed")
+    };
+    let response = if should_spin(cli) {
+        spinner::with_spinner("Inspecting vault...".to_string(), work).await?
+    } else {
+        work.await?
+    };
     if crate::banner::should_clear_fancy_prelude(cli) {
         crate::banner::clear_fancy_prelude();
     }
