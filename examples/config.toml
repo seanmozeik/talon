@@ -25,7 +25,7 @@ chunk_min_tokens = 16
 # Inference endpoint. Anything TEI-compatible (text-embeddings-inference,
 # Infinity, ultraclaw's local sidecar) works. Adjust base_url to taste.
 [inference]
-base_url = "http://host.docker.internal:8000"
+base_url = "http://localhost:8000"
 
 [inference.models]
 query_embedding = "embed"
@@ -48,7 +48,7 @@ truncate = true
 # Query-expansion endpoint. OpenAI-compatible chat completions.
 [expansion]
 provider = "openai-compatible"
-base_url = "http://host.docker.internal:8000/v1"
+base_url = "http://localhost:8000/v1"
 model = "bonsai"
 # Effective context for reliable recall distillation on this tiny model.
 # Set this higher for stronger local models that follow JSON reliably.
@@ -116,19 +116,19 @@ inspect = true
 glob = ["daily/**"]
 priority = "muted"
 default = false
-inspect = false        # daily notes are written-from, not written-to
+inspect = false     # daily notes are written-from, not written-to
 
 [scopes.raw]
 glob = ["raw/**"]
 priority = "muted"
 default = false
-inspect = true         # raw clips can have broken links worth catching
+inspect = true     # raw clips can have broken links worth catching
 
 [scopes.archive]
 glob = ["archive/**"]
 priority = "buried"
 default = false
-inspect = false        # closed projects don't need ongoing curation
+inspect = false       # closed projects don't need ongoing curation
 
 [scopes.private]
 glob = ["private/**"]

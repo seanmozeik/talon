@@ -80,10 +80,20 @@ fn dispatch_input(tool_name: &'static str, arguments: Value) -> Result<TalonEnve
 }
 
 /// Builds the MCP `tools/call` result for a named tool envelope.
+///
+/// `structuredContent` mirrors the compact agent-contract shape used by
+/// `content[0].text` so MCP clients that prefer structured output don't end
+/// up loading the verbose `TalonEnvelope`. Error envelopes have no compact
+/// representation, so they fall back to the full envelope to preserve
+/// `error.code` / `error.message` for callers.
 pub(super) fn named_content_result(envelope: &TalonEnvelope) -> Value {
-    let text = output::json::agent::to_agent_value(envelope)
-        .and_then(|v| serde_json::to_string(&v).ok())
+    let agent_value = output::json::agent::to_agent_value(envelope);
+    let text = agent_value
+        .as_ref()
+        .and_then(|v| serde_json::to_string(v).ok())
         .unwrap_or_else(|| serde_json::to_string(envelope).unwrap_or_default());
+    let structured =
+        agent_value.unwrap_or_else(|| serde_json::to_value(envelope).unwrap_or(Value::Null));
     json!({
         "content": [
             {
@@ -92,7 +102,7 @@ pub(super) fn named_content_result(envelope: &TalonEnvelope) -> Value {
             }
         ],
         "isError": !envelope.ok,
-        "structuredContent": envelope
+        "structuredContent": structured
     })
 }
 

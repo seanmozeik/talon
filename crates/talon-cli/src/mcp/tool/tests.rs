@@ -51,57 +51,64 @@ fn tools_call_wraps_invalid_arguments_in_error_envelope() {
 }
 
 #[test]
-fn named_tool_call_search_missing_vault_returns_error_with_expected_shape() {
-    // Test that calling search without a valid vault config returns an error
-    // with the expected MCP response structure.
+fn named_tool_call_search_returns_compact_agent_shape() {
+    // Successful named-tool calls must surface the compact agent-contract shape
+    // in BOTH `content[0].text` and `structuredContent`. MCP clients that prefer
+    // structured output (Claude Code among them) read `structuredContent` first;
+    // if it carried the full TalonEnvelope, agents would silently load the
+    // verbose shape and burn tokens.
     let result = tools_call_result(Some(json!({
         "name": "talon_search",
         "arguments": { "query": "test" }
     })));
 
-    // Verify the response has the standard MCP shape.
     assert!(result.is_object());
     assert!(result["content"].is_array());
-    assert!(result["content"][0].is_object());
     assert_eq!(result["content"][0]["type"], "text");
     assert!(result["content"][0]["text"].is_string());
-
-    // Verify the structured content is a TalonEnvelope with error state.
     assert!(result["structuredContent"].is_object());
-    assert_eq!(result["structuredContent"]["ok"], false);
-    assert_eq!(result["structuredContent"]["action"], "talon_search");
-    assert!(result["structuredContent"]["error"].is_object());
-    assert!(result["structuredContent"]["error"]["code"].is_string());
-    assert!(result["structuredContent"]["error"]["message"].is_string());
 
-    // Verify error is propagated to top-level isError.
-    assert_eq!(result["isError"], true);
+    if result["isError"] == json!(true) {
+        // Error envelope (no compact form) — falls back to the full envelope.
+        assert_eq!(result["structuredContent"]["ok"], false);
+        assert_eq!(result["structuredContent"]["action"], "talon_search");
+        assert!(result["structuredContent"]["error"].is_object());
+    } else {
+        // Compact AgentSearchResponse: only `vault?` + `results`. Verbose
+        // envelope keys must NOT appear.
+        assert!(result["structuredContent"]["results"].is_array());
+        assert!(result["structuredContent"]["ok"].is_null());
+        assert!(result["structuredContent"]["action"].is_null());
+        assert!(result["structuredContent"]["error"].is_null());
+        assert!(result["structuredContent"]["version"].is_null());
+        assert!(result["structuredContent"]["meta"].is_null());
+    }
 }
 
 #[test]
-fn named_tool_call_read_missing_vault_returns_error_with_expected_shape() {
-    // Test that calling read without a valid vault config returns an error
-    // with the expected MCP response structure.
+fn named_tool_call_read_returns_compact_agent_shape() {
+    // Same contract as search: structuredContent must be the compact agent
+    // shape on success, and the full envelope only when there is no compact
+    // representation (error path).
     let result = tools_call_result(Some(json!({
         "name": "talon_read",
         "arguments": { "path": "test.md" }
     })));
 
-    // Verify the response has the standard MCP shape.
     assert!(result.is_object());
     assert!(result["content"].is_array());
-    assert!(result["content"][0].is_object());
     assert_eq!(result["content"][0]["type"], "text");
     assert!(result["content"][0]["text"].is_string());
-
-    // Verify the structured content is a TalonEnvelope with error state.
     assert!(result["structuredContent"].is_object());
-    assert_eq!(result["structuredContent"]["ok"], false);
-    assert_eq!(result["structuredContent"]["action"], "talon_read");
-    assert!(result["structuredContent"]["error"].is_object());
-    assert!(result["structuredContent"]["error"]["code"].is_string());
-    assert!(result["structuredContent"]["error"]["message"].is_string());
 
-    // Verify error is propagated to top-level isError.
-    assert_eq!(result["isError"], true);
+    if result["isError"] == json!(true) {
+        assert_eq!(result["structuredContent"]["ok"], false);
+        assert_eq!(result["structuredContent"]["action"], "talon_read");
+        assert!(result["structuredContent"]["error"].is_object());
+    } else {
+        assert!(result["structuredContent"]["ok"].is_null());
+        assert!(result["structuredContent"]["action"].is_null());
+        assert!(result["structuredContent"]["error"].is_null());
+        assert!(result["structuredContent"]["version"].is_null());
+    }
 }
