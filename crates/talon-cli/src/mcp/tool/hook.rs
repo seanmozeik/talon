@@ -149,6 +149,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
         host: parse_host_kind(&host),
         session_id,
     };
+    ensure_session(state, key.clone());
 
     match result {
         Ok(recall_response) => {
@@ -210,6 +211,20 @@ fn touch_session(state: &Arc<McpServerState>, key: &SessionKey) {
     if let Some(session) = store.sessions.get_mut(key) {
         session.last_seen_at_ms = now;
     }
+}
+
+fn ensure_session(state: &Arc<McpServerState>, key: SessionKey) {
+    let now = now_ms();
+    let mut store = state
+        .sessions
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    store.sessions.entry(key).or_insert_with(|| SessionState {
+        created_at_ms: now,
+        last_seen_at_ms: now,
+        ledger: TurnLedger::new(),
+        suppression_decay: crate::mcp::session::suppression::DEFAULT_DECAY,
+    });
 }
 
 fn now_ms() -> i64 {

@@ -37,8 +37,8 @@ Automatically injects relevant vault notes as context before each Claude Code tu
 ## Verification
 
 After restarting, run a prompt that relates to content in your vault. Check the
-`SessionStart` hook output (visible in Claude Code verbose mode) — it should show
-`talon_hook_session_start` succeeded.
+`UserPromptSubmit` hook output (visible in Claude Code verbose mode) — it should
+show `talon_hook_recall` succeeded.
 
 ## Notes
 
