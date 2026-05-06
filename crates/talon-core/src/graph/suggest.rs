@@ -41,6 +41,7 @@ pub fn build_missing_link_suggestions(
     for (path, content) in active_note_bodies(conn)? {
         let mut per_target = BTreeSet::new();
         let mut in_fence = false;
+        let salient_terms = salient_terms(&content);
         for (line_index, line) in content.lines().enumerate() {
             if toggles_fence(line) {
                 in_fence = !in_fence;
@@ -56,7 +57,7 @@ pub fn build_missing_link_suggestions(
                 {
                     continue;
                 }
-                if line_mentions_term(line, term_norm) {
+                if line_mentions_term(line, term_norm, &salient_terms) {
                     per_target.insert(target.clone());
                     suggestions.push(LinkSuggestion {
                         path: path.clone(),
@@ -80,11 +81,8 @@ pub fn build_missing_link_suggestions(
 pub(super) fn target_dictionary(snapshot: &GraphSnapshot) -> Vec<(String, String, String)> {
     let mut terms = BTreeMap::new();
     for node in snapshot.nodes.values().filter(|node| !node.structural) {
-        for term in std::iter::once(node.title.as_str())
-            .chain(node.aliases.iter().map(String::as_str))
-            .chain(std::iter::once(
-                basename_without_ext(&node.vault_path).as_str(),
-            ))
+        for term in
+            std::iter::once(node.title.as_str()).chain(node.aliases.iter().map(String::as_str))
         {
             let normalized = normalize_term(term);
             if normalized.len() >= 4 {
@@ -127,12 +125,77 @@ pub(super) fn existing_edges(snapshot: &GraphSnapshot) -> BTreeSet<(String, Stri
         .collect()
 }
 
-pub(super) fn line_mentions_term(line: &str, term_norm: &str) -> bool {
+pub(super) fn line_mentions_term(
+    line: &str,
+    term_norm: &str,
+    salient_terms: &BTreeSet<String>,
+) -> bool {
     let searchable = mask_excluded_spans(line);
     let lower = searchable.to_lowercase();
-    lower
-        .match_indices(term_norm)
-        .any(|(start, _)| has_boundaries(&lower, start, start + term_norm.len()))
+    lower.match_indices(term_norm).any(|(start, _)| {
+        let end = start + term_norm.len();
+        has_boundaries(&lower, start, end)
+            && eligible_surface_match(&searchable[start..end], term_norm, salient_terms)
+    })
+}
+
+fn eligible_surface_match(
+    surface: &str,
+    term_norm: &str,
+    salient_terms: &BTreeSet<String>,
+) -> bool {
+    if !has_case_signal(surface) {
+        return false;
+    }
+    if is_multi_word(term_norm) {
+        return true;
+    }
+    term_norm.chars().count() >= 8 && salient_terms.contains(term_norm)
+}
+
+fn has_case_signal(surface: &str) -> bool {
+    surface.chars().any(char::is_uppercase)
+}
+
+fn is_multi_word(term_norm: &str) -> bool {
+    term_norm
+        .split(|ch: char| !ch.is_alphanumeric())
+        .filter(|part| !part.is_empty())
+        .nth(1)
+        .is_some()
+}
+
+fn salient_terms(content: &str) -> BTreeSet<String> {
+    let visible = visible_text(content);
+    let config = yake_rust::Config {
+        ngrams: 3,
+        remove_duplicates: true,
+        minimum_chars: 4,
+        only_alphanumeric_and_hyphen: false,
+        ..yake_rust::Config::default()
+    };
+    let stop_words = yake_rust::StopWords::predefined("en").unwrap_or_default();
+    yake_rust::get_n_best(32, &visible, &stop_words, &config)
+        .into_iter()
+        .map(|item| normalize_term(&item.raw))
+        .collect()
+}
+
+fn visible_text(content: &str) -> String {
+    let mut visible = String::with_capacity(content.len());
+    let mut in_fence = false;
+    for line in content.lines() {
+        if toggles_fence(line) {
+            in_fence = !in_fence;
+            continue;
+        }
+        if in_fence || line.trim_start().starts_with("---") {
+            continue;
+        }
+        visible.push_str(&mask_excluded_spans(line));
+        visible.push('\n');
+    }
+    visible
 }
 
 fn mask_excluded_spans(line: &str) -> String {
@@ -208,12 +271,4 @@ fn toggles_fence(line: &str) -> bool {
 
 fn normalize_term(term: &str) -> String {
     term.trim().to_lowercase()
-}
-
-fn basename_without_ext(path: &str) -> String {
-    std::path::Path::new(path)
-        .file_stem()
-        .and_then(std::ffi::OsStr::to_str)
-        .unwrap_or(path)
-        .to_string()
 }
