@@ -15,6 +15,21 @@ search query="zettelkasten atomic notes" limit="10":
 status:
     cargo run -p talon-cli -- status
 
+example-config-localhost:
+    sd 'host\.docker\.internal' 'localhost' examples/config.toml
+
+example-config-docker:
+    sd 'localhost' 'host.docker.internal' examples/config.toml
+
+example-config-toggle:
+    @if rg -q 'host\.docker\.internal' examples/config.toml; then \
+        just example-config-localhost; \
+        echo 'examples/config.toml -> localhost'; \
+    else \
+        just example-config-docker; \
+        echo 'examples/config.toml -> host.docker.internal'; \
+    fi
+
 skill:
     cargo run -p talon-cli -- --skill
 
