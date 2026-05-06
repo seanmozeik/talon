@@ -113,6 +113,32 @@ fn modified_file_is_indexed_again_not_skipped() {
 }
 
 #[test]
+fn metadata_only_change_is_skipped_when_hash_matches() {
+    let vault = unique_dir("metadata-only");
+    fs::create_dir_all(&vault).unwrap();
+    write_note(&vault, "a.md", "# A\nalpha");
+    let db = vault.join("idx.sqlite");
+    let mut conn = open_database(&db).unwrap();
+
+    let first = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
+    assert_eq!(first.indexed, 1);
+
+    conn.execute(
+        "UPDATE notes SET mtime_ms = mtime_ms - 1000, size_bytes = size_bytes + 1 WHERE vault_path = 'a.md'",
+        [],
+    )
+    .unwrap();
+
+    let second = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
+    assert_eq!(second.indexed, 0);
+    assert_eq!(second.skipped, 1);
+
+    drop(conn);
+    cleanup_db(&db);
+    fs::remove_dir_all(&vault).unwrap();
+}
+
+#[test]
 fn ignore_patterns_skip_matching_paths_case_insensitively() {
     let vault = unique_dir("ignore");
     fs::create_dir_all(&vault).unwrap();

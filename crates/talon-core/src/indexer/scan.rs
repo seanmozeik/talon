@@ -15,8 +15,8 @@ use crate::indexing::perform_note_deletion;
 
 use super::prelude::{
     build_ignore_globset, build_include_globset, file_matches_ignore, file_matches_include,
-    load_notes_for_linking, load_vault_notes_for_linking_with_sets, merge_current_path_for_linking,
-    scan_vault_markdown,
+    hash_file_content, load_notes_for_linking, load_vault_notes_for_linking_with_sets,
+    merge_current_path_for_linking, scan_vault_markdown,
 };
 use super::wiring::{NoteIndexConfig, index_one_note_with_config};
 use crate::text::frontmatter::normalize_keyword;
@@ -54,7 +54,7 @@ impl IndexerConfig {
 pub struct IndexerStats {
     /// Files (re)indexed during this scan.
     pub indexed: u32,
-    /// Files skipped (filter mismatch or mtime+size unchanged).
+    /// Files skipped (filter mismatch or content hash unchanged).
     pub skipped: u32,
     /// Files reconciled away (present in DB, missing on disk).
     pub deleted: u32,
@@ -70,8 +70,8 @@ fn file_mtime_ms(path: &Path) -> Option<i64> {
 }
 
 /// Walks `vault_root`, indexes any markdown file that matches the
-/// include/ignore filters and whose `(mtime_ms, size_bytes)` differs from
-/// the row in `notes`.
+/// include/ignore filters and whose content hash differs from the row in
+/// `notes`.
 ///
 /// # Errors
 ///
@@ -157,11 +157,6 @@ pub fn run_full_scan_with_chunker(
             continue;
         };
 
-        if existing_is_up_to_date(conn, &rel_path, mtime_ms, size_bytes) {
-            stats.skipped = stats.skipped.saturating_add(1);
-            continue;
-        }
-
         let content = match fs::read_to_string(&full_path) {
             Ok(c) => c,
             Err(err) => {
@@ -170,6 +165,11 @@ pub fn run_full_scan_with_chunker(
                 continue;
             }
         };
+
+        if existing_is_up_to_date(conn, &rel_path, &content) {
+            stats.skipped = stats.skipped.saturating_add(1);
+            continue;
+        }
 
         let outcome = index_one_note_with_config(
             conn,
@@ -187,23 +187,18 @@ pub fn run_full_scan_with_chunker(
     Ok(stats)
 }
 
-fn existing_is_up_to_date(
-    conn: &Connection,
-    vault_path: &str,
-    mtime_ms: i64,
-    size_bytes: i64,
-) -> bool {
-    let row: Option<(i64, i64, i64)> = conn
+fn existing_is_up_to_date(conn: &Connection, vault_path: &str, content: &str) -> bool {
+    let row: Option<(String, i64)> = conn
         .query_row(
-            "SELECT mtime_ms, size_bytes, active FROM notes WHERE vault_path = ?",
+            "SELECT hash, active FROM notes WHERE vault_path = ?",
             [vault_path],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .ok();
-    matches!(
-        row,
-        Some((existing_mtime, existing_size, 1)) if existing_mtime == mtime_ms && existing_size == size_bytes
-    )
+    let Some((existing_hash, 1)) = row else {
+        return false;
+    };
+    existing_hash == hash_file_content(content)
 }
 
 fn collect_ignored_link_targets(
