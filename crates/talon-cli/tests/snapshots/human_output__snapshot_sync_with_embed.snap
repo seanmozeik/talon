@@ -2,7 +2,7 @@
 source: crates/talon-cli/tests/human_output.rs
 expression: "String::from_utf8(buf).unwrap()"
 ---
-Sync: OK (5 indexed, 16 skipped, 1 deleted) in 1234ms
+Sync: OK (5 indexed/updated, 16 skipped, 1 deleted) in 1234ms
 Embed: partial (4/5 succeeded, 1 failed)
   ! Re-run talon sync --force to reset vectors.
   - failed: Atlas/Overview.md

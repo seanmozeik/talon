@@ -84,6 +84,35 @@ fn second_scan_skips_unchanged_files() {
 }
 
 #[test]
+fn modified_file_is_indexed_again_not_skipped() {
+    let vault = unique_dir("modified");
+    fs::create_dir_all(&vault).unwrap();
+    write_note(&vault, "a.md", "# A\nfirst");
+    let db = vault.join("idx.sqlite");
+    let mut conn = open_database(&db).unwrap();
+
+    let first = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
+    assert_eq!(first.indexed, 1);
+
+    write_note(&vault, "a.md", "# A\nsecond revision with more bytes");
+    let second = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
+    assert_eq!(second.indexed, 1);
+
+    let content: String = conn
+        .query_row(
+            "SELECT content FROM notes WHERE vault_path = 'a.md' AND active = 1",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(content.contains("second revision"));
+
+    drop(conn);
+    cleanup_db(&db);
+    fs::remove_dir_all(&vault).unwrap();
+}
+
+#[test]
 fn ignore_patterns_skip_matching_paths_case_insensitively() {
     let vault = unique_dir("ignore");
     fs::create_dir_all(&vault).unwrap();

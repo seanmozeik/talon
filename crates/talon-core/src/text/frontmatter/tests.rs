@@ -36,6 +36,18 @@ fn date_like_frontmatter_string_gets_date_type() {
 }
 
 #[test]
+fn parse_frontmatter_accepts_obsidian_unquoted_colon_scalars() {
+    let content = "---\ntitle: Artist: Song\nstatus: draft\n---\n\nBody text.";
+    let result = parse_frontmatter(content);
+
+    assert_eq!(result.body.trim(), "Body text.");
+    assert_eq!(
+        result.frontmatter.get("title"),
+        Some(&FrontmatterValue::String("Artist: Song".to_string()))
+    );
+}
+
+#[test]
 fn test_parse_frontmatter_no_frontmatter() {
     let content = "No frontmatter here.";
     let result = parse_frontmatter(content);
