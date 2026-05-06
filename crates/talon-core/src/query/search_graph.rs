@@ -18,6 +18,8 @@ const GRAPH_EXISTING_BLEND: f64 = 0.04;
 const GRAPH_ONLY_BLEND: f64 = 0.025;
 const GRAPH_ONLY_LIMIT: usize = 4;
 const GRAPH_PER_COMMUNITY_LIMIT: usize = 2;
+const GRAPH_RELATED_SEED_LIMIT: usize = 8;
+const GRAPH_HYBRID_SEED_LIMIT: usize = 1;
 
 pub(super) fn refine_graph_results(
     conn: &Connection,
@@ -52,7 +54,7 @@ pub(super) fn refine_graph_results(
 
     let seeds = scored
         .iter()
-        .take(8)
+        .take(graph_seed_limit(input))
         .filter(|result| result.raw.score >= SEED_MIN_SCORE)
         .map(|result| (result.raw.path.clone(), result.raw.score))
         .collect::<Vec<_>>();
@@ -110,8 +112,16 @@ pub(super) fn refine_graph_results(
     })
 }
 
-fn graph_refinement_enabled(input: &SearchInput) -> bool {
-    input.related || input.mode == SearchMode::Hybrid
+const fn graph_refinement_enabled(input: &SearchInput) -> bool {
+    input.related || matches!(input.mode, SearchMode::Hybrid)
+}
+
+const fn graph_seed_limit(input: &SearchInput) -> usize {
+    if input.related {
+        GRAPH_RELATED_SEED_LIMIT
+    } else {
+        GRAPH_HYBRID_SEED_LIMIT
+    }
 }
 
 fn scope_priorities(
@@ -175,9 +185,12 @@ mod tests {
         insert_graph_edge(&conn, "Seed.md", "Neighbor.md", 2)?;
         let mut scored = vec![scored("Seed.md", 0.9)];
 
-        let diagnostics =
-            refine_graph_results(&conn, &SearchInput::default(), None, &mut scored)
-                .ok_or_else(|| std::io::Error::other("graph refinement should report expansion"))?;
+        let input = SearchInput {
+            related: true,
+            ..SearchInput::default()
+        };
+        let diagnostics = refine_graph_results(&conn, &input, None, &mut scored)
+            .ok_or_else(|| std::io::Error::other("graph refinement should report expansion"))?;
 
         assert_eq!(scored.len(), 2);
         assert_eq!(scored[1].raw.path, "Neighbor.md");
@@ -196,9 +209,12 @@ mod tests {
         insert_graph_edge(&conn, "Seed.md", "Neighbor.md", 2)?;
         let mut scored = vec![scored("Seed.md", 0.9), scored("Neighbor.md", 0.2)];
 
-        let diagnostics =
-            refine_graph_results(&conn, &SearchInput::default(), None, &mut scored)
-                .ok_or_else(|| std::io::Error::other("graph refinement should report boost"))?;
+        let input = SearchInput {
+            related: true,
+            ..SearchInput::default()
+        };
+        let diagnostics = refine_graph_results(&conn, &input, None, &mut scored)
+            .ok_or_else(|| std::io::Error::other("graph refinement should report boost"))?;
 
         assert!(scored[1].raw.score > 0.2);
         assert_eq!(diagnostics.expanded_results, 0);
@@ -231,6 +247,33 @@ mod tests {
     }
 
     #[test]
+    fn plain_hybrid_graph_refinement_uses_only_top_seed() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut conn = Connection::open_in_memory()?;
+        run_migrations(&mut conn)?;
+        insert_graph_node(&conn, "Top.md")?;
+        insert_graph_node(&conn, "Weak.md")?;
+        insert_graph_node(&conn, "WeakNeighbor.md")?;
+        insert_graph_edge(&conn, "Weak.md", "WeakNeighbor.md", 2)?;
+        let input = SearchInput {
+            mode: SearchMode::Hybrid,
+            ..SearchInput::default()
+        };
+        let mut scored = vec![scored("Top.md", 0.9), scored("Weak.md", 0.8)];
+
+        let diagnostics = refine_graph_results(&conn, &input, None, &mut scored);
+
+        assert!(diagnostics.is_none());
+        assert_eq!(scored.len(), 2);
+        assert!(
+            !scored
+                .iter()
+                .any(|result| result.raw.path == "WeakNeighbor.md")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn graph_expansion_does_not_displace_strong_retrieval_hit()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut conn = Connection::open_in_memory()?;
@@ -241,7 +284,11 @@ mod tests {
         insert_graph_edge(&conn, "Seed.md", "GraphOnly.md", 4)?;
         let mut scored = vec![scored("Strong.md", 0.95), scored("Seed.md", 0.9)];
 
-        refine_graph_results(&conn, &SearchInput::default(), None, &mut scored)
+        let input = SearchInput {
+            related: true,
+            ..SearchInput::default()
+        };
+        refine_graph_results(&conn, &input, None, &mut scored)
             .ok_or_else(|| std::io::Error::other("graph refinement should add candidate"))?;
         scored.sort_by(|a, b| b.raw.score.total_cmp(&a.raw.score));
 

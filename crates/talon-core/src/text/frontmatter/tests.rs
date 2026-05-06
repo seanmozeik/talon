@@ -44,6 +44,24 @@ fn test_parse_frontmatter_no_frontmatter() {
 }
 
 #[test]
+fn parse_frontmatter_ignores_horizontal_rule_after_body_text() {
+    let content = "# Long Note\n\nOpening section.\n\n---\n\nClosing section.";
+    let result = parse_frontmatter(content);
+
+    assert_eq!(result.body, content);
+    assert!(result.frontmatter.is_empty());
+}
+
+#[test]
+fn parse_frontmatter_keeps_invalid_top_delimited_body() {
+    let content = "---\n# Morning notes\n\n- prep\n- service\n---\n\nLater section.";
+    let result = parse_frontmatter(content);
+
+    assert_eq!(result.body, content);
+    assert!(result.frontmatter.is_empty());
+}
+
+#[test]
 fn test_extract_wikilinks() {
     let content =
         "Check [[My Note]] and [[Other#section]].\n```\n[[not a link]]\n```\nAnd [[Target|alias]].";

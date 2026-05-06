@@ -14,6 +14,9 @@ use talon_core::{
 };
 
 const ASK_QUERY_LIMIT: u8 = 6;
+const ASK_SYNTHESIS_INPUT_NUMERATOR: usize = 3;
+const ASK_SYNTHESIS_INPUT_DENOMINATOR: usize = 10;
+const ASK_SYNTHESIS_FIXED_OVERHEAD_TOKENS: usize = 512;
 
 pub(super) async fn emit(args: &AskArgs, cli: &Cli) -> Result<()> {
     if args.question.is_empty() {
@@ -161,45 +164,50 @@ fn trim_ask_sources_to_budget(
 ) {
     let output_reserve = usize::try_from(config.ask.max_output_tokens).unwrap_or(2_048);
     let context = usize::try_from(config.ask.context_tokens).unwrap_or(usize::MAX);
-    let budget = context.saturating_sub(output_reserve + 512).max(256);
-    while ask_synthesis_tokens(question, queries, sources) > budget {
-        let Some(last) = sources.last_mut() else {
-            break;
-        };
-        if estimate_tokens(&last.snippet) > 96 {
-            last.snippet = trim_text_tokens(&last.snippet, estimate_tokens(&last.snippet) / 2);
+    let input_budget = context
+        .saturating_mul(ASK_SYNTHESIS_INPUT_NUMERATOR)
+        .checked_div(ASK_SYNTHESIS_INPUT_DENOMINATOR)
+        .unwrap_or(context)
+        .min(
+            context
+                .saturating_sub(output_reserve)
+                .saturating_sub(ASK_SYNTHESIS_FIXED_OVERHEAD_TOKENS),
+        )
+        .max(256);
+    let fixed_tokens = ask_synthesis_fixed_tokens(question, queries);
+    let source_budget = input_budget.saturating_sub(fixed_tokens);
+
+    let mut used = 0_usize;
+    sources.retain(|source| {
+        let source_tokens = ask_source_tokens(source);
+        if used.saturating_add(source_tokens) <= source_budget {
+            used = used.saturating_add(source_tokens);
+            true
         } else {
-            let _ = sources.pop();
+            false
         }
-    }
+    });
 }
 
+#[cfg(test)]
 fn ask_synthesis_tokens(question: &str, queries: &[String], sources: &[AskSource]) -> usize {
+    ask_synthesis_fixed_tokens(question, queries)
+        + sources.iter().map(ask_source_tokens).sum::<usize>()
+}
+
+fn ask_synthesis_fixed_tokens(question: &str, queries: &[String]) -> usize {
     estimate_tokens(question)
         + queries
             .iter()
             .map(|query| estimate_tokens(query))
             .sum::<usize>()
-        + sources
-            .iter()
-            .map(|source| {
-                estimate_tokens(source.vault_path.as_str())
-                    + estimate_tokens(&source.title)
-                    + estimate_tokens(&source.snippet)
-                    + 8
-            })
-            .sum::<usize>()
 }
 
-fn trim_text_tokens(text: &str, budget: usize) -> String {
-    let max_chars = budget
-        .saturating_mul(usize::from(talon_core::TOKEN_CHAR_RATIO))
-        .max(1);
-    text.chars()
-        .take(max_chars)
-        .collect::<String>()
-        .trim()
-        .to_owned()
+fn ask_source_tokens(source: &AskSource) -> usize {
+    estimate_tokens(source.vault_path.as_str())
+        + estimate_tokens(&source.title)
+        + estimate_tokens(&source.snippet)
+        + 8
 }
 
 fn set_progress(progress: Option<&Mutex<String>>, label: &str) {
@@ -317,3 +325,7 @@ fn run_synthesis(
         }),
     })
 }
+
+#[cfg(test)]
+#[path = "ask_tests.rs"]
+mod ask_tests;

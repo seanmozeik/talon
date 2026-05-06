@@ -12,10 +12,10 @@ use super::{
 /// Handles Obsidian scalar quoting (values containing `:` get double-quoted).
 ///
 /// # Algorithm
-/// 1. Match `---\n...\n---` or `---\n...\n...` at start of content.
+/// 1. Match a `---` opening line at the start of content.
 /// 2. Normalize Obsidian scalars (values containing `:` get quoted).
 /// 3. Parse with `serde_yaml_ng`.
-/// 4. If parsing fails, try raw parse, then return empty frontmatter.
+/// 4. If parsing fails, keep the full note body unchanged.
 #[must_use]
 pub fn parse_frontmatter(content: &str) -> FrontmatterExtract {
     let (body, raw) = extract_frontmatter_yaml(content);
@@ -37,6 +37,12 @@ pub fn parse_frontmatter(content: &str) -> FrontmatterExtract {
         parsed_frontmatter = Some(map);
     }
 
+    let (body, raw) = if raw.is_empty() || parsed_frontmatter.is_some() {
+        (body, raw)
+    } else {
+        (content.to_string(), String::new())
+    };
+
     let aliases = extract_aliases(&frontmatter);
     let (fm_tags, inline_tags) = extract_tags(&frontmatter, parsed_frontmatter.as_ref(), &body);
     let tags = normalize_unique_list(fm_tags, inline_tags);
@@ -54,16 +60,12 @@ pub fn parse_frontmatter(content: &str) -> FrontmatterExtract {
 
 /// Extracts YAML frontmatter block from markdown content.
 fn extract_frontmatter_yaml(content: &str) -> (String, String) {
-    let start_marker = FRONTMATTER_DELIM_START;
-    let start = content.find(start_marker);
-
-    let Some(start_pos) = start else {
+    let Some(after_start) = content
+        .strip_prefix("---\n")
+        .or_else(|| content.strip_prefix("---\r\n"))
+    else {
         return (content.to_string(), String::new());
     };
-
-    let after_start = &content[start_pos + start_marker.len()..];
-    // Skip leading newline
-    let after_start = after_start.strip_prefix('\n').unwrap_or(after_start);
 
     // Find end marker (--- or ...)
     let Some(end) = find_end_marker(after_start) else {
@@ -71,16 +73,7 @@ fn extract_frontmatter_yaml(content: &str) -> (String, String) {
     };
 
     let raw = &after_start[..end];
-    let _body = content[start_pos + start_marker.len()..]
-        .trim_start()
-        .to_string();
-
-    // Find the actual end position in original content
-    let total_prefix = start_pos + start_marker.len() + 1; // +1 for newline
-    let body_start = total_prefix + end;
-    let body_end = body_start + 3; // Both --- and ... are 3 chars
-
-    let body = content[body_end..].to_string();
+    let body = after_start[end + FRONTMATTER_DELIM_START.len()..].to_string();
 
     (body, raw.to_string())
 }
