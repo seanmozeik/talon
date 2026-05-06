@@ -21,7 +21,7 @@ use crate::text::chunker::chunk_markdown;
 use crate::text::frontmatter::{extract_wikilinks, parse_frontmatter};
 use crate::text::normalize_vault_path;
 
-use super::prelude::{extract_title, merge_current_path_for_linking};
+use super::prelude::{extract_title, hash_file_content, merge_current_path_for_linking};
 
 /// Per-call configuration for [`index_one_note_with_config`].
 ///
@@ -169,6 +169,7 @@ pub fn index_one_note_with_config(
             vault_path,
             title: &title,
             content: &parsed.body,
+            source_hash: hash_file_content(content),
             frontmatter: &parsed.frontmatter,
             aliases: &parsed.aliases,
             tags: &parsed.tags,

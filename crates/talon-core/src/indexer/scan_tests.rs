@@ -84,6 +84,26 @@ fn second_scan_skips_unchanged_files() {
 }
 
 #[test]
+fn second_scan_skips_unchanged_frontmatter_files() {
+    let vault = unique_dir("frontmatter-rescan");
+    fs::create_dir_all(&vault).unwrap();
+    write_note(&vault, "a.md", "---\ntitle: A\n---\n\n# A");
+    let db = vault.join("idx.sqlite");
+    let mut conn = open_database(&db).unwrap();
+
+    let first = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
+    assert_eq!(first.indexed, 1);
+
+    let second = run_full_scan(&mut conn, &vault, &IndexerConfig::index_all()).unwrap();
+    assert_eq!(second.indexed, 0);
+    assert_eq!(second.skipped, 1);
+
+    drop(conn);
+    cleanup_db(&db);
+    fs::remove_dir_all(&vault).unwrap();
+}
+
+#[test]
 fn modified_file_is_indexed_again_not_skipped() {
     let vault = unique_dir("modified");
     fs::create_dir_all(&vault).unwrap();

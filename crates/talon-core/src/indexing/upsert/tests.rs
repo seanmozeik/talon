@@ -26,6 +26,26 @@ fn empty_fm() -> BTreeMap<String, FrontmatterValue> {
     BTreeMap::new()
 }
 
+fn insert_test_note(conn: &rusqlite::Connection, content: &str) -> NoteUpsertResult {
+    let fm = empty_fm();
+    upsert_note(
+        conn,
+        &UpsertNoteParams {
+            vault_path: "a.md",
+            title: "A",
+            content,
+            source_hash: hash_file_content(content),
+            frontmatter: &fm,
+            aliases: &[],
+            tags: &[],
+            mtime_ms: 0,
+            size_bytes: i64::try_from(content.len()).unwrap_or(i64::MAX),
+            scope: "",
+        },
+    )
+    .unwrap()
+}
+
 #[test]
 fn upsert_note_inserts_new_row() {
     let path = unique_db("insert");
@@ -37,6 +57,7 @@ fn upsert_note_inserts_new_row() {
             vault_path: "a.md",
             title: "A",
             content: "hello",
+            source_hash: hash_file_content("hello"),
             frontmatter: &fm,
             aliases: &[],
             tags: &[],
@@ -62,6 +83,7 @@ fn upsert_note_updates_existing_row_in_place() {
             vault_path: "a.md",
             title: "A",
             content: "v1",
+            source_hash: hash_file_content("v1"),
             frontmatter: &fm,
             aliases: &[],
             tags: &[],
@@ -77,6 +99,7 @@ fn upsert_note_updates_existing_row_in_place() {
             vault_path: "a.md",
             title: "A revised",
             content: "v2",
+            source_hash: hash_file_content("v2"),
             frontmatter: &fm,
             aliases: &[],
             tags: &[],
@@ -118,22 +141,7 @@ fn ch(idx: u32, text: &str) -> ChunkUpsertRow {
 fn upsert_chunks_inserts_then_dedupes_unchanged_then_deletes_orphan() {
     let path = unique_db("chunks");
     let conn = open_database(&path).unwrap();
-    let fm = empty_fm();
-    let n = upsert_note(
-        &conn,
-        &UpsertNoteParams {
-            vault_path: "a.md",
-            title: "A",
-            content: "body",
-            frontmatter: &fm,
-            aliases: &[],
-            tags: &[],
-            mtime_ms: 100,
-            size_bytes: 4,
-            scope: "",
-        },
-    )
-    .unwrap();
+    let n = insert_test_note(&conn, "body");
 
     // First pass: insert two chunks; both should be 'pending'.
     upsert_chunks(&conn, n.note_id, &[ch(0, "alpha"), ch(1, "beta")]).unwrap();
@@ -204,22 +212,7 @@ fn upsert_chunks_inserts_then_dedupes_unchanged_then_deletes_orphan() {
 fn upsert_aliases_writes_normalized_form() {
     let path = unique_db("aliases");
     let conn = open_database(&path).unwrap();
-    let fm = empty_fm();
-    let n = upsert_note(
-        &conn,
-        &UpsertNoteParams {
-            vault_path: "a.md",
-            title: "A",
-            content: "x",
-            frontmatter: &fm,
-            aliases: &[],
-            tags: &[],
-            mtime_ms: 0,
-            size_bytes: 0,
-            scope: "",
-        },
-    )
-    .unwrap();
+    let n = insert_test_note(&conn, "x");
     upsert_aliases(&conn, n.note_id, &["Atomic".into(), "Other".into()]).unwrap();
     let alias_norm: String = conn
         .query_row(
@@ -260,6 +253,7 @@ fn upsert_frontmatter_flattens_lists_and_nested_values() {
             vault_path: "a.md",
             title: "A",
             content: "x",
+            source_hash: hash_file_content("x"),
             frontmatter: &fm,
             aliases: &[],
             tags: &[],
@@ -294,22 +288,7 @@ fn upsert_frontmatter_flattens_lists_and_nested_values() {
 fn perform_note_deletion_soft_deletes_and_clears_children() {
     let path = unique_db("delete");
     let conn = open_database(&path).unwrap();
-    let fm = empty_fm();
-    let n = upsert_note(
-        &conn,
-        &UpsertNoteParams {
-            vault_path: "a.md",
-            title: "A",
-            content: "body",
-            frontmatter: &fm,
-            aliases: &["Atomic".into()],
-            tags: &["zk".into()],
-            mtime_ms: 0,
-            size_bytes: 4,
-            scope: "",
-        },
-    )
-    .unwrap();
+    let n = insert_test_note(&conn, "body");
     upsert_chunks(&conn, n.note_id, &[ch(0, "body")]).unwrap();
     upsert_aliases(&conn, n.note_id, &["Atomic".into()]).unwrap();
     upsert_tags(&conn, n.note_id, &["zk".into()]).unwrap();

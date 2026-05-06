@@ -1,7 +1,6 @@
 use rusqlite::{Connection, params};
 
 use crate::TalonError;
-use crate::indexer::prelude::hash_file_content;
 use crate::indexing::migrations::bump_db_version;
 
 use super::{NoteUpsertResult, UpsertNoteParams};
@@ -19,8 +18,7 @@ fn random_docid() -> String {
 
 /// Inserts a new note row or updates the existing row for `vault_path`.
 ///
-/// Hashing, `JSON` serialization, and docid generation happen inside this
-/// function so callers don't need to plumb them through.
+/// `JSON` serialization and docid generation happen inside this function.
 ///
 /// # Errors
 ///
@@ -47,8 +45,6 @@ pub fn upsert_note(
                 params.vault_path
             ),
         })?;
-    let file_hash = hash_file_content(params.content);
-
     let existing: Option<i64> = conn
         .query_row(
             "SELECT id FROM notes WHERE vault_path = ?",
@@ -71,7 +67,7 @@ pub fn upsert_note(
                 frontmatter_json,
                 params.mtime_ms,
                 params.size_bytes,
-                file_hash,
+                params.source_hash.as_str(),
                 params.scope,
                 params.vault_path,
             ],
@@ -102,7 +98,7 @@ pub fn upsert_note(
             frontmatter_json,
             params.mtime_ms,
             params.size_bytes,
-            file_hash,
+            params.source_hash.as_str(),
             docid,
             params.scope,
         ],

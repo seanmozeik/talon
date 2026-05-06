@@ -31,7 +31,8 @@ pub struct NoteUpsertResult {
 ///
 /// The `frontmatter` is serialized to `JSON` and stored verbatim in
 /// `notes.frontmatter`; `aliases` and `tags` are also stored as `JSON`
-/// arrays. The body content's `SHA-256` hash is computed and stored.
+/// arrays. The source file's `SHA-256` hash is stored for scan change
+/// detection.
 #[derive(Debug)]
 pub struct UpsertNoteParams<'a> {
     /// Vault-relative path (e.g. `"zone/note.md"`).
@@ -40,6 +41,8 @@ pub struct UpsertNoteParams<'a> {
     pub title: &'a str,
     /// Note body (post-frontmatter).
     pub content: &'a str,
+    /// SHA-256 of the raw source file content.
+    pub source_hash: String,
     /// Parsed frontmatter map.
     pub frontmatter: &'a BTreeMap<String, FrontmatterValue>,
     /// Aliases, in declaration order.
