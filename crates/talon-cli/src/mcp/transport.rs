@@ -99,9 +99,13 @@ where
 
         let response = match serde_json::from_str::<JsonRpcRequest>(trimmed) {
             Ok(request) => {
+                let request_marks_ready = request.method == "initialize";
                 let (response, disposition) = handle_request_with_state(request, state);
                 if let Some(response) = response {
                     write_response(&mut writer, &response)?;
+                }
+                if request_marks_ready {
+                    crate::mcp::diagnostics::mark_ready();
                 }
                 if disposition == MethodDisposition::Shutdown {
                     return Ok(TransportOutcome::Shutdown);

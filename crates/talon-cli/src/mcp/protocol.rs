@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::tool;
 
@@ -133,11 +134,14 @@ pub fn handle_request_with_state(
         ),
         "tools/call" => {
             let params = request.params.clone();
-            respond_to_request(
-                request,
-                tool::tools_call_result_with_state(params, state),
-                MethodDisposition::Continue,
-            )
+            let result = catch_unwind(AssertUnwindSafe(|| {
+                tool::tools_call_result_with_state(params, state)
+            }))
+            .unwrap_or_else(|payload| {
+                crate::mcp::diagnostics::record_caught_panic("tools/call", payload.as_ref());
+                tool::panic_tool_result()
+            });
+            respond_to_request(request, result, MethodDisposition::Continue)
         }
         "shutdown" => respond_to_request(request, Value::Null, MethodDisposition::Shutdown),
         _ => {

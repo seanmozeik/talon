@@ -7,6 +7,7 @@
 //! test and avoids committing the CLI to a larger server abstraction too early.
 
 pub mod background;
+pub mod diagnostics;
 pub mod protocol;
 pub mod session;
 pub mod state;

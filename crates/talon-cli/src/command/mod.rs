@@ -40,6 +40,8 @@ pub async fn run(cli: &Cli) -> Result<()> {
 
     match cmd {
         Commands::Mcp => {
+            crate::mcp::diagnostics::install_panic_hook();
+            let _ready_guard = crate::mcp::diagnostics::ready_guard();
             let config = crate::config::load_config(cli.config_file.as_deref())?;
             let vault_path = config.vault_path.clone();
             let db_path = config.db_path.clone();
@@ -66,6 +68,7 @@ pub async fn run(cli: &Cli) -> Result<()> {
                 run_jsonrpc_loop_with_state(BufReader::new(stdin.lock()), stdout.lock(), &state)
             })?;
             let _ = outcome;
+            crate::mcp::diagnostics::clear_ready();
             Ok(())
         }
         Commands::Init(args) => init::emit(args),

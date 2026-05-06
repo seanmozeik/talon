@@ -47,7 +47,7 @@ pub(super) fn emit(_args: &StatusArgs, cli: &Cli) -> Result<()> {
     let vault_path = config.vault_path.clone();
 
     let conn_res = open_database(&db_path);
-    let response = match conn_res {
+    let mut response = match conn_res {
         Ok(conn) => talon_core::query_status(&conn, &config),
         Err(e) => {
             let mount = talon_core::ContainerPath::parse(vault_path.to_string_lossy().as_ref())
@@ -75,10 +75,18 @@ pub(super) fn emit(_args: &StatusArgs, cli: &Cli) -> Result<()> {
         }
     };
 
+    let mut warnings = Vec::new();
+    if let Some(warning) = crate::mcp::diagnostics::crash_status_warning() {
+        if response.reason.is_none() {
+            response.reason = Some(warning.clone());
+        }
+        warnings.push(warning);
+    }
+
     let meta = ResponseMeta {
         duration_ms: elapsed_ms(started),
         result_count: None,
-        warnings: Vec::new(),
+        warnings,
         scope_set: None,
         since: None,
     };

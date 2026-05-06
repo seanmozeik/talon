@@ -116,3 +116,16 @@ fn content_result(envelope: &TalonEnvelope) -> Value {
         "structuredContent": envelope
     })
 }
+
+#[must_use]
+pub fn panic_tool_result() -> Value {
+    json!({
+        "content": [
+            {
+                "type": "text",
+                "text": "{\"error\":\"talon MCP tool handler panicked; see talon status for diagnostics\"}"
+            }
+        ],
+        "isError": true
+    })
+}
