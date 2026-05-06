@@ -15,17 +15,19 @@ from typing import Any
 
 
 DEFAULT_MESSAGES = [
-    "fermented hot sauce co-packer",
-    "maybe check ~/.config/talon/config.toml what it currently sets raw/ to",
-    "Yeah do all of them. And also align the flags with pplx, ddg etc...",
-    "what did we decide about MCP hook recall and context overflow?",
-    "search for graph intelligence notes and memory retrieval notes",
-    "Can you inspect the Calle Sur launch plan, especially blockers around permits?",
-    "Follow up on that same graph intelligence question, but only if it is still useful.",
-    "raw/ vs processed/ config paths: what did we write down?",
-    "Non-ASCII smoke: café, jalapeño, naïve, 東京, emoji-ish text without emoji.",
-    "Shell-ish prompt: rg 'talon_hook_recall|mcp-ready' ~/.config/talon/config.toml",
-    "Markdown-ish prompt:\n\n```toml\n[inference]\nbase_url = \"http://localhost:8000\"\n```\n\nWhat should change in Docker?",
+    "What are the current blockers for the Calle Sur fermented hot sauce launch?",
+    "Which co-packer should we choose for the hot sauce line and why?",
+    "Summarize Recipe v3 for co-packer handoff: brine, timing, and target texture.",
+    "What does the launch readiness note say about open actions and retrieval notes?",
+    "How does Hot Sauce Formulation relate to the Fermented Hot Sauce Line project?",
+    "What should we order from Salt Marsh Farm for the spring menu?",
+    "Find the tasting notes for Fava and Whey and explain the fermentation risk.",
+    "What are the equipment and lease constraints for the tasting counter?",
+    "Which spring menu dishes depend on ramps, fiddleheads, fava, or watercress?",
+    "Non-ASCII vault-ish prompt: Lúcia, Andrés, café, jalapeño, São-style service notes.",
+    "Markdown-ish prompt:\n\n```menu\nCharred Spring Onion\nFava and Whey\nLamb Neck\n```\n\nWhich notes should I check before service?",
+    "Path-ish prompt: projects/Fermented Hot Sauce Line/Launch Readiness.md and raw/Email - Distributor Quote Hot Sauce Co-Pack.md",
+    'Markdown-ish prompt:\n\n```toml\n[inference]\nbase_url = "http://localhost:8000"\n```\n\nWhat should change in Docker?',
 ]
 
 
@@ -73,7 +75,10 @@ def main() -> int:
 
     try:
         request_id = 1
-        send(child, {"jsonrpc": "2.0", "id": request_id, "method": "initialize", "params": {}})
+        send(
+            child,
+            {"jsonrpc": "2.0", "id": request_id, "method": "initialize", "params": {}},
+        )
         response = read_response(child, selector, args.timeout)
         require_response_id(response, request_id)
         request_id += 1
@@ -82,7 +87,9 @@ def main() -> int:
         started = time.monotonic()
         for turn in range(1, args.turns + 1):
             message = message_for_turn(turn, rng)
-            response = call_recall(child, selector, request_id, turn, message, args.timeout)
+            response = call_recall(
+                child, selector, request_id, turn, message, args.timeout
+            )
             require_response_id(response, request_id)
             validate_recall_response(response, turn)
             request_id += 1
@@ -154,19 +161,19 @@ def message_for_turn(turn: int, rng: random.Random) -> str:
 
 def repeated_suppression_prompt(turn: int) -> str:
     return (
-        "Repeated suppression probe: what did we decide about MCP hook recall, "
-        "context overflow, and silent crash containment? "
+        "Repeated suppression probe: recall the hot sauce launch blockers, "
+        "co-packer recommendation, and Recipe v3 handoff notes. "
         f"(turn marker {turn % 3})"
     )
 
 
 def noisy_prompt(turn: int, rng: random.Random) -> str:
     fragments = [
-        "paths: ~/Library/Logs/DiagnosticReports/talon-2026-05-05-141304.000.ips",
-        "json: {\"tool\":\"talon_hook_recall\",\"ok\":true}",
-        "unicode: café jalapeño naïve 東京 русский",
-        "operators: && || $(pwd) `date` <vault_recall skipped=\"true\"/>",
-        "quotes: 'single' \"double\" [brackets] (parens) #tags/wiki",
+        "paths: projects/Fermented Hot Sauce Line/Co-Packer Research.md",
+        'json: {"topic":"hot sauce","scope":"projects","ok":true}',
+        "unicode: Lúcia Andrés café jalapeño São 東京",
+        "operators: && || $(pwd) `date` [[Launch Readiness]] #hot-sauce",
+        "quotes: 'Artisan Ferments Co' \"Coastal Artisan Foods\" [Salt Marsh] (Maria)",
     ]
     rng.shuffle(fragments)
     return f"noisy turn {turn}\n" + "\n".join(fragments)
@@ -174,10 +181,10 @@ def noisy_prompt(turn: int, rng: random.Random) -> str:
 
 def long_prompt(turn: int) -> str:
     paragraph = (
-        "We are debugging a long-running Claude Code MCP session where recall works "
-        "for a few turns and then fails silently after a panic. Please reason about "
-        "the distinction between the current user prompt, the transcript path, the "
-        "session ledger, suppression of duplicate chunks, and sidecar latency. "
+        "We are planning the next Calle Sur operating pass. Connect the fermented "
+        "hot sauce launch checklist, Recipe v3, co-packer research, Salt Marsh "
+        "spring sourcing, and the Spring 2026 menu. Pull the notes that clarify "
+        "current blockers, production risks, service prep, and financial tradeoffs. "
     )
     body = "\n".join(f"{i}. {paragraph}" for i in range(1, 18))
     return f"long transcript-like prompt turn {turn}\n\n{body}"
@@ -196,8 +203,14 @@ def read_response(
 ) -> dict[str, Any]:
     events = selector.select(timeout)
     if not events:
-        stderr = child.stderr.read() if child.stderr is not None and child.poll() is not None else ""
-        fail(f"timed out waiting for MCP response; status={child.poll()} stderr={stderr}")
+        stderr = (
+            child.stderr.read()
+            if child.stderr is not None and child.poll() is not None
+            else ""
+        )
+        fail(
+            f"timed out waiting for MCP response; status={child.poll()} stderr={stderr}"
+        )
     line = events[0][0].fileobj.readline()
     if not line:
         stderr = child.stderr.read() if child.stderr is not None else ""

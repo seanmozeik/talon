@@ -4,6 +4,7 @@
 Usage: python3 scripts/eval_compare.py <file-a> <file-b>
    or: just eval-compare <file-a> <file-b>
 """
+
 import json
 import sys
 
