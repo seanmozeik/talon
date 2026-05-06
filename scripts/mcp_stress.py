@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import random
 import selectors
 import subprocess
 import sys
@@ -19,6 +20,12 @@ DEFAULT_MESSAGES = [
     "Yeah do all of them. And also align the flags with pplx, ddg etc...",
     "what did we decide about MCP hook recall and context overflow?",
     "search for graph intelligence notes and memory retrieval notes",
+    "Can you inspect the Calle Sur launch plan, especially blockers around permits?",
+    "Follow up on that same graph intelligence question, but only if it is still useful.",
+    "raw/ vs processed/ config paths: what did we write down?",
+    "Non-ASCII smoke: café, jalapeño, naïve, 東京, emoji-ish text without emoji.",
+    "Shell-ish prompt: rg 'talon_hook_recall|mcp-ready' ~/.config/talon/config.toml",
+    "Markdown-ish prompt:\n\n```toml\n[inference]\nbase_url = \"http://localhost:8000\"\n```\n\nWhat should change in Docker?",
 ]
 
 
@@ -31,11 +38,19 @@ def main() -> int:
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--sleep-ms", type=int, default=0)
     parser.add_argument(
+        "--jitter-ms",
+        type=int,
+        default=0,
+        help="add deterministic random sleep from 0..N ms between turns",
+    )
+    parser.add_argument("--seed", type=int, default=20260506)
+    parser.add_argument(
         "--release",
         action="store_true",
         help="run the release binary through cargo run --release",
     )
     args = parser.parse_args()
+    rng = random.Random(args.seed)
 
     config = Path(args.config)
     cmd = ["cargo", "run", "-q", "-p", "talon-cli"]
@@ -66,13 +81,16 @@ def main() -> int:
 
         started = time.monotonic()
         for turn in range(1, args.turns + 1):
-            message = DEFAULT_MESSAGES[(turn - 1) % len(DEFAULT_MESSAGES)]
+            message = message_for_turn(turn, rng)
             response = call_recall(child, selector, request_id, turn, message, args.timeout)
             require_response_id(response, request_id)
             validate_recall_response(response, turn)
             request_id += 1
-            if args.sleep_ms > 0:
-                time.sleep(args.sleep_ms / 1000)
+            sleep_ms = args.sleep_ms
+            if args.jitter_ms > 0:
+                sleep_ms += rng.randint(0, args.jitter_ms)
+            if sleep_ms > 0:
+                time.sleep(sleep_ms / 1000)
             if turn == 1 or turn % 10 == 0:
                 elapsed = time.monotonic() - started
                 print(f"turn {turn}/{args.turns} ok ({elapsed:.1f}s)")
@@ -122,6 +140,47 @@ def call_recall(
         },
     )
     return read_response(child, selector, timeout)
+
+
+def message_for_turn(turn: int, rng: random.Random) -> str:
+    if turn % 17 == 0:
+        return long_prompt(turn)
+    if turn % 13 == 0:
+        return repeated_suppression_prompt(turn)
+    if turn % 11 == 0:
+        return noisy_prompt(turn, rng)
+    return DEFAULT_MESSAGES[(turn - 1) % len(DEFAULT_MESSAGES)]
+
+
+def repeated_suppression_prompt(turn: int) -> str:
+    return (
+        "Repeated suppression probe: what did we decide about MCP hook recall, "
+        "context overflow, and silent crash containment? "
+        f"(turn marker {turn % 3})"
+    )
+
+
+def noisy_prompt(turn: int, rng: random.Random) -> str:
+    fragments = [
+        "paths: ~/Library/Logs/DiagnosticReports/talon-2026-05-05-141304.000.ips",
+        "json: {\"tool\":\"talon_hook_recall\",\"ok\":true}",
+        "unicode: café jalapeño naïve 東京 русский",
+        "operators: && || $(pwd) `date` <vault_recall skipped=\"true\"/>",
+        "quotes: 'single' \"double\" [brackets] (parens) #tags/wiki",
+    ]
+    rng.shuffle(fragments)
+    return f"noisy turn {turn}\n" + "\n".join(fragments)
+
+
+def long_prompt(turn: int) -> str:
+    paragraph = (
+        "We are debugging a long-running Claude Code MCP session where recall works "
+        "for a few turns and then fails silently after a panic. Please reason about "
+        "the distinction between the current user prompt, the transcript path, the "
+        "session ledger, suppression of duplicate chunks, and sidecar latency. "
+    )
+    body = "\n".join(f"{i}. {paragraph}" for i in range(1, 18))
+    return f"long transcript-like prompt turn {turn}\n\n{body}"
 
 
 def send(child: subprocess.Popen[str], request: dict[str, Any]) -> None:
