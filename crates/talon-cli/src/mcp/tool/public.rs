@@ -113,9 +113,21 @@ fn search_input_schema() -> Value {
         "type": "object",
         "properties": {
             "query": { "type": "string" },
-            "scope": { "type": "array", "items": { "type": "string" } },
-            "scopeOnly": { "type": "array", "items": { "type": "string" } },
-            "scopeAll": { "type": "boolean", "default": false },
+            "scope": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Add configured scopes to the default search pool, for example `raw` for recall-injected raw/ notes."
+            },
+            "scopeOnly": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Search only these configured scopes, ignoring the default scope set."
+            },
+            "scopeAll": {
+                "type": "boolean",
+                "default": false,
+                "description": "Include every configured scope, overriding `default = false` exclusions such as raw/, archive/, and private/."
+            },
             "mode": { "type": "string", "enum": ["hybrid", "semantic", "fulltext", "title"] },
             "fast": { "type": "boolean", "default": false },
             "limit": { "type": "integer", "default": 10 },

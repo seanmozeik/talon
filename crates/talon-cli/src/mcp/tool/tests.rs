@@ -28,6 +28,32 @@ fn tools_list_includes_named_tools() {
 }
 
 #[test]
+fn search_tool_documents_default_scope_exclusions() {
+    let result = tools_list_result();
+    let Some(tools) = result["tools"].as_array() else {
+        panic!("tools array missing");
+    };
+    let Some(search) = tools.iter().find(|tool| tool["name"] == "talon_search") else {
+        panic!("talon_search should be listed");
+    };
+
+    let Some(description) = search["description"].as_str() else {
+        panic!("search description should be a string");
+    };
+    assert!(description.contains("default = false"));
+    assert!(description.contains("scopeAll: true"));
+    assert!(description.contains("recall-injected paths"));
+
+    let Some(scope_all_description) =
+        search["inputSchema"]["properties"]["scopeAll"]["description"].as_str()
+    else {
+        panic!("scopeAll description should be a string");
+    };
+    assert!(scope_all_description.contains("raw/"));
+    assert!(scope_all_description.contains("default = false"));
+}
+
+#[test]
 fn tools_call_rejects_unknown_tool_name() {
     let result = tools_call_result(Some(json!({
         "name": "other",

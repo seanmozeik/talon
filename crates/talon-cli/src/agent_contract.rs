@@ -9,7 +9,7 @@ pub struct AgentToolContract {
 
 pub const SEARCH: AgentToolContract = AgentToolContract {
     name: "talon_search",
-    description: "Search the Obsidian vault for notes relevant to a query, with hybrid retrieval and graph-aware refinement. Use for explicit lookup beyond automatic recall. Returns compact agent JSON with ranked plain-path results; synthesize answers yourself or call the CLI `talon ask` only when you specifically want Talon's smaller built-in answer model.",
+    description: "Search the Obsidian vault for notes relevant to a query, with hybrid retrieval and graph-aware refinement. Use for explicit lookup beyond automatic recall. Default search excludes scopes configured with `default = false` such as `raw/`, `archive/`, or `private/`; pass `scopeAll: true` or an explicit `scope` when looking for recall-injected paths from those scopes. Returns compact agent JSON with ranked plain-path results; synthesize answers yourself or call the CLI `talon ask` only when you specifically want Talon's smaller built-in answer model.",
     when_to_use: "When you need to find notes by topic, keyword, or semantic meaning that auto-recall did not cover, or when you need source snippets before synthesizing an answer.",
     when_not_to_use: "When you already have the exact path — use talon_read instead.",
 };
