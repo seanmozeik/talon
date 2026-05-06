@@ -1,4 +1,5 @@
 use super::*;
+use wiremock::{Request, Respond};
 
 #[test]
 fn ranking_regression_default_mode_meets_floors() {
@@ -104,9 +105,7 @@ fn mount_default_mode_mocks(rt: &tokio::runtime::Runtime, server: &MockServer) {
     rt.block_on(
         Mock::given(method("POST"))
             .and(path("/chat/completions"))
-            .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-                "choices": [{"message": {"content": "{\"queries\":[\"orchard\",\"banana grove\"]}"}}]
-            })))
+            .respond_with(DefaultExpansionResponder)
             .mount(server),
     );
     rt.block_on(
@@ -115,4 +114,38 @@ fn mount_default_mode_mocks(rt: &tokio::runtime::Runtime, server: &MockServer) {
             .respond_with(SemanticRerankResponder)
             .mount(server),
     );
+}
+
+struct DefaultExpansionResponder;
+
+impl Respond for DefaultExpansionResponder {
+    fn respond(&self, request: &Request) -> ResponseTemplate {
+        let body: serde_json::Value =
+            serde_json::from_slice(&request.body).unwrap_or_else(|_| json!({"messages": []}));
+        let query = body["messages"]
+            .as_array()
+            .and_then(|messages| {
+                messages
+                    .iter()
+                    .rev()
+                    .find(|message| message["role"].as_str() == Some("user"))
+            })
+            .and_then(|message| message["content"].as_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let queries = if query.contains("banana") {
+            vec!["banana grove", "ripe banana"]
+        } else if query.contains("graph") {
+            vec!["graph hub", "linked notes"]
+        } else if query.contains("cafe") || query.contains("café") {
+            vec!["cafe note", "coffee service"]
+        } else if query.contains("fruit basket") {
+            vec!["fruit orchard", "banana grove"]
+        } else {
+            vec!["fruit orchard", "apple harvest"]
+        };
+        ResponseTemplate::new(200).set_body_json(json!({
+            "choices": [{"message": {"content": json!({ "queries": queries }).to_string()}}]
+        }))
+    }
 }

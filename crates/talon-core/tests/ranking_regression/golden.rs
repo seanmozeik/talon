@@ -82,6 +82,9 @@ fn ranking_regression_golden_set_meets_floors() {
         "  Recall@10: {:.3} (floor: {GOLDEN_RECALL10_FLOOR})",
         metrics.recall_at_10
     );
+    if metrics.mrr < GOLDEN_MRR_FLOOR {
+        print_low_mrr_queries(&golden, &all_results);
+    }
 
     drop(conn);
     cleanup(&vault);
@@ -106,4 +109,21 @@ fn ranking_regression_golden_set_meets_floors() {
         "golden Recall@10 {:.3} < floor {GOLDEN_RECALL10_FLOOR}",
         metrics.recall_at_10
     );
+}
+
+fn print_low_mrr_queries(golden: &[GoldenQuery], all_results: &[Vec<String>]) {
+    eprintln!("  Low-MRR queries:");
+    for (query, results) in golden.iter().zip(all_results) {
+        let refs: Vec<&str> = results.iter().map(String::as_str).collect();
+        let expected: Vec<&str> = query.expected_paths.iter().map(String::as_str).collect();
+        let score = mrr(&refs, &expected);
+        if score < 1.0 {
+            eprintln!(
+                "    {} ({}) MRR={score:.3} top3={:?}",
+                query.id,
+                query.query,
+                &results[..results.len().min(3)]
+            );
+        }
+    }
 }

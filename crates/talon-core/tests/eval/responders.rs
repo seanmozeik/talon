@@ -53,22 +53,30 @@ impl Respond for SemanticRerankResponder {
     fn respond(&self, request: &Request) -> ResponseTemplate {
         let body: serde_json::Value = serde_json::from_slice(&request.body)
             .unwrap_or_else(|_| json!({"query": "", "texts": []}));
+        let query = body["query"].as_str().unwrap_or("").to_lowercase();
         let texts = body["texts"].as_array().cloned().unwrap_or_default();
         let results: Vec<serde_json::Value> = texts
             .iter()
             .enumerate()
             .map(|(i, t)| {
                 let lower = t.as_str().unwrap_or("").to_lowercase();
-                let score: f32 = if lower.contains("banana") {
+                let score: f32 = if query.contains("banana") && lower.contains("banana") {
                     0.98
-                } else if lower.contains("orchard")
-                    || lower.contains("apple")
-                    || lower.contains("harvest")
+                } else if (query.contains("orchard")
+                    || query.contains("fruit")
+                    || query.contains("basket"))
+                    && (lower.contains("orchard")
+                        || lower.contains("apple")
+                        || lower.contains("harvest")
+                        || lower.contains("banana"))
                 {
                     0.85
-                } else if lower.contains("cafe") || lower.contains("café") {
+                } else if (query.contains("cafe") || query.contains("café"))
+                    && (lower.contains("cafe") || lower.contains("café"))
+                {
                     0.60
-                } else if lower.contains("graph") || lower.contains("link") || lower.contains("hub")
+                } else if query.contains("graph")
+                    && (lower.contains("graph") || lower.contains("link") || lower.contains("hub"))
                 {
                     0.70
                 } else {

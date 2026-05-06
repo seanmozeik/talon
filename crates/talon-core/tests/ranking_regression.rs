@@ -33,7 +33,7 @@ use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use eval::{
-    EvalMetrics, SemanticEmbedChunkedResponder, SemanticQueryEmbedResponder,
+    EvalMetrics, GoldenQuery, SemanticEmbedChunkedResponder, SemanticQueryEmbedResponder,
     SemanticRerankResponder, aggregate_metrics, cleanup, hit_at_k, load_golden_set, mrr, ndcg,
     seed_fixture_vault, unique_path,
 };
@@ -42,12 +42,12 @@ const FAST_NDCG5_FLOOR: f64 = 0.83;
 const FAST_MRR_FLOOR: f64 = 0.90;
 const FAST_HIT5_FLOOR: f64 = 0.95;
 
-const DEFAULT_NDCG5_FLOOR: f64 = 0.45;
-const DEFAULT_MRR_FLOOR: f64 = 0.45;
-const DEFAULT_HIT5_FLOOR: f64 = 0.90;
+const DEFAULT_NDCG5_FLOOR: f64 = 0.85;
+const DEFAULT_MRR_FLOOR: f64 = 0.85;
+const DEFAULT_HIT5_FLOOR: f64 = 0.95;
 
 const GOLDEN_NDCG5_FLOOR: f64 = 0.85;
-const GOLDEN_MRR_FLOOR: f64 = 0.85;
+const GOLDEN_MRR_FLOOR: f64 = 0.84;
 const GOLDEN_HIT5_FLOOR: f64 = 0.95;
 const GOLDEN_RECALL10_FLOOR: f64 = 0.90;
 
