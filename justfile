@@ -15,6 +15,9 @@ search query="zettelkasten atomic notes" limit="10":
 status:
     cargo run -p talon-cli -- status
 
+mcp-stress turns="100":
+    python3 scripts/mcp_stress.py --config examples/config.toml --turns {{ turns }}
+
 example-config-localhost:
     sd 'host\.docker\.internal' 'localhost' examples/config.toml
 
