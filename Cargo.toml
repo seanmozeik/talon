@@ -98,9 +98,8 @@ private_intra_doc_links = "warn"
 opt-level = 3
 lto = "fat"
 codegen-units = 1
-panic = "unwind"
-debug = "limited"
-strip = "none"
+panic = "abort"
+strip = true
 
 [profile.bench]
 inherits = "release"
@@ -108,7 +107,7 @@ debug = true
 strip = false
 
 [profile.dev]
-debug = 1
+debug = true
 
 [profile.dev.package."*"]
 opt-level = 3

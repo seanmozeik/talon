@@ -127,6 +127,9 @@ publish-npm-dry-run: pack-no-smoke
 install:
     cargo install --path crates/talon-cli --locked
 
+install-debug:
+    cargo install --path crates/talon-cli --locked --debug --force
+
 # Run the ranking eval suite and write results to tests/eval/results/latest.json.
 eval:
     cargo nextest run --test eval_suite -p talon-core --no-capture
