@@ -37,8 +37,8 @@ pub struct HybridPipelineOptions {
     pub candidate_limit: u32,
     /// Skip LLM expansion and cross-encoder reranking when true.
     pub fast: bool,
-    /// Skip LLM expansion/rerank but keep vector + lexical retrieval.
-    pub retrieval_only: bool,
+    /// Skip LLM expansion but keep vector retrieval and rerank.
+    pub skip_expansion: bool,
     /// Pre-supplied query variants (bypass LLM call when non-empty).
     pub queries: Vec<String>,
     /// Optional disambiguating context for expansion, rerank, and chunks.
@@ -140,9 +140,9 @@ pub fn run_hybrid_pipeline_with_metadata(
     }
 
     // A decisive probe or fast mode skips both expansion and reranking.
-    let skip_expensive = options.fast || options.retrieval_only || probe_decisive;
+    let skip_expensive = options.fast || probe_decisive;
     // An exact alias hit additionally skips LLM expansion (not reranking).
-    let skip_llm = skip_expensive || has_exact_alias;
+    let skip_llm = skip_expensive || options.skip_expansion || has_exact_alias;
 
     let (variants, expansion_ms) =
         resolve_query_variants(expansion, query, options, has_supplied, skip_llm);
@@ -342,7 +342,7 @@ mod hooks_tests;
 #[cfg(test)]
 mod intent_tests;
 #[cfg(test)]
-mod retrieval_only_tests;
+mod skip_expansion_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

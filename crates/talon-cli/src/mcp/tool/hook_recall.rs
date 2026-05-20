@@ -58,7 +58,7 @@ pub(super) fn dispatch_recall_for_hook(
         expansion.as_ref(),
         input,
         Some(config),
-        RecallRuntimeMode::RetrievalOnly,
+        RecallRuntimeMode::SkipExpansion,
     ))
 }
 

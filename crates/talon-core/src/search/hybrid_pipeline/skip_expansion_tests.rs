@@ -11,7 +11,7 @@ use crate::inference::InferenceClient;
 use crate::store::open_database;
 
 #[test]
-fn retrieval_only_keeps_embedding_but_skips_expansion_and_rerank() {
+fn skip_expansion_keeps_embedding_and_rerank() {
     let rt = runtime();
     let server = rt.block_on(MockServer::start());
 
@@ -19,6 +19,14 @@ fn retrieval_only_keeps_embedding_but_skips_expansion_and_rerank() {
         Mock::given(method("POST"))
             .and(path("/embed"))
             .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
+            .mount(&server),
+    );
+    rt.block_on(
+        Mock::given(method("POST"))
+            .and(path("/rerank"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!([
+                {"index": 0, "score": 0.95}
+            ])))
             .mount(&server),
     );
 
@@ -38,7 +46,7 @@ fn retrieval_only_keeps_embedding_but_skips_expansion_and_rerank() {
         limit: 10,
         candidate_limit: 40,
         fast: false,
-        retrieval_only: true,
+        skip_expansion: true,
         queries: Vec::new(),
         intent: None,
         hooks: crate::search::SearchHooks::default(),
@@ -55,22 +63,10 @@ fn retrieval_only_keeps_embedding_but_skips_expansion_and_rerank() {
     );
 
     let received = rt.block_on(server.received_requests()).unwrap_or_default();
-    assert!(
-        received.iter().any(|r| r.url.path() == "/embed"),
-        "retrieval-only mode must still call embedding"
-    );
-    assert!(
-        !received.iter().any(|r| r.url.path() == "/chat/completions"),
-        "retrieval-only mode must not call expansion"
-    );
-    assert!(
-        !received.iter().any(|r| r.url.path() == "/rerank"),
-        "retrieval-only mode must not call rerank"
-    );
-    assert!(
-        !results.is_empty(),
-        "retrieval-only mode must still return results"
-    );
+    assert!(received.iter().any(|r| r.url.path() == "/embed"));
+    assert!(!received.iter().any(|r| r.url.path() == "/chat/completions"));
+    assert!(received.iter().any(|r| r.url.path() == "/rerank"));
+    assert!(!results.is_empty());
 
     drop(conn);
     cleanup(&db_path);

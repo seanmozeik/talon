@@ -247,6 +247,10 @@ pub struct RecallDiagnostics {
     pub distillation_fallback_reason: Option<String>,
     /// Retrieval/fusion/rerank wall time.
     pub retrieval_ms: u64,
+    /// Number of embedding batches attempted by hybrid retrieval.
+    pub embed_batches: u32,
+    /// Candidates submitted to the reranker, when rerank ran.
+    pub rerank_candidates: Option<u32>,
     /// Rerank wall time when the hybrid pipeline reported it.
     pub rerank_ms: Option<u64>,
     /// Full recall wall time.

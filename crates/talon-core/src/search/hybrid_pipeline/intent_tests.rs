@@ -66,7 +66,7 @@ fn intent_disables_strong_signal_probe_short_circuit() {
         limit: 10,
         candidate_limit: 40,
         fast: false,
-        retrieval_only: false,
+        skip_expansion: false,
         queries: vec![],
         intent: Some("web page load".to_owned()),
         hooks: SearchHooks::default(),

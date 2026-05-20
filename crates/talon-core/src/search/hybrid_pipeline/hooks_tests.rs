@@ -130,7 +130,7 @@ fn hooks_record_expand_before_rerank() {
         limit: 10,
         candidate_limit: 40,
         fast: false,
-        retrieval_only: false,
+        skip_expansion: false,
         queries: vec![],
         intent: None,
         hooks,

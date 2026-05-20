@@ -38,8 +38,8 @@ use sections::{build_linked_context, days_since_mtime, to_note_excerpts};
 pub enum RecallRuntimeMode {
     /// Run the normal recall pipeline.
     Full,
-    /// Use hybrid retrieval without LLM expansion or reranking.
-    RetrievalOnly,
+    /// Use hybrid retrieval and rerank without LLM query expansion.
+    SkipExpansion,
 }
 
 /// Runs the full recall pipeline and returns a `RecallResponse`.
@@ -96,8 +96,8 @@ pub fn run_recall_with_mode(
         .deadline_ms
         .map(|deadline_ms| Instant::now() + Duration::from_millis(deadline_ms));
     let query = build_query(input);
-    let retrieval_only = mode == RecallRuntimeMode::RetrievalOnly;
-    let expansion = if retrieval_only { None } else { expansion };
+    let skip_expansion = mode == RecallRuntimeMode::SkipExpansion;
+    let expansion = if skip_expansion { None } else { expansion };
     let query_plan = plan_recall_queries(&query, expansion, config, deadline_at);
     let limit: u32 = 20;
 
@@ -105,7 +105,7 @@ pub fn run_recall_with_mode(
     if pre_filter.is_impossible() {
         return make_skipped(
             0.0,
-            diagnostics_for(&query_plan, 0, None, recall_started, input),
+            diagnostics_for(&query_plan, 0, 0, None, None, recall_started, input),
         );
     }
 
@@ -118,7 +118,7 @@ pub fn run_recall_with_mode(
         queries: &query_plan.queries,
         limit,
         fast: input.fast,
-        retrieval_only,
+        skip_expansion,
         pre_filter: &pre_filter,
         deadline_at,
     });
@@ -126,6 +126,8 @@ pub fn run_recall_with_mode(
     let diagnostics = diagnostics_for(
         &query_plan,
         retrieval_ms,
+        retrieval_output.embed_batches,
+        retrieval_output.rerank_candidates,
         retrieval_output.rerank_ms,
         recall_started,
         input,
@@ -242,6 +244,8 @@ fn recall_pre_filter(
 fn diagnostics_for(
     query_plan: &distill::RecallQueryPlan,
     retrieval_ms: u64,
+    embed_batches: u32,
+    rerank_candidates: Option<u32>,
     rerank_ms: Option<u64>,
     recall_started: Instant,
     input: &RecallInput,
@@ -257,6 +261,8 @@ fn diagnostics_for(
         distillation_succeeded: query_plan.distillation_succeeded,
         distillation_fallback_reason: query_plan.distillation_fallback_reason.clone(),
         retrieval_ms,
+        embed_batches,
+        rerank_candidates,
         rerank_ms,
         total_ms: elapsed_ms(recall_started),
     })

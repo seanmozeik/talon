@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
 
 use rusqlite::Connection;
@@ -22,7 +24,7 @@ pub(super) struct RetrievePipelineArgs<'a> {
     pub(super) queries: &'a [String],
     pub(super) limit: u32,
     pub(super) fast: bool,
-    pub(super) retrieval_only: bool,
+    pub(super) skip_expansion: bool,
     pub(super) pre_filter: &'a PreFilter,
     pub(super) deadline_at: Option<Instant>,
 }
@@ -40,24 +42,35 @@ pub(super) fn build_query(input: &RecallInput) -> String {
 #[derive(Debug, Clone, Default)]
 pub(super) struct RecallRetrievalOutput {
     pub(super) results: Vec<RawSearchResult>,
+    pub(super) embed_batches: u32,
+    pub(super) rerank_candidates: Option<u32>,
     pub(super) rerank_ms: Option<u64>,
 }
 
 pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> RecallRetrievalOutput {
+    let embed_batches = Arc::new(AtomicUsize::new(0));
+    let embed_batches_hook = Arc::clone(&embed_batches);
     let opts = HybridPipelineOptions {
         limit: args.limit,
         candidate_limit: CANDIDATE_FLOOR,
         fast: args.fast,
-        retrieval_only: args.retrieval_only,
+        skip_expansion: args.skip_expansion,
         queries: args.queries.to_vec(),
         intent: None,
-        hooks: crate::search::SearchHooks::default(),
+        hooks: crate::search::SearchHooks {
+            on_embed_batch: Some(Box::new(move |batch_size| {
+                embed_batches_hook.fetch_add(batch_size, Ordering::Relaxed);
+            })),
+            ..Default::default()
+        },
         pre_filter: args.pre_filter.clone(),
         deadline_at: args.deadline_at,
     };
     args.inference.map_or_else(
         || RecallRetrievalOutput {
             results: run_fast_bm25_title(args.conn, args.query, args.limit, args.pre_filter),
+            embed_batches: 0,
+            rerank_candidates: None,
             rerank_ms: None,
         },
         |inf| {
@@ -70,6 +83,9 @@ pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> Reca
             );
             RecallRetrievalOutput {
                 results: output.results,
+                embed_batches: u32::try_from(embed_batches.load(Ordering::Relaxed))
+                    .unwrap_or(u32::MAX),
+                rerank_candidates: output.rerank_candidates,
                 rerank_ms: output.rerank_ms,
             }
         },

@@ -61,6 +61,12 @@ def main() -> int:
         action="store_true",
         help="send fast=true to talon_hook_recall for lexical-only hook profiling",
     )
+    parser.add_argument(
+        "--format",
+        choices=("hook-json", "agent-json", "prompt-xml"),
+        default="hook-json",
+        help="hook recall response format to request",
+    )
     args = parser.parse_args()
     rng = random.Random(args.seed)
 
@@ -98,6 +104,7 @@ def main() -> int:
 
         started = time.monotonic()
         latencies_ms: list[float] = []
+        diagnostics_samples: list[dict[str, Any]] = []
         for turn in range(1, args.turns + 1):
             message = message_for_turn(turn, rng)
             turn_started = time.monotonic()
@@ -109,11 +116,14 @@ def main() -> int:
                 message,
                 args.timeout,
                 args.hook_fast,
+                args.format,
             )
             latency_ms = (time.monotonic() - turn_started) * 1000
             latencies_ms.append(latency_ms)
             require_response_id(response, request_id)
-            validate_recall_response(response, turn)
+            diagnostics = validate_recall_response(response, turn, args.format)
+            if diagnostics is not None:
+                diagnostics_samples.append(diagnostics)
             request_id += 1
             sleep_ms = args.sleep_ms
             if args.jitter_ms > 0:
@@ -135,6 +145,7 @@ def main() -> int:
             fail(f"talon mcp exited with status {code}: {child.stderr.read()}")
         print(f"mcp stress passed: {args.turns} recall turns")
         print(latency_summary(latencies_ms))
+        print(diagnostics_summary(diagnostics_samples))
         return 0
     finally:
         selector.close()
@@ -151,6 +162,7 @@ def call_recall(
     message: str,
     timeout: float,
     fast: bool,
+    output_format: str,
 ) -> dict[str, Any]:
     send(
         child,
@@ -168,7 +180,7 @@ def call_recall(
                     "transcriptPath": "/tmp/talon-mcp-stress.jsonl",
                     "message": message,
                     "budgetTokens": 500,
-                    "format": "hook-json",
+                    "format": output_format,
                     "fast": fast,
                 },
             },
@@ -259,7 +271,9 @@ def require_response_id(response: dict[str, Any], expected: int) -> None:
         fail(f"MCP returned JSON-RPC error: {response['error']}")
 
 
-def validate_recall_response(response: dict[str, Any], turn: int) -> None:
+def validate_recall_response(
+    response: dict[str, Any], turn: int, output_format: str
+) -> dict[str, Any] | None:
     result = response.get("result")
     if not isinstance(result, dict):
         fail(f"turn {turn}: missing result object: {response}")
@@ -271,12 +285,21 @@ def validate_recall_response(response: dict[str, Any], turn: int) -> None:
     text = content[0].get("text") if isinstance(content[0], dict) else None
     if not isinstance(text, str):
         fail(f"turn {turn}: missing text content: {response}")
+    if output_format == "prompt-xml":
+        if not text.startswith("<vault_recall"):
+            fail(f"turn {turn}: prompt XML response was not vault_recall XML: {text}")
+        return None
     try:
-        hook_payload = json.loads(text)
+        payload = json.loads(text)
     except json.JSONDecodeError as error:
         fail(f"turn {turn}: recall text was not JSON: {error}: {text}")
-    if "hookSpecificOutput" not in hook_payload:
-        fail(f"turn {turn}: missing hookSpecificOutput: {hook_payload}")
+    if output_format == "agent-json":
+        if not isinstance(payload.get("diagnostics"), dict):
+            fail(f"turn {turn}: missing diagnostics: {payload}")
+        return payload["diagnostics"]
+    if "hookSpecificOutput" not in payload:
+        fail(f"turn {turn}: missing hookSpecificOutput: {payload}")
+    return None
 
 
 def latency_summary(latencies_ms: list[float]) -> str:
@@ -301,6 +324,35 @@ def percentile(ordered: list[float], pct: int) -> float:
     upper = min(lower + 1, len(ordered) - 1)
     weight = rank - lower
     return ordered[lower] * (1 - weight) + ordered[upper] * weight
+
+
+def diagnostics_summary(samples: list[dict[str, Any]]) -> str:
+    if not samples:
+        return "diagnostics: not requested"
+    embed_batches = [int(s.get("embedBatches", 0)) for s in samples]
+    rerank_candidates = [
+        int(s["rerankCandidates"])
+        for s in samples
+        if isinstance(s.get("rerankCandidates"), int)
+    ]
+    rerank_ms = [
+        float(s["rerankMs"]) for s in samples if isinstance(s.get("rerankMs"), int)
+    ]
+    return (
+        "diagnostics: "
+        f"embed_batches_total={sum(embed_batches)} "
+        f"embed_turns={sum(1 for n in embed_batches if n > 0)}/{len(samples)} "
+        f"rerank_turns={len(rerank_ms)}/{len(samples)} "
+        f"rerank_candidates_total={sum(rerank_candidates)} "
+        f"rerank_ms_mean={statistics.fmean(rerank_ms):.1f}"
+        if rerank_ms
+        else (
+            "diagnostics: "
+            f"embed_batches_total={sum(embed_batches)} "
+            f"embed_turns={sum(1 for n in embed_batches if n > 0)}/{len(samples)} "
+            f"rerank_turns=0/{len(samples)} rerank_candidates_total=0"
+        )
+    )
 
 
 def fail(message: str) -> None:
