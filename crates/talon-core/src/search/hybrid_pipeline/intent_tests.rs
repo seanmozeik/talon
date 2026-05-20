@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -64,6 +66,7 @@ fn intent_disables_strong_signal_probe_short_circuit() {
         limit: 10,
         candidate_limit: 40,
         fast: false,
+        retrieval_only: false,
         queries: vec![],
         intent: Some("web page load".to_owned()),
         hooks: SearchHooks::default(),

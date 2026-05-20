@@ -21,19 +21,20 @@ pub(super) fn dispatch_recall_for_hook(
     input: &RecallInput,
     config: &TalonConfig,
 ) -> Result<RecallResponse> {
-    use talon_core::{open_database_read_only, run_recall};
+    use talon_core::{RecallRuntimeMode, open_database_read_only, run_recall_with_mode};
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
     let conn = open_database_read_only(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
 
-    let (inference, expansion) = if input.fast {
+    let timeout = hook_sidecar_timeout(config.mcp.hooks.recall_deadline_ms);
+    let can_try_sidecar = timeout > Duration::from_millis(10);
+    let (inference, expansion) = if input.fast || !can_try_sidecar {
         (None, None)
     } else {
         talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
-        let timeout = hook_sidecar_timeout(config.mcp.hooks.recall_deadline_ms);
         (
-            InferenceClient::with_timeout_and_rerank_options(
+            InferenceClient::with_timeout_no_retry_and_rerank_options(
                 &config.inference.base_url,
                 timeout,
                 config.search.rerank_batch_size,
@@ -51,17 +52,36 @@ pub(super) fn dispatch_recall_for_hook(
         )
     };
 
-    Ok(run_recall(
+    Ok(run_recall_with_mode(
         &conn,
         inference.as_ref(),
         expansion.as_ref(),
         input,
         Some(config),
+        RecallRuntimeMode::RetrievalOnly,
     ))
 }
 
 fn hook_sidecar_timeout(deadline_ms: u64) -> Duration {
-    Duration::from_millis(deadline_ms.saturating_sub(5_000).max(1))
+    let sidecar_ms = deadline_ms.saturating_sub(1_500).clamp(250, 3_000);
+    Duration::from_millis(sidecar_ms)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::hook_sidecar_timeout;
+    use std::time::Duration;
+
+    #[test]
+    fn hook_sidecar_timeout_keeps_real_budget_for_default_deadline() {
+        assert_eq!(hook_sidecar_timeout(4_500), Duration::from_secs(3));
+    }
+
+    #[test]
+    fn hook_sidecar_timeout_is_bounded_for_tiny_and_large_deadlines() {
+        assert_eq!(hook_sidecar_timeout(100), Duration::from_millis(250));
+        assert_eq!(hook_sidecar_timeout(30_000), Duration::from_secs(3));
+    }
 }
 
 /// Output format for hook recall responses.

@@ -26,10 +26,11 @@ impl InferenceClient {
         R: serde::de::DeserializeOwned,
     {
         // Algorithm ported verbatim from obsidian-hybrid-search (MIT) — embedder.ts:384-395
-        for attempt in 0u32..=2 {
+        let max_attempts = self.max_attempts.max(1);
+        for attempt in 0..max_attempts {
             match self.post_json_attempt(url, body) {
                 Ok(value) => return Ok(value),
-                Err(err) if err.retryable && attempt < 2 => {
+                Err(err) if err.retryable && attempt + 1 < max_attempts => {
                     (self.sleep)(Duration::from_secs(2_u64.pow(attempt + 1)));
                 }
                 Err(err) => return Err(err.error),

@@ -35,7 +35,7 @@ pub use output::{
     ReadResult, ReadSection, RecallDiagnostics, RecallResponse, TombstoneEntry, VaultRecall,
 };
 pub use read::run_read;
-pub use recall::run_recall;
+pub use recall::{RecallRuntimeMode, run_recall, run_recall_with_mode};
 pub use related::{RelatedInput, RelatedResponse, RelatedResult, RelationKind, find_related};
 pub use search::{run_search, run_search_with_expanded_queries};
 pub use status::query_status;

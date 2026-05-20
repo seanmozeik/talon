@@ -34,6 +34,14 @@ use retrieval::{
 };
 use sections::{build_linked_context, days_since_mtime, to_note_excerpts};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecallRuntimeMode {
+    /// Run the normal recall pipeline.
+    Full,
+    /// Use hybrid retrieval without LLM expansion or reranking.
+    RetrievalOnly,
+}
+
 /// Runs the full recall pipeline and returns a `RecallResponse`.
 ///
 /// When `inference` is `None` or `fast == true`, expansion and reranking are
@@ -52,6 +60,32 @@ pub fn run_recall(
     input: &RecallInput,
     config: Option<&TalonConfig>,
 ) -> RecallResponse {
+    run_recall_with_mode(
+        conn,
+        inference,
+        expansion,
+        input,
+        config,
+        RecallRuntimeMode::Full,
+    )
+}
+
+/// Runs recall with explicit runtime controls.
+///
+/// # Panics
+///
+/// Does not panic under normal operation.  The internal `VaultPath::parse("_")`
+/// fallback only fires when a path retrieved from the DB is empty, which should
+/// not occur in a well-formed index.
+#[must_use]
+pub fn run_recall_with_mode(
+    conn: &Connection,
+    inference: Option<&InferenceClient>,
+    expansion: Option<&ExpansionClient>,
+    input: &RecallInput,
+    config: Option<&TalonConfig>,
+    mode: RecallRuntimeMode,
+) -> RecallResponse {
     let recall_started = Instant::now();
     if input.message.trim().is_empty() {
         return make_skipped(0.0, None);
@@ -62,6 +96,8 @@ pub fn run_recall(
         .deadline_ms
         .map(|deadline_ms| Instant::now() + Duration::from_millis(deadline_ms));
     let query = build_query(input);
+    let retrieval_only = mode == RecallRuntimeMode::RetrievalOnly;
+    let expansion = if retrieval_only { None } else { expansion };
     let query_plan = plan_recall_queries(&query, expansion, config, deadline_at);
     let limit: u32 = 20;
 
@@ -82,6 +118,7 @@ pub fn run_recall(
         queries: &query_plan.queries,
         limit,
         fast: input.fast,
+        retrieval_only,
         pre_filter: &pre_filter,
         deadline_at,
     });
@@ -124,6 +161,26 @@ pub fn run_recall(
         days_since_top_result_modified: top_days,
     });
 
+    build_recall_response(
+        conn,
+        input,
+        &pipeline_results,
+        linked_notes,
+        evidence_score,
+        excluded_paths,
+        diagnostics,
+    )
+}
+
+fn build_recall_response(
+    conn: &Connection,
+    input: &RecallInput,
+    pipeline_results: &[crate::search::RawSearchResult],
+    linked_notes: Vec<crate::query::LinkedNote>,
+    evidence_score: f64,
+    excluded_paths: Vec<String>,
+    diagnostics: Option<RecallDiagnostics>,
+) -> RecallResponse {
     if evidence_score < input.min_confidence || pipeline_results.is_empty() {
         return RecallResponse {
             vault: None,
@@ -136,8 +193,7 @@ pub fn run_recall(
             diagnostics,
         };
     }
-
-    let mut active_notes = to_note_excerpts(conn, &pipeline_results);
+    let mut active_notes = to_note_excerpts(conn, pipeline_results);
     let mut linked_notes_mut = linked_notes;
     let mut excluded_by_budget: Vec<String> = Vec::new();
 

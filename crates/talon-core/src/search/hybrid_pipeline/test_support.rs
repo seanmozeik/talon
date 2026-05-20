@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used)]
+
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
 

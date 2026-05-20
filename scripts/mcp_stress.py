@@ -9,6 +9,7 @@ import random
 import selectors
 import subprocess
 import sys
+import statistics
 import time
 from pathlib import Path
 from typing import Any
@@ -35,7 +36,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Stress-test talon MCP by sending repeated recall hook calls."
     )
-    parser.add_argument("--config", default="examples/config.toml")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="config file to pass with -c; omit to use talon's live default config",
+    )
     parser.add_argument("--turns", type=int, default=100)
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--sleep-ms", type=int, default=0)
@@ -51,14 +56,21 @@ def main() -> int:
         action="store_true",
         help="run the release binary through cargo run --release",
     )
+    parser.add_argument(
+        "--hook-fast",
+        action="store_true",
+        help="send fast=true to talon_hook_recall for lexical-only hook profiling",
+    )
     args = parser.parse_args()
     rng = random.Random(args.seed)
 
-    config = Path(args.config)
     cmd = ["cargo", "run", "-q", "-p", "talon-cli"]
     if args.release:
         cmd.insert(2, "--release")
-    cmd.extend(["--", "-c", str(config), "mcp"])
+    cmd.append("--")
+    if args.config is not None:
+        cmd.extend(["-c", str(Path(args.config))])
+    cmd.append("mcp")
 
     child = subprocess.Popen(
         cmd,
@@ -85,11 +97,21 @@ def main() -> int:
         send(child, {"jsonrpc": "2.0", "method": "notifications/initialized"})
 
         started = time.monotonic()
+        latencies_ms: list[float] = []
         for turn in range(1, args.turns + 1):
             message = message_for_turn(turn, rng)
+            turn_started = time.monotonic()
             response = call_recall(
-                child, selector, request_id, turn, message, args.timeout
+                child,
+                selector,
+                request_id,
+                turn,
+                message,
+                args.timeout,
+                args.hook_fast,
             )
+            latency_ms = (time.monotonic() - turn_started) * 1000
+            latencies_ms.append(latency_ms)
             require_response_id(response, request_id)
             validate_recall_response(response, turn)
             request_id += 1
@@ -100,7 +122,10 @@ def main() -> int:
                 time.sleep(sleep_ms / 1000)
             if turn == 1 or turn % 10 == 0:
                 elapsed = time.monotonic() - started
-                print(f"turn {turn}/{args.turns} ok ({elapsed:.1f}s)")
+                print(
+                    f"turn {turn}/{args.turns} ok "
+                    f"({elapsed:.1f}s, last={latency_ms:.1f}ms)"
+                )
 
         send(child, {"jsonrpc": "2.0", "id": request_id, "method": "shutdown"})
         require_response_id(read_response(child, selector, args.timeout), request_id)
@@ -109,6 +134,7 @@ def main() -> int:
         if code != 0:
             fail(f"talon mcp exited with status {code}: {child.stderr.read()}")
         print(f"mcp stress passed: {args.turns} recall turns")
+        print(latency_summary(latencies_ms))
         return 0
     finally:
         selector.close()
@@ -124,6 +150,7 @@ def call_recall(
     turn: int,
     message: str,
     timeout: float,
+    fast: bool,
 ) -> dict[str, Any]:
     send(
         child,
@@ -142,6 +169,7 @@ def call_recall(
                     "message": message,
                     "budgetTokens": 500,
                     "format": "hook-json",
+                    "fast": fast,
                 },
             },
         },
@@ -249,6 +277,30 @@ def validate_recall_response(response: dict[str, Any], turn: int) -> None:
         fail(f"turn {turn}: recall text was not JSON: {error}: {text}")
     if "hookSpecificOutput" not in hook_payload:
         fail(f"turn {turn}: missing hookSpecificOutput: {hook_payload}")
+
+
+def latency_summary(latencies_ms: list[float]) -> str:
+    if not latencies_ms:
+        return "latency: no turns recorded"
+    ordered = sorted(latencies_ms)
+    return (
+        "latency ms: "
+        f"min={ordered[0]:.1f} "
+        f"p50={percentile(ordered, 50):.1f} "
+        f"p95={percentile(ordered, 95):.1f} "
+        f"max={ordered[-1]:.1f} "
+        f"mean={statistics.fmean(ordered):.1f}"
+    )
+
+
+def percentile(ordered: list[float], pct: int) -> float:
+    if len(ordered) == 1:
+        return ordered[0]
+    rank = (len(ordered) - 1) * (pct / 100)
+    lower = int(rank)
+    upper = min(lower + 1, len(ordered) - 1)
+    weight = rank - lower
+    return ordered[lower] * (1 - weight) + ordered[upper] * weight
 
 
 def fail(message: str) -> None:

@@ -41,6 +41,7 @@ pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
         limit: args.limit,
         candidate_limit: args.candidate_floor,
         fast: args.fast,
+        retrieval_only: false,
         queries: args.input.queries.clone(),
         intent: args.input.intent.clone(),
         hooks: crate::search::SearchHooks::default(),

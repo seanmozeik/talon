@@ -22,6 +22,7 @@ pub(super) struct RetrievePipelineArgs<'a> {
     pub(super) queries: &'a [String],
     pub(super) limit: u32,
     pub(super) fast: bool,
+    pub(super) retrieval_only: bool,
     pub(super) pre_filter: &'a PreFilter,
     pub(super) deadline_at: Option<Instant>,
 }
@@ -47,6 +48,7 @@ pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> Reca
         limit: args.limit,
         candidate_limit: CANDIDATE_FLOOR,
         fast: args.fast,
+        retrieval_only: args.retrieval_only,
         queries: args.queries.to_vec(),
         intent: None,
         hooks: crate::search::SearchHooks::default(),

@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used)]
+
 use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -14,6 +16,7 @@ fn test_opts(fast: bool, queries: Vec<String>, intent: Option<String>) -> Hybrid
         limit: 10,
         candidate_limit: 40,
         fast,
+        retrieval_only: false,
         queries,
         intent,
         hooks: SearchHooks::default(),

@@ -37,6 +37,8 @@ pub struct HybridPipelineOptions {
     pub candidate_limit: u32,
     /// Skip LLM expansion and cross-encoder reranking when true.
     pub fast: bool,
+    /// Skip LLM expansion/rerank but keep vector + lexical retrieval.
+    pub retrieval_only: bool,
     /// Pre-supplied query variants (bypass LLM call when non-empty).
     pub queries: Vec<String>,
     /// Optional disambiguating context for expansion, rerank, and chunks.
@@ -138,7 +140,7 @@ pub fn run_hybrid_pipeline_with_metadata(
     }
 
     // A decisive probe or fast mode skips both expansion and reranking.
-    let skip_expensive = options.fast || probe_decisive;
+    let skip_expensive = options.fast || options.retrieval_only || probe_decisive;
     // An exact alias hit additionally skips LLM expansion (not reranking).
     let skip_llm = skip_expensive || has_exact_alias;
 
@@ -336,14 +338,12 @@ fn hybrid_data_to_raw(h: &HybridScoreData) -> RawSearchResult {
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod hooks_tests;
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
 mod intent_tests;
 #[cfg(test)]
-#[allow(clippy::unwrap_used)]
+mod retrieval_only_tests;
+#[cfg(test)]
 mod test_support;
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests;

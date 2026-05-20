@@ -29,6 +29,7 @@ pub struct InferenceClient {
     rerank_batch_size: usize,
     _rerank_max_tokens: u32,
     rerank_config: RerankConfig,
+    max_attempts: u32,
 }
 
 impl InferenceClient {
@@ -118,6 +119,29 @@ impl InferenceClient {
         )
     }
 
+    /// Builds a client that does not retry failed requests.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the underlying HTTP client cannot be constructed.
+    pub fn with_timeout_no_retry_and_rerank_options(
+        base_url: impl Into<String>,
+        timeout: Duration,
+        rerank_batch_size: usize,
+        rerank_max_tokens: u32,
+        rerank_config: RerankConfig,
+    ) -> Result<Self, InferenceError> {
+        let mut client = Self::with_timeout_and_rerank_options(
+            base_url,
+            timeout,
+            rerank_batch_size,
+            rerank_max_tokens,
+            rerank_config,
+        )?;
+        client.max_attempts = 1;
+        Ok(client)
+    }
+
     /// Builds a client with no HTTP request timeout and custom rerank options.
     ///
     /// # Errors
@@ -158,6 +182,7 @@ impl InferenceClient {
             rerank_batch_size: rerank_batch_size.max(1),
             _rerank_max_tokens: rerank_max_tokens,
             rerank_config,
+            max_attempts: 3,
         })
     }
 

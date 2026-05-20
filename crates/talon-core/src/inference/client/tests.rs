@@ -23,6 +23,7 @@ fn test_client(server_uri: String) -> InferenceClient {
         rerank_batch_size: RERANK_BATCH_SIZE,
         _rerank_max_tokens: crate::search::constants::RERANK_MAX_TOKENS,
         rerank_config: RerankConfig::default(),
+        max_attempts: 3,
     }
 }
 
