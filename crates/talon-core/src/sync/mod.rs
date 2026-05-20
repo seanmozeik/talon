@@ -13,9 +13,10 @@ mod relink;
 mod tests;
 
 use std::path::Path;
+use std::time::Instant;
 
 use fs_err as fs;
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension};
 use time::OffsetDateTime;
 
 use crate::TalonError;
@@ -27,6 +28,7 @@ use crate::indexer::{
     run_full_scan_with_chunker,
 };
 use crate::indexing::change_tracking::TOMBSTONE_RETENTION_MS;
+use crate::indexing::migrations::read_db_version;
 use crate::inference::InferenceClient;
 
 pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process};
@@ -179,12 +181,16 @@ pub fn run_sync_with_chunker_locked(
     chunker_config: &ChunkerConfig,
     _lock: SyncLock,
 ) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
+    let profile = RefreshProfile::start();
     let mut stats = run_full_scan_with_chunker(conn, vault_root, config, chunker_config)
         .map_err(SyncError::Indexer)?;
+    profile.mark("scan");
     let deleted = reconcile_deletions(conn, vault_root).map_err(SyncError::Indexer)?;
     stats.deleted = stats.deleted.saturating_add(deleted);
+    profile.mark("deletions");
     let ignored = reconcile_ignored_notes(conn, config).map_err(SyncError::Indexer)?;
     stats.deleted = stats.deleted.saturating_add(ignored);
+    profile.mark("ignored");
 
     // Closes the link-staleness window: incremental indexing only refreshes
     // a source file's resolved links when that source file is touched, so an
@@ -192,8 +198,13 @@ pub fn run_sync_with_chunker_locked(
     // sources change. This pass re-resolves any link still pointing at a
     // missing `to_path` and lets the new aliases / new target files satisfy
     // existing references.
+    let graph_version_before_relink = graph_db_version(conn).map_err(SyncError::Indexer)?;
     relink_unresolved(conn).map_err(SyncError::Indexer)?;
-    stats.graph = Some(rebuild_graph(conn, &GraphBuildInput).map_err(SyncError::Indexer)?);
+    profile.mark("relink");
+    if graph_version_before_relink != Some(read_db_version(conn)) {
+        stats.graph = Some(rebuild_graph(conn, &GraphBuildInput).map_err(SyncError::Indexer)?);
+    }
+    profile.mark("graph");
 
     // Tombstone state currently lives in the in-memory `ChangeIndex` (see
     // `crate::indexing::change_tracking`); the persistent change-feed table will land in
@@ -208,8 +219,54 @@ pub fn run_sync_with_chunker_locked(
     } else {
         None
     };
+    profile.mark("embed");
 
     Ok((stats, embed_stats))
+}
+
+struct RefreshProfile {
+    enabled: bool,
+    started: Instant,
+    previous: std::cell::Cell<Instant>,
+}
+
+impl RefreshProfile {
+    fn start() -> Self {
+        let started = Instant::now();
+        Self {
+            enabled: std::env::var_os("TALON_PROFILE").is_some(),
+            started,
+            previous: std::cell::Cell::new(started),
+        }
+    }
+
+    fn mark(&self, stage: &str) {
+        if !self.enabled {
+            return;
+        }
+        let now = Instant::now();
+        let previous = self.previous.replace(now);
+        eprintln!(
+            "talon profile refresh {stage}: stage={}ms total={}ms",
+            previous.elapsed().as_millis(),
+            self.started.elapsed().as_millis()
+        );
+    }
+}
+
+fn graph_db_version(conn: &Connection) -> Result<Option<u64>, TalonError> {
+    let version = conn
+        .query_row(
+            "SELECT value FROM graph_meta WHERE key = 'db_version'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|source| TalonError::Sqlite {
+            context: "read graph db version",
+            source,
+        })?;
+    Ok(version.and_then(|value| value.parse().ok()))
 }
 
 /// Errors returned by [`run_sync`].

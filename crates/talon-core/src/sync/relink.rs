@@ -17,7 +17,7 @@ use rusqlite::{Connection, params};
 
 use crate::error::TalonError;
 use crate::indexer::load_notes_for_linking;
-use crate::links::resolve_wiki_link_target;
+use crate::links::LinkResolver;
 
 /// Walks unresolved links and tries to resolve each against the current
 /// note set. Returns the number of rows updated.
@@ -36,9 +36,10 @@ pub fn relink_unresolved(conn: &Connection) -> Result<u32, TalonError> {
         source: e,
     })?;
 
+    let resolver = LinkResolver::new(&notes);
     let mut updated = 0_u32;
     for (from_path, raw_target, old_to_path) in unresolved {
-        let Some(new_to_path) = resolve_wiki_link_target(&raw_target, &notes) else {
+        let Some(new_to_path) = resolver.resolve(&raw_target) else {
             continue;
         };
         if new_to_path == old_to_path {

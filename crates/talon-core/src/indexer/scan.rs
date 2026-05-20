@@ -1,8 +1,9 @@
 //! Full-vault scan and deletion reconciliation.
 
+mod freshness;
+
 use std::collections::HashSet;
 use std::path::Path;
-use std::time::UNIX_EPOCH;
 
 use fs_err as fs;
 use rusqlite::Connection;
@@ -15,12 +16,13 @@ use crate::indexing::perform_note_deletion;
 
 use super::prelude::{
     build_ignore_globset, build_include_globset, file_matches_ignore, file_matches_include,
-    hash_file_content, load_notes_for_linking, load_vault_notes_for_linking_with_sets,
-    merge_current_path_for_linking, scan_vault_markdown,
+    hash_file_content, load_notes_for_linking, scan_vault_markdown,
 };
 use super::wiring::{NoteIndexConfig, index_one_note_with_config};
 use crate::text::frontmatter::normalize_keyword;
 use crate::text::normalize_vault_path;
+
+use freshness::{existing_metadata_is_up_to_date, file_mtime_ms};
 
 /// Configuration for a vault scan.
 #[derive(Debug, Clone, Default)]
@@ -60,13 +62,6 @@ pub struct IndexerStats {
     pub deleted: u32,
     /// Graph artifact stats from the post-scan rebuild.
     pub graph: Option<GraphBuildStats>,
-}
-
-fn file_mtime_ms(path: &Path) -> Option<i64> {
-    let meta = fs::metadata(path).ok()?;
-    let modified = meta.modified().ok()?;
-    let dur = modified.duration_since(UNIX_EPOCH).ok()?;
-    i64::try_from(dur.as_millis()).ok()
 }
 
 /// Walks `vault_root`, indexes any markdown file that matches the
@@ -110,24 +105,9 @@ pub fn run_full_scan_with_chunker(
             message,
         }
     })?;
-    let note_config = NoteIndexConfig {
-        chunker: chunker_config,
-        talon_config: config.talon_config.as_ref(),
-        ignored_link_targets: collect_ignored_link_targets(vault_root, &ignore_set),
-    };
     let mut stats = IndexerStats::default();
-    let mut linking_cache = load_notes_for_linking(conn).map_err(|source| TalonError::Sqlite {
-        context: "load notes for link cache",
-        source,
-    })?;
-    for note in load_vault_notes_for_linking_with_sets(vault_root, &include_set, &ignore_set) {
-        linking_cache = merge_current_path_for_linking(
-            &linking_cache,
-            &note.vault_path,
-            note.title.as_deref().unwrap_or_default(),
-            &note.aliases,
-        );
-    }
+    let mut ignored_link_targets: Option<HashSet<String>> = None;
+    let mut linking_cache = None;
 
     for rel_path in scan_vault_markdown(vault_root) {
         let included = file_matches_include(&rel_path, &include_set)
@@ -157,6 +137,11 @@ pub fn run_full_scan_with_chunker(
             continue;
         };
 
+        if existing_metadata_is_up_to_date(conn, &rel_path, mtime_ms, size_bytes) {
+            stats.skipped = stats.skipped.saturating_add(1);
+            continue;
+        }
+
         let content = match fs::read_to_string(&full_path) {
             Ok(c) => c,
             Err(err) => {
@@ -171,16 +156,32 @@ pub fn run_full_scan_with_chunker(
             continue;
         }
 
+        let ignored_link_targets = ignored_link_targets
+            .get_or_insert_with(|| collect_ignored_link_targets(vault_root, &ignore_set));
+        let linking_cache = if let Some(cache) = &mut linking_cache {
+            cache
+        } else {
+            let cache = load_notes_for_linking(conn).map_err(|source| TalonError::Sqlite {
+                context: "load notes for link cache",
+                source,
+            })?;
+            linking_cache.insert(cache)
+        };
+        let note_config = NoteIndexConfig {
+            chunker: chunker_config,
+            talon_config: config.talon_config.as_ref(),
+            ignored_link_targets: ignored_link_targets.clone(),
+        };
         let outcome = index_one_note_with_config(
             conn,
             &rel_path,
             &content,
             mtime_ms,
             size_bytes,
-            &linking_cache,
+            linking_cache,
             &note_config,
         )?;
-        linking_cache = outcome.updated_links_cache;
+        *linking_cache = outcome.updated_links_cache;
         stats.indexed = stats.indexed.saturating_add(1);
     }
 

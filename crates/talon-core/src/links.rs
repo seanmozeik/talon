@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::hash::BuildHasher;
 
+mod resolver;
+pub use resolver::LinkResolver;
+
 // ── Link graph types ────────────────────────────────────────────────────────
 
 /// A resolved link between two notes in the vault.
