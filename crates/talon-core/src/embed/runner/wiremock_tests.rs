@@ -9,6 +9,7 @@ use wiremock::matchers::{body_partial_json, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use super::*;
+use crate::inference::EmbeddingClient;
 use crate::store::open_database;
 use crate::vec_ext::register_sqlite_vec;
 
@@ -61,7 +62,7 @@ fn single_chunk_path_persists_vector_and_marks_ok() {
             .mount(&server),
     );
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let stats = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap();
     assert_eq!(stats.processed, 1);
     assert_eq!(stats.succeeded, 1);
@@ -116,7 +117,7 @@ fn multi_chunk_path_persists_each_chunk() {
             .mount(&server),
     );
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let stats = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap();
     assert_eq!(stats.succeeded, 1);
     assert_eq!(stats.failed, 0);
@@ -147,7 +148,7 @@ fn http_error_marks_note_failed_and_records_diagnostic() {
             .mount(&server),
     );
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let stats = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap();
     assert_eq!(stats.processed, 1);
     assert_eq!(stats.failed, 1);
@@ -179,7 +180,7 @@ fn missing_single_chunk_endpoint_aborts_embed_pass() {
         .unwrap();
     let server = runtime.block_on(MockServer::start());
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let err = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap_err();
     assert!(
         err.to_string().contains("embedding endpoint unavailable"),
@@ -211,7 +212,7 @@ fn missing_chunked_endpoint_aborts_embed_pass() {
         .unwrap();
     let server = runtime.block_on(MockServer::start());
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let err = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap_err();
     assert!(
         err.to_string().contains("embedding endpoint unavailable"),
@@ -259,7 +260,7 @@ fn dimension_mismatch_is_reported() {
             .mount(&server),
     );
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let stats = run_embed_pass(&conn, &client, &EmbedPassOptions::defaults()).unwrap();
     assert!(stats.dimension_mismatch);
     assert_eq!(stats.succeeded, 1);

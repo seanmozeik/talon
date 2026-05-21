@@ -51,17 +51,23 @@ const DISTILLER_SYSTEM_PROMPT: &str = "Return only valid JSON of the form \
 
 /// Blocking HTTP client for the OpenAI-compatible LLM expansion endpoint.
 ///
-/// Uses the same sync `reqwest::blocking` strategy as [`InferenceClient`] so
+/// Uses the same sync `reqwest::blocking` strategy as [`EmbeddingClient`] so
 /// it can run inside `tokio::task::spawn_blocking` alongside the `SQLite`
 /// connection.
 ///
-/// [`InferenceClient`]: crate::inference::InferenceClient
+/// [`EmbeddingClient`]: crate::inference::EmbeddingClient
 #[derive(Debug, Clone)]
 pub struct ExpansionClient {
     chat: ChatClient,
 }
 
 impl ExpansionClient {
+    /// Wraps a configured chat client.
+    #[must_use]
+    pub const fn from_chat(chat: ChatClient) -> Self {
+        Self { chat }
+    }
+
     /// Builds a client targeting `base_url` with the default timeout.
     ///
     /// # Errors

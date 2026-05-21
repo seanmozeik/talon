@@ -1,17 +1,17 @@
-//! Blocking HTTP client for the TEI-compatible sidecar (`/embed`,
-//! `/embed-chunked`, `/rerank`).
-//!
-//! Ports `clients/sidecar-llm/sidecar.ts`. The wire shapes are dictated by the
-//! Python sidecar in `ultra/sidecar/routers/{embed,rerank}.py`, not by the TS
-//! client — see [`types`] for details.
+//! Blocking HTTP clients for embedding and reranking endpoints.
 
-pub mod client;
+pub mod embedding;
 pub mod error;
+pub mod http;
+pub mod rerank;
 pub mod types;
 
-pub use client::{DEFAULT_INFERENCE_TIMEOUT, InferenceClient};
+pub use embedding::EmbeddingClient;
 pub use error::{InferenceError, MAX_DIAGNOSTIC_CHARS, redact};
+pub use http::DEFAULT_INFERENCE_TIMEOUT;
+pub use rerank::RerankClient;
 pub use types::{
-    EmbedChunkedDataItem, EmbedChunkedRequest, EmbedChunkedResponse, EmbedRequest, RerankRequest,
-    RerankResult,
+    CohereRerankRequest, CohereRerankResponse, EmbedChunkedDataItem, EmbedChunkedRequest,
+    EmbedChunkedResponse, EmbedRequest, OpenAiEmbeddingRequest, OpenAiEmbeddingResponse,
+    RerankRequest, RerankResult,
 };

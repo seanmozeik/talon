@@ -7,29 +7,13 @@ use crate::telemetry::{count_u32, elapsed_ms};
 use eyre::{Result, WrapErr as _};
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, RecallInput, RecallResponse, ResponseMeta, ScopeFilter, TalonEnvelope,
-    TalonResponseData, inference::InferenceClient, open_database_read_only, run_recall,
-    vec_ext::register_sqlite_vec,
+    RecallInput, RecallResponse, ResponseMeta, ScopeFilter, TalonClients, TalonEnvelope,
+    TalonResponseData, open_database_read_only, run_recall, vec_ext::register_sqlite_vec,
 };
 
-fn recall_clients(
-    config: &talon_core::TalonConfig,
-) -> (Option<InferenceClient>, Option<ExpansionClient>) {
+fn recall_clients(config: &talon_core::TalonConfig) -> Option<talon_core::TalonClients> {
     talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
-    let inference = InferenceClient::with_rerank_options_and_protocol(
-        &config.inference.base_url,
-        config.search.rerank_batch_size,
-        config.search.rerank_max_tokens,
-        config.inference.rerank,
-    )
-    .ok();
-    let expansion = ExpansionClient::with_max_tokens(
-        config.expansion.base_url.clone(),
-        &config.expansion.model,
-        config.expansion.max_output_tokens,
-    )
-    .ok();
-    (inference, expansion)
+    TalonClients::from_config(config).ok()
 }
 
 pub(super) async fn emit(args: &RecallArgs, cli: &Cli) -> Result<()> {
@@ -71,15 +55,22 @@ pub(super) async fn emit(args: &RecallArgs, cli: &Cli) -> Result<()> {
             let conn = open_database_read_only(&config.db_path)
                 .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
 
-            let (inference, expansion) = if fast {
-                (None, None)
+            let (embedding, rerank, expansion) = if fast {
+                (None, None, None)
             } else {
-                recall_clients(&config)
+                recall_clients(&config).map_or((None, None, None), |clients| {
+                    (
+                        Some(clients.embedding),
+                        Some(clients.rerank),
+                        Some(clients.expansion),
+                    )
+                })
             };
 
             let mut response = run_recall(
                 &conn,
-                inference.as_ref(),
+                embedding.as_ref(),
+                rerank.as_ref(),
                 expansion.as_ref(),
                 &input,
                 Some(&config),

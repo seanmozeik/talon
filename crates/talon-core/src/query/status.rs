@@ -111,9 +111,7 @@ fn is_unscoped(path: &str, config: &TalonConfig) -> bool {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use crate::config::{
-        ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, ScopesConfig,
-    };
+    use crate::config::{ScopesConfig, test_literals};
     use crate::indexing::migrations::run_migrations;
     use rusqlite::Connection;
     use std::path::PathBuf;
@@ -125,38 +123,12 @@ mod tests {
     }
 
     fn minimal_config(vault_path: &str) -> TalonConfig {
-        TalonConfig {
-            vault_path: PathBuf::from(vault_path),
-            db_path: PathBuf::from(":memory:"),
-            config_file_path: None,
-            include_patterns: vec![],
-            ignore_patterns: vec![],
-            inference: InferenceConfig {
-                base_url: "http://localhost:11434".to_string(),
-                models: InferenceModels {
-                    query_embedding: "nomic-embed-text".to_string(),
-                    query_embedding_context_tokens: 512,
-                    document_embedding: "nomic-embed-text".to_string(),
-                    chunk_embedding: "nomic-embed-text".to_string(),
-                    reranker: "ms-marco-MiniLM-L-6-v2".to_string(),
-                    reranker_context_tokens: 512,
-                },
-                rerank: RerankConfig::default(),
-            },
-            expansion: ExpansionConfig {
-                provider: "openai-compatible".to_string(),
-                base_url: "http://localhost:11434".to_string(),
-                model: "mistral".to_string(),
-                context_tokens: 32768,
-                max_output_tokens: None,
-            },
-            ask: crate::config::AskConfig::default(),
-            mcp: crate::config::McpConfig::default(),
-            scopes: ScopesConfig::new(),
-            search: crate::config::SearchConfig::default(),
-            inspect: crate::config::InspectConfig::default(),
-            chunker: crate::config::ChunkerConfig::default(),
-        }
+        test_literals::minimal_for_paths(
+            PathBuf::from(vault_path),
+            PathBuf::from(":memory:"),
+            "http://localhost:11434",
+            ScopesConfig::new(),
+        )
     }
 
     fn insert_note(conn: &Connection, path: &str) -> i64 {
@@ -236,38 +208,12 @@ mod tests {
             },
         );
 
-        let config = TalonConfig {
-            vault_path: PathBuf::from("/vault"),
-            db_path: PathBuf::from(":memory:"),
-            config_file_path: None,
-            include_patterns: vec![],
-            ignore_patterns: vec![],
-            inference: InferenceConfig {
-                base_url: "http://localhost:11434".to_string(),
-                models: InferenceModels {
-                    query_embedding: "nomic-embed-text".to_string(),
-                    query_embedding_context_tokens: 512,
-                    document_embedding: "nomic-embed-text".to_string(),
-                    chunk_embedding: "nomic-embed-text".to_string(),
-                    reranker: "ms-marco-MiniLM-L-6-v2".to_string(),
-                    reranker_context_tokens: 512,
-                },
-                rerank: RerankConfig::default(),
-            },
-            expansion: ExpansionConfig {
-                provider: "openai-compatible".to_string(),
-                base_url: "http://localhost:11434".to_string(),
-                model: "mistral".to_string(),
-                context_tokens: 32768,
-                max_output_tokens: None,
-            },
-            ask: crate::config::AskConfig::default(),
-            mcp: crate::config::McpConfig::default(),
+        let config = test_literals::minimal_for_paths(
+            PathBuf::from("/vault"),
+            PathBuf::from(":memory:"),
+            "http://localhost:11434",
             scopes,
-            search: crate::config::SearchConfig::default(),
-            inspect: crate::config::InspectConfig::default(),
-            chunker: crate::config::ChunkerConfig::default(),
-        };
+        );
 
         let resp = query_status(&conn, &config);
         let scope_report = resp.scopes.unwrap();

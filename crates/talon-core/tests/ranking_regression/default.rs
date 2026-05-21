@@ -1,4 +1,5 @@
 use super::*;
+use talon_core::inference::{EmbeddingClient, RerankClient};
 use wiremock::{Request, Respond};
 
 #[test]
@@ -16,7 +17,8 @@ fn ranking_regression_default_mode_meets_floors() {
     let server = rt.block_on(MockServer::start());
     mount_default_mode_mocks(&rt, &server);
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
+    let rerank = RerankClient::tei_for_tests(server.uri(), 32).unwrap();
     let expansion = ExpansionClient::new(server.uri(), "test").unwrap();
     let mut conn = open_database(&db).unwrap();
     run_sync_with_chunker(
@@ -25,7 +27,7 @@ fn ranking_regression_default_mode_meets_floors() {
         &lock,
         &IndexerConfig::index_all(),
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -44,11 +46,18 @@ fn ranking_regression_default_mode_meets_floors() {
             limit: PositiveCount::new(10, "limit").unwrap(),
             ..SearchInput::default()
         };
-        let results: Vec<String> = run_search(&conn, &input, Some(&client), Some(&expansion), None)
-            .results
-            .into_iter()
-            .map(|r| r.vault_path.as_str().to_string())
-            .collect();
+        let results: Vec<String> = run_search(
+            &conn,
+            &input,
+            Some(&embedding),
+            Some(&rerank),
+            Some(&expansion),
+            None,
+        )
+        .results
+        .into_iter()
+        .map(|r| r.vault_path.as_str().to_string())
+        .collect();
         let refs: Vec<&str> = results.iter().map(String::as_str).collect();
         let q_ndcg5 = ndcg(&refs, b.relevant, &[], 5);
         let q_mrr = mrr(&refs, b.relevant);

@@ -189,7 +189,7 @@ fn bench_bm25_unfiltered(c: &mut Criterion) {
                 candidate_limit: PositiveCount::new(200, "candidate_limit").unwrap(),
                 ..SearchInput::default()
             };
-            let resp = run_search(&conn, &input, None, None, None);
+            let resp = run_search(&conn, &input, None, None, None, None);
             // Prevent dead-code elimination — criterion doesn't black_box the
             // output of `iter`, so we touch the result length.
             assert!(!resp.results.is_empty(), "expected BM25 hits");
@@ -219,7 +219,7 @@ fn bench_bm25_with_status_filter(c: &mut Criterion) {
                 where_: vec![where_clause.clone()],
                 ..SearchInput::default()
             };
-            let resp = run_search(&conn, &input, None, None, None);
+            let resp = run_search(&conn, &input, None, None, None, None);
             assert!(!resp.results.is_empty(), "expected filtered hits");
         });
     });

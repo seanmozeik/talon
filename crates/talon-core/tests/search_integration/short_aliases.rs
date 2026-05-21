@@ -87,7 +87,7 @@ Short alias C#.
 
     for (query, expected_path) in [("A", "alpha.md"), ("Go", "go.md"), ("C#", "csharp.md")] {
         input.query = Some(query.to_string());
-        let response = run_search(&conn, &input, None, None, None);
+        let response = run_search(&conn, &input, None, None, None, None);
         assert!(
             !response.results.is_empty(),
             "search for {query} must return results"

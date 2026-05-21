@@ -1,4 +1,5 @@
 use super::*;
+use talon_core::inference::{EmbeddingClient, RerankClient};
 
 #[test]
 fn ranking_regression_golden_set_meets_floors() {
@@ -26,7 +27,8 @@ fn ranking_regression_golden_set_meets_floors() {
             .mount(&server),
     );
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
+    let rerank = RerankClient::tei_for_tests(server.uri(), 32).unwrap();
     let mut conn = open_database(&db).unwrap();
     run_sync_with_chunker(
         &mut conn,
@@ -34,7 +36,7 @@ fn ranking_regression_golden_set_meets_floors() {
         &lock,
         &IndexerConfig::index_all(),
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -50,7 +52,7 @@ fn ranking_regression_golden_set_meets_floors() {
                 limit: PositiveCount::new(10, "limit").unwrap(),
                 ..SearchInput::default()
             };
-            run_search(&conn, &input, Some(&client), None, None)
+            run_search(&conn, &input, Some(&embedding), Some(&rerank), None, None)
                 .results
                 .into_iter()
                 .map(|r| r.vault_path.as_str().to_string())

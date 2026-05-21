@@ -10,7 +10,7 @@ use rusqlite::Connection;
 use time::OffsetDateTime;
 
 use crate::TalonError;
-use crate::inference::{EmbedChunkedDataItem, InferenceClient, InferenceError};
+use crate::inference::{EmbedChunkedDataItem, EmbeddingClient, InferenceError};
 
 use super::diagnostics::{
     EmbedDiagnostics, EmbedRunContext, align_embedding_dimensions, mark_note_chunks_failed,
@@ -103,7 +103,7 @@ impl From<EmbedDiagnostics> for EmbedPassStats {
 /// the error indicates the embedding endpoint is unavailable or misconfigured.
 pub fn run_embed_pass(
     conn: &Connection,
-    client: &InferenceClient,
+    client: &EmbeddingClient,
     options: &EmbedPassOptions,
 ) -> Result<EmbedPassStats, TalonError> {
     let pending = get_pending_chunks(conn, options.force, &options.restrict_paths)?;
@@ -151,9 +151,9 @@ fn fatal_endpoint_failure(err: &InferenceError) -> Option<TalonError> {
         return None;
     }
     Some(TalonError::InvalidInput {
-        field: "inference.base_url",
+        field: "embedding.base_url",
         message: format!(
-            "embedding endpoint unavailable or misconfigured: {}; check inference.base_url and the sidecar embedding routes",
+            "embedding endpoint unavailable or misconfigured: {}; check embedding.base_url and the sidecar embedding routes",
             format_inference_failure(err)
         ),
     })
@@ -161,8 +161,8 @@ fn fatal_endpoint_failure(err: &InferenceError) -> Option<TalonError> {
 
 fn embed_single_chunk(
     conn: &Connection,
-    client: &InferenceClient,
-    options: &EmbedPassOptions,
+    client: &EmbeddingClient,
+    _options: &EmbedPassOptions,
     note: &NoteWithChunks,
     ctx: &mut EmbedRunContext,
 ) -> Result<(), TalonError> {
@@ -210,7 +210,7 @@ fn embed_single_chunk(
     if let Err(err) = persist_chunk_vector(
         conn,
         chunk.chunk_id,
-        &options.chunk_embedding_model,
+        client.chunk_model(),
         dims,
         now_ms(),
         &row,
@@ -224,8 +224,8 @@ fn embed_single_chunk(
 
 fn embed_multi_chunk(
     conn: &Connection,
-    client: &InferenceClient,
-    options: &EmbedPassOptions,
+    client: &EmbeddingClient,
+    _options: &EmbedPassOptions,
     note: &NoteWithChunks,
     ctx: &mut EmbedRunContext,
 ) -> Result<(), TalonError> {
@@ -270,7 +270,7 @@ fn embed_multi_chunk(
         );
         return Ok(());
     }
-    if let Err(err) = persist_multi_chunk(conn, options, note, batch, dims) {
+    if let Err(err) = persist_multi_chunk(conn, client, note, batch, dims) {
         fail_note(conn, note, ctx, &err.to_string());
         return Ok(());
     }
@@ -280,7 +280,7 @@ fn embed_multi_chunk(
 
 fn persist_multi_chunk(
     conn: &Connection,
-    options: &EmbedPassOptions,
+    client: &EmbeddingClient,
     note: &NoteWithChunks,
     batch: &EmbedChunkedDataItem,
     dims: u32,
@@ -299,7 +299,7 @@ fn persist_multi_chunk(
         persist_chunk_vector(
             conn,
             chunk.chunk_id,
-            &options.document_embedding_model,
+            client.document_model(),
             dims,
             now,
             embedding,

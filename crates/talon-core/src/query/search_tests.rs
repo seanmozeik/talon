@@ -1,9 +1,6 @@
 use super::super::search_hybrid::infer_hybrid_match_kind;
 use super::*;
-use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig, RerankConfig,
-    Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig,
-};
+use crate::config::{Scope, ScopeGlob, ScopePriority, ScopesConfig, TalonConfig, test_literals};
 use crate::search::types::SearchScores;
 use crate::store::open_database;
 use rusqlite::{Connection, params};
@@ -75,38 +72,12 @@ fn config_with_wiki_scope() -> TalonConfig {
         },
     );
 
-    TalonConfig {
-        vault_path: PathBuf::from("/tmp/vault"),
-        db_path: PathBuf::from("/tmp/vault/idx.sqlite"),
-        config_file_path: None,
-        include_patterns: Vec::new(),
-        ignore_patterns: Vec::new(),
-        inference: InferenceConfig {
-            base_url: "http://localhost".to_string(),
-            models: InferenceModels {
-                query_embedding: "query".to_string(),
-                query_embedding_context_tokens: 512,
-                document_embedding: "document".to_string(),
-                chunk_embedding: "chunk".to_string(),
-                reranker: "reranker".to_string(),
-                reranker_context_tokens: 512,
-            },
-            rerank: RerankConfig::default(),
-        },
-        expansion: ExpansionConfig {
-            provider: "openai-compatible".to_string(),
-            base_url: "http://localhost".to_string(),
-            model: "expansion".to_string(),
-            context_tokens: 32768,
-            max_output_tokens: None,
-        },
-        ask: crate::config::AskConfig::default(),
-        mcp: crate::config::McpConfig::default(),
+    test_literals::minimal_for_paths(
+        PathBuf::from("/tmp/vault"),
+        PathBuf::from("/tmp/vault/idx.sqlite"),
+        "http://localhost",
         scopes,
-        search: SearchConfig::default(),
-        inspect: InspectConfig::default(),
-        chunker: ChunkerConfig::default(),
-    }
+    )
 }
 
 #[test]

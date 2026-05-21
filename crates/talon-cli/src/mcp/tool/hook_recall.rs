@@ -5,7 +5,7 @@ use std::time::Duration;
 use color_eyre::eyre::{Result, WrapErr as _};
 use serde_json::{Value, json};
 use talon_core::{
-    ExpansionClient, RecallInput, RecallResponse, TalonConfig, inference::InferenceClient,
+    EmbeddingClient, ExpansionClient, RecallInput, RecallResponse, RerankClient, TalonConfig,
     vec_ext::register_sqlite_vec,
 };
 
@@ -29,24 +29,23 @@ pub(super) fn dispatch_recall_for_hook(
 
     let timeout = hook_sidecar_timeout(config.mcp.hooks.recall_deadline_ms);
     let can_try_sidecar = timeout > Duration::from_millis(10);
-    let (inference, expansion) = if input.fast || !can_try_sidecar {
-        (None, None)
+    let (embedding, rerank, expansion) = if input.fast || !can_try_sidecar {
+        (None, None, None)
     } else {
         talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
         (
-            InferenceClient::with_timeout_no_retry_and_rerank_options(
-                &config.inference.base_url,
-                timeout,
+            EmbeddingClient::from_config(&config.embedding, &config.credentials).ok(),
+            RerankClient::from_config(
+                &config.rerank,
+                &config.credentials,
                 config.search.rerank_batch_size,
-                config.search.rerank_max_tokens,
-                config.inference.rerank,
             )
             .ok(),
             ExpansionClient::with_timeout_and_max_tokens(
-                config.expansion.base_url.clone(),
-                &config.expansion.model,
+                config.chat.expansion.base_url.clone(),
+                &config.chat.expansion.model,
                 timeout,
-                config.expansion.max_output_tokens,
+                config.chat.expansion.max_output_tokens,
             )
             .ok(),
         )
@@ -54,7 +53,8 @@ pub(super) fn dispatch_recall_for_hook(
 
     Ok(run_recall_with_mode(
         &conn,
-        inference.as_ref(),
+        embedding.as_ref(),
+        rerank.as_ref(),
         expansion.as_ref(),
         input,
         Some(config),

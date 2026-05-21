@@ -9,15 +9,14 @@
 use serde_json::json;
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
+pub use talon_core::RerankClient;
 use talon_core::{
     AnchorKind, ChunkerConfig, Direction, InspectCheck, InspectInput, MetaInput, PositiveCount,
     RecallInput, RelatedInput, SearchInput, SearchMode, WhereClause, WhereOperator,
-    config::{
-        ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, ScopesConfig, TalonConfig,
-    },
+    config::{TalonConfig, test_literals},
     embed::EmbedPassOptions,
     indexer::IndexerConfig,
-    inference::InferenceClient,
+    inference::EmbeddingClient,
     open_database, query_inspect, query_meta, query_status, run_recall, run_search,
     run_sync_with_chunker,
     vec_ext::register_sqlite_vec,
@@ -110,36 +109,5 @@ impl Respond for EmbedChunkedResponder {
 }
 
 fn minimal_config(vault: &std::path::Path) -> TalonConfig {
-    TalonConfig {
-        vault_path: vault.to_path_buf(),
-        db_path: vault.join("idx.sqlite"),
-        config_file_path: None,
-        include_patterns: Vec::new(),
-        ignore_patterns: Vec::new(),
-        inference: InferenceConfig {
-            base_url: "http://localhost:1".to_string(),
-            models: InferenceModels {
-                query_embedding: "embed".to_string(),
-                query_embedding_context_tokens: 512,
-                document_embedding: "embed".to_string(),
-                chunk_embedding: "embed".to_string(),
-                reranker: "rerank".to_string(),
-                reranker_context_tokens: 512,
-            },
-            rerank: RerankConfig::default(),
-        },
-        expansion: ExpansionConfig {
-            provider: "openai-compatible".to_string(),
-            base_url: "http://localhost:1".to_string(),
-            model: "test".to_string(),
-            context_tokens: 32768,
-            max_output_tokens: None,
-        },
-        ask: talon_core::AskConfig::default(),
-        mcp: talon_core::McpConfig::default(),
-        scopes: ScopesConfig::default(),
-        search: talon_core::SearchConfig::default(),
-        inspect: talon_core::InspectConfig::default(),
-        chunker: talon_core::ChunkerConfig::default(),
-    }
+    test_literals::minimal_for_vault(vault)
 }

@@ -1,6 +1,7 @@
 use super::super::constants::DEFAULT_SNIPPET_LENGTH;
 use super::*;
-use crate::inference::InferenceClient;
+use crate::inference::RerankClient;
+
 use crate::search::types::SearchScores;
 use crate::store::open_database;
 use rusqlite::{Connection, params};
@@ -26,8 +27,8 @@ fn make_candidate(path: &str, score: f64) -> RawSearchResult {
     }
 }
 
-fn start_inference(uri: String) -> InferenceClient {
-    InferenceClient::new(uri).unwrap()
+fn start_rerank(uri: String) -> RerankClient {
+    RerankClient::tei_for_tests(uri, 32).unwrap()
 }
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -103,10 +104,10 @@ fn intent_weighted_chunk_selection_prefers_intent_rich_chunk() {
         ],
     );
 
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let result = rerank_candidates_with_intent(IntentRerankOptions {
         conn: &conn,
-        inference: &inference,
+        rerank: &rerank,
         query: "performance latency",
         intent: Some("web page load"),
         candidates: vec![make_candidate("chunked.md", 0.5)],
@@ -143,10 +144,10 @@ fn chunk_selection_weights_intent_terms_above_query_terms() {
         ],
     );
 
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let result = rerank_candidates_with_intent(IntentRerankOptions {
         conn: &conn,
-        inference: &inference,
+        rerank: &rerank,
         query: "performance latency throughput regression",
         intent: Some("launch blockers current actions"),
         candidates: vec![make_candidate("weighted.md", 0.5)],
@@ -191,12 +192,12 @@ fn rerank_cache_key_includes_prefixed_intent_query() {
     );
     let db_path = unique_db_path("intent-cache");
     let conn = open_database(&db_path).unwrap();
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![make_candidate("intent-cache.md", 0.5)];
 
     let _ = rerank_candidates_with_intent(IntentRerankOptions {
         conn: &conn,
-        inference: &inference,
+        rerank: &rerank,
         query: "cache query with intent",
         intent: Some("web page load"),
         candidates: candidates.clone(),
@@ -206,7 +207,7 @@ fn rerank_cache_key_includes_prefixed_intent_query() {
     });
     let _ = rerank_candidates_with_intent(IntentRerankOptions {
         conn: &conn,
-        inference: &inference,
+        rerank: &rerank,
         query: "cache query with intent",
         intent: Some("web page load"),
         candidates: candidates.clone(),
@@ -216,7 +217,7 @@ fn rerank_cache_key_includes_prefixed_intent_query() {
     });
     let _ = rerank_candidates_with_intent(IntentRerankOptions {
         conn: &conn,
-        inference: &inference,
+        rerank: &rerank,
         query: "cache query with intent",
         intent: Some("sports training"),
         candidates,

@@ -2,8 +2,7 @@ use std::path::PathBuf;
 
 use super::ScopeFilter;
 use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig, RerankConfig,
-    Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
+    InspectConfig, Scope, ScopeGlob, ScopePriority, ScopesConfig, TalonConfig, test_literals,
 };
 use crate::error::TalonError;
 
@@ -21,38 +20,12 @@ fn config_with(scopes: Vec<(&str, Scope)>) -> TalonConfig {
     for (name, s) in scopes {
         map.insert(name.to_string(), s);
     }
-    TalonConfig {
-        vault_path: PathBuf::from("/vault"),
-        db_path: PathBuf::from("/vault/.talon/index.db"),
-        config_file_path: None,
-        include_patterns: Vec::new(),
-        ignore_patterns: Vec::new(),
-        inference: InferenceConfig {
-            base_url: "http://localhost:8080".to_string(),
-            models: InferenceModels {
-                query_embedding: "embed-q".to_string(),
-                query_embedding_context_tokens: 512,
-                document_embedding: "embed-d".to_string(),
-                chunk_embedding: "embed-c".to_string(),
-                reranker: "rerank".to_string(),
-                reranker_context_tokens: 512,
-            },
-            rerank: RerankConfig::default(),
-        },
-        expansion: ExpansionConfig {
-            provider: "openai-compatible".to_string(),
-            base_url: "http://localhost:8080".to_string(),
-            model: "expand".to_string(),
-            context_tokens: 32768,
-            max_output_tokens: Some(256),
-        },
-        ask: crate::config::AskConfig::default(),
-        mcp: crate::config::McpConfig::default(),
-        scopes: map,
-        search: SearchConfig::default(),
-        inspect: crate::config::InspectConfig::default(),
-        chunker: ChunkerConfig::default(),
-    }
+    test_literals::minimal_for_paths(
+        PathBuf::from("/vault"),
+        PathBuf::from("/vault/.talon/index.db"),
+        "http://localhost:8080",
+        map,
+    )
 }
 
 fn karpathy_config() -> TalonConfig {

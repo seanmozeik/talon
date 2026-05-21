@@ -16,34 +16,38 @@ rerank_batch_size = 4
 rerank_max_tokens = 128
 ```
 
-`[inference.rerank]` controls the `/rerank` protocol Talon expects from the
-sidecar or adapter.
+`[embedding]` and `[rerank]` configure the HTTP endpoints Talon calls for vectors and cross-encoder scoring. Each block has its own `base_url`, optional auth fields, and `adapter` wire protocol.
 
 ```toml
-[inference.models]
-query_embedding_context_tokens = 512
-reranker_context_tokens = 512
+[embedding]
+base_url = "http://localhost:8000"
+adapter = "tei"              # tei | openai
+model = "embed"
+document_model = "embed_chunked"
+context_tokens = 512
 
-[inference.rerank]
-request_shape = "minimal"  # minimal | tei
-score_scale = "normalized" # normalized | logits
-truncate = true            # sent only for request_shape = "tei"
+[rerank]
+base_url = "http://localhost:8000"
+adapter = "minimal"          # minimal | tei | cohere | jina
+model = "rerank"
+score_scale = "normalized"   # normalized | logits
+truncate = true              # sent for tei-style adapters
 ```
 
-The minimal request shape is:
+The minimal rerank adapter expects:
 `POST /rerank { query, texts, return_text } -> [{ index, score }]`.
 Scores should be normalized to `[0, 1]` unless `score_scale = "logits"`.
 
-`[ask]` optionally selects a larger chat model for `talon ask`. It reuses the
-OpenAI-compatible `[expansion]` endpoint, so only ask-specific model and
-reasoning overrides live here.
+`[chat.expansion]` configures query expansion and recall distillation. `[chat.ask]` optionally selects a larger chat model for `talon ask`; unset transport fields inherit from expansion.
 
 ```toml
-[expansion]
+[chat.expansion]
+base_url = "http://localhost:8000/v1"
+model = "bonsai"
 context_tokens = 16000
 max_output_tokens = 768
 
-[ask]
+[chat.ask]
 model = "qwen-smol"
 context_tokens = 65536
 max_output_tokens = 2048
@@ -55,8 +59,10 @@ recall_deadline_ms = 45000
 ```
 
 Recall distillation derives its prompt-view budget from
-`expansion.context_tokens` minus output, prompt-overhead, and safety reserves.
+`chat.expansion.context_tokens` minus output, prompt-overhead, and safety reserves.
 For small local models, set `context_tokens` to the effective reliable window,
 not necessarily the model's advertised maximum.
+
+Named credentials live under `[credentials.*]` and are referenced from capability blocks via `credential = "name"` or inline `api_key_env`.
 
 Ultraclaw does not inject, adapt, or validate Talon config.

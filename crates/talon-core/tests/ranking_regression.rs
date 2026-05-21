@@ -11,6 +11,7 @@
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
+    clippy::too_many_lines,
     clippy::cast_precision_loss // all cast sites are small counts (n <= 5)
 )]
 
@@ -26,8 +27,8 @@ mod golden;
 use serde_json::json;
 use talon_core::{
     ChunkerConfig, ExpansionClient, PositiveCount, SearchInput, SearchMode,
-    embed::EmbedPassOptions, indexer::IndexerConfig, inference::InferenceClient, open_database,
-    run_search, run_sync_with_chunker, vec_ext::register_sqlite_vec,
+    embed::EmbedPassOptions, indexer::IndexerConfig, open_database, run_search,
+    run_sync_with_chunker, vec_ext::register_sqlite_vec,
 };
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};

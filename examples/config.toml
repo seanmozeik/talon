@@ -4,8 +4,8 @@
 # Copy to `~/.config/talon/config.toml` and adjust as needed:
 #   - `vault_path`         — point at your real Obsidian vault when ready
 #   - `db_path`            — pick a stable home; default below writes alongside the vault
-#   - `inference.base_url` — point at your TEI-compatible endpoint
-#   - `expansion.base_url` — point at your OpenAI-compatible chat endpoint
+#   - `embedding.base_url` — point at your TEI-compatible endpoint
+#   - `chat.expansion.base_url` — point at your OpenAI-compatible chat endpoint
 #
 # See docs/CONFIG.md for the full reference.
 
@@ -22,42 +22,35 @@ chunk_tokens = 512
 chunk_overlap = 64
 chunk_min_tokens = 16
 
-# Inference endpoint. Anything TEI-compatible (text-embeddings-inference,
-# Infinity, ultraclaw's local sidecar) works. Adjust base_url to taste.
-[inference]
+[search]
+candidate_limit = 60
+limit = 10
+cache_size = 200
+rerank_cache_size = 2000
+rerank_batch_size = 4
+rerank_max_tokens = 128
+
+[embedding]
 base_url = "http://localhost:8000"
+adapter = "tei"
+model = "embed"
+document_model = "embed_chunked"
+context_tokens = 512
 
-[inference.models]
-query_embedding = "embed"
-query_embedding_context_tokens = 512
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
-reranker_context_tokens = 512
-
-[inference.rerank]
-# Expected response: [{ index, score }] for every input text, sorted descending.
-# Scores are normalized relevance values in [0, 1]. Set score_scale = "logits"
-# only for endpoints that return raw cross-encoder logits.
+[rerank]
+base_url = "http://localhost:8000"
+adapter = "minimal"
+model = "rerank"
 score_scale = "normalized"
-# "minimal" sends { query, texts, return_text }. "tei" also sends
-# { raw_scores, truncate } for full Text Embeddings Inference compatibility.
-request_shape = "minimal"
 truncate = true
 
-# Query-expansion endpoint. OpenAI-compatible chat completions.
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:8000/v1"
 model = "bonsai"
-# Effective context for reliable recall distillation on this tiny model.
-# Set this higher for stronger local models that follow JSON reliably.
 context_tokens = 16000
-# Reserve and enforce a small JSON completion budget for recall distillation.
 max_output_tokens = 768
 
-[ask]
-# Optional larger model for `talon ask`. Reuses the [expansion] endpoint.
+[chat.ask]
 model = "qwen-smol"
 context_tokens = 65536
 max_output_tokens = 2048

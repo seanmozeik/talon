@@ -1,5 +1,6 @@
 use super::*;
-use crate::inference::InferenceClient;
+use crate::inference::RerankClient;
+
 use crate::search::fuse::sigmoid;
 use crate::search::types::SearchScores;
 use serde_json::json;
@@ -48,8 +49,8 @@ fn make_candidate(p: &str, score: f64) -> RawSearchResult {
     }
 }
 
-fn start_inference(uri: String) -> InferenceClient {
-    InferenceClient::new(uri).unwrap()
+fn start_rerank(uri: String) -> RerankClient {
+    RerankClient::tei_for_tests(uri, 32).unwrap()
 }
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -72,10 +73,10 @@ fn happy_path_reranks_and_blends_candidates() {
             ])))
             .mount(&server),
     );
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![make_candidate("a.md", 0.5), make_candidate("b.md", 0.4)];
     let result = rerank_candidates(
-        &inference,
+        &rerank,
         "rust async",
         candidates,
         10,
@@ -99,10 +100,10 @@ fn blend_math_matches_ts_expectations_within_1e4() {
             ])))
             .mount(&server),
     );
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![make_candidate("a.md", 0.5), make_candidate("b.md", 0.4)];
     let result = rerank_candidates(
-        &inference,
+        &rerank,
         "blend query",
         candidates,
         10,
@@ -126,10 +127,10 @@ fn http_5xx_returns_candidates_with_hybrid_scores_unchanged() {
             .respond_with(ResponseTemplate::new(500))
             .mount(&server),
     );
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![make_candidate("a.md", 0.8), make_candidate("b.md", 0.3)];
     let result = rerank_candidates(
-        &inference,
+        &rerank,
         "error query",
         candidates,
         10,
@@ -143,8 +144,8 @@ fn http_5xx_returns_candidates_with_hybrid_scores_unchanged() {
 
 #[test]
 fn empty_candidates_returns_empty_without_calling_sidecar() {
-    let inference = InferenceClient::new("http://localhost:19999").unwrap();
-    let result = rerank_candidates(&inference, "query", vec![], 10, &SearchHooks::default());
+    let rerank = RerankClient::tei_for_tests("http://localhost:19999", 32).unwrap();
+    let result = rerank_candidates(&rerank, "query", vec![], 10, &SearchHooks::default());
     assert!(result.is_empty());
 }
 
@@ -160,14 +161,14 @@ fn top_k_truncates_candidates_sent_to_reranker() {
             ])))
             .mount(&server),
     );
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![
         make_candidate("a.md", 0.5),
         make_candidate("b.md", 0.4),
         make_candidate("c.md", 0.3),
     ];
     let result = rerank_candidates(
-        &inference,
+        &rerank,
         "top k query",
         candidates,
         1,
@@ -190,11 +191,11 @@ fn versioned_rerank_uses_cache_for_same_query_and_chunk() {
             ])))
             .mount(&server),
     );
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![make_candidate("cached.md", 0.5)];
 
     let first = rerank_candidates_with_db_version(
-        &inference,
+        &rerank,
         "cache query unique",
         candidates.clone(),
         10,
@@ -202,7 +203,7 @@ fn versioned_rerank_uses_cache_for_same_query_and_chunk() {
         20,
     );
     let second = rerank_candidates_with_db_version(
-        &inference,
+        &rerank,
         "cache query unique",
         candidates,
         10,
@@ -227,18 +228,18 @@ fn public_rerank_wrapper_does_not_use_versionless_cache() {
             ])))
             .mount(&server),
     );
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![make_candidate("uncached.md", 0.5)];
 
     let _ = rerank_candidates(
-        &inference,
+        &rerank,
         "uncached query unique",
         candidates.clone(),
         10,
         &SearchHooks::default(),
     );
     let _ = rerank_candidates(
-        &inference,
+        &rerank,
         "uncached query unique",
         candidates,
         10,
@@ -261,11 +262,11 @@ fn rerank_cache_misses_after_db_version_changes() {
             ])))
             .mount(&server),
     );
-    let inference = start_inference(server.uri());
+    let rerank = start_rerank(server.uri());
     let candidates = vec![make_candidate("versioned.md", 0.5)];
 
     let _ = rerank_candidates_with_db_version(
-        &inference,
+        &rerank,
         "versioned cache query",
         candidates.clone(),
         10,
@@ -273,7 +274,7 @@ fn rerank_cache_misses_after_db_version_changes() {
         10,
     );
     let _ = rerank_candidates_with_db_version(
-        &inference,
+        &rerank,
         "versioned cache query",
         candidates,
         10,

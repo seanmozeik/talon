@@ -162,8 +162,8 @@ fn trim_ask_sources_to_budget(
     sources: &mut Vec<AskSource>,
     config: &talon_core::TalonConfig,
 ) {
-    let output_reserve = usize::try_from(config.ask.max_output_tokens).unwrap_or(2_048);
-    let context = usize::try_from(config.ask.context_tokens).unwrap_or(usize::MAX);
+    let output_reserve = usize::try_from(config.chat.ask.max_output_tokens).unwrap_or(2_048);
+    let context = usize::try_from(config.chat.ask.context_tokens).unwrap_or(usize::MAX);
     let input_budget = context
         .saturating_mul(ASK_SYNTHESIS_INPUT_NUMERATOR)
         .checked_div(ASK_SYNTHESIS_INPUT_DENOMINATOR)

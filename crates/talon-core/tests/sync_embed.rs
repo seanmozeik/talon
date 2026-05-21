@@ -9,7 +9,7 @@ use serde_json::json;
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
 use talon_core::{
-    embed::EmbedPassOptions, indexer::IndexerConfig, inference::InferenceClient, open_database,
+    embed::EmbedPassOptions, indexer::IndexerConfig, inference::EmbeddingClient, open_database,
     run_sync, vec_ext::register_sqlite_vec,
 };
 use wiremock::matchers::{method, path};
@@ -67,7 +67,7 @@ fn sync_with_embed_populates_vec_chunks() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let opts = EmbedPassOptions::defaults();
     let config = IndexerConfig::index_all();
 
@@ -187,7 +187,7 @@ fn sync_embed_http_error_marks_chunks_failed() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let opts = EmbedPassOptions::defaults();
     let config = IndexerConfig::index_all();
 

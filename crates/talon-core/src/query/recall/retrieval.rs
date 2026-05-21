@@ -6,7 +6,7 @@ use rusqlite::Connection;
 
 use crate::config::TalonConfig;
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
+use crate::inference::{EmbeddingClient, RerankClient};
 use crate::query::RecallInput;
 use crate::search::bm25::search_bm25;
 use crate::search::constants::{CANDIDATE_FLOOR, DEFAULT_SNIPPET_LENGTH};
@@ -18,7 +18,8 @@ use crate::search::types::RawSearchResult;
 
 pub(super) struct RetrievePipelineArgs<'a> {
     pub(super) conn: &'a Connection,
-    pub(super) inference: Option<&'a InferenceClient>,
+    pub(super) embedding: Option<&'a EmbeddingClient>,
+    pub(super) rerank: Option<&'a RerankClient>,
     pub(super) expansion: Option<&'a ExpansionClient>,
     pub(super) query: &'a str,
     pub(super) queries: &'a [String],
@@ -66,17 +67,12 @@ pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> Reca
         pre_filter: args.pre_filter.clone(),
         deadline_at: args.deadline_at,
     };
-    args.inference.map_or_else(
-        || RecallRetrievalOutput {
-            results: run_fast_bm25_title(args.conn, args.query, args.limit, args.pre_filter),
-            embed_batches: 0,
-            rerank_candidates: None,
-            rerank_ms: None,
-        },
-        |inf| {
+    match (args.embedding, args.rerank) {
+        (Some(embedding), Some(rerank)) => {
             let output = run_hybrid_pipeline_with_metadata(
                 args.conn,
-                inf,
+                embedding,
+                rerank,
                 args.expansion,
                 args.query,
                 &opts,
@@ -88,8 +84,14 @@ pub(super) fn retrieve_pipeline_results(args: &RetrievePipelineArgs<'_>) -> Reca
                 rerank_candidates: output.rerank_candidates,
                 rerank_ms: output.rerank_ms,
             }
+        }
+        _ => RecallRetrievalOutput {
+            results: run_fast_bm25_title(args.conn, args.query, args.limit, args.pre_filter),
+            embed_batches: 0,
+            rerank_candidates: None,
+            rerank_ms: None,
         },
-    )
+    }
 }
 
 pub(super) fn apply_scope_priority(

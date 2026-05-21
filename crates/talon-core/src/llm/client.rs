@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use reqwest::blocking::Client as HttpClient;
 
+use crate::config::ResolvedAuth;
 use crate::inference::redact;
 
 use super::error::ChatError;
@@ -23,6 +24,7 @@ pub struct ChatClient {
     max_tokens: Option<u32>,
     reasoning_effort: Option<ReasoningEffort>,
     chat_template_kwargs: Option<serde_json::Value>,
+    auth: ResolvedAuth,
     http: HttpClient,
 }
 
@@ -77,7 +79,35 @@ impl ChatClient {
         timeout: Duration,
         max_tokens: Option<u32>,
     ) -> Result<Self, ChatError> {
-        Self::with_optional_timeout_and_max_tokens(base_url, model, Some(timeout), max_tokens)
+        Self::with_timeout_max_tokens_and_auth(
+            base_url,
+            model,
+            timeout,
+            max_tokens,
+            ResolvedAuth::default(),
+        )
+    }
+
+    /// Builds a client with timeout, token cap, and resolved auth material.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ChatError::Build`] if the underlying `reqwest::Client` fails
+    /// to build.
+    pub fn with_timeout_max_tokens_and_auth(
+        base_url: impl Into<String>,
+        model: impl Into<String>,
+        timeout: Duration,
+        max_tokens: Option<u32>,
+        auth: ResolvedAuth,
+    ) -> Result<Self, ChatError> {
+        Self::with_optional_timeout_max_tokens_and_auth(
+            base_url,
+            model,
+            Some(timeout),
+            max_tokens,
+            auth,
+        )
     }
 
     /// Builds a client with no HTTP request timeout and optional completion token cap.
@@ -91,14 +121,21 @@ impl ChatClient {
         model: impl Into<String>,
         max_tokens: Option<u32>,
     ) -> Result<Self, ChatError> {
-        Self::with_optional_timeout_and_max_tokens(base_url, model, None, max_tokens)
+        Self::with_optional_timeout_max_tokens_and_auth(
+            base_url,
+            model,
+            None,
+            max_tokens,
+            ResolvedAuth::default(),
+        )
     }
 
-    fn with_optional_timeout_and_max_tokens(
+    fn with_optional_timeout_max_tokens_and_auth(
         base_url: impl Into<String>,
         model: impl Into<String>,
         timeout: Option<Duration>,
         max_tokens: Option<u32>,
+        auth: ResolvedAuth,
     ) -> Result<Self, ChatError> {
         let mut builder = HttpClient::builder();
         if let Some(timeout) = timeout {
@@ -113,6 +150,7 @@ impl ChatClient {
             max_tokens,
             reasoning_effort: None,
             chat_template_kwargs: None,
+            auth,
             http,
         })
     }
@@ -181,16 +219,19 @@ impl ChatClient {
             chat_template_kwargs: self.chat_template_kwargs.clone(),
         };
 
-        let response = self
-            .http
-            .post(&url)
-            .json(&body)
-            .send()
-            .map_err(|err| ChatError::Http {
-                status: None,
-                message: redact(&err.to_string()),
-                timed_out: err.is_timeout(),
-            })?;
+        let mut request = self.http.post(&url).json(&body);
+        if let Some(key) = &self.auth.api_key {
+            request = request.bearer_auth(key);
+        }
+        for (name, value) in &self.auth.extra_headers {
+            request = request.header(name.as_str(), value.as_str());
+        }
+
+        let response = request.send().map_err(|err| ChatError::Http {
+            status: None,
+            message: redact(&err.to_string()),
+            timed_out: err.is_timeout(),
+        })?;
 
         let status = response.status();
         if !status.is_success() {

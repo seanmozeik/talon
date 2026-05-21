@@ -20,6 +20,7 @@ pub mod links;
 pub mod llm;
 mod numeric;
 pub mod query;
+pub mod runtime;
 pub mod search;
 pub mod store;
 pub mod sync;
@@ -28,10 +29,10 @@ pub mod vec_ext;
 
 pub use ask::{AskClient, AskError, AskPlan, AskSynthesis};
 pub use config::{
-    AskConfig, ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig,
-    McpConfig, McpHooksConfig, RerankConfig, RerankRequestShape, RerankScoreScale, Scope,
-    ScopeFilter, ScopeGlob, ScopePriority, ScopeResolution, ScopesConfig, SearchConfig,
-    TalonConfig,
+    ChatAdapter, ChatAskConfig, ChatExpansionConfig, ChatSection, ChunkerConfig, CredentialEntry,
+    CredentialsConfig, EmbeddingAdapter, EmbeddingConfig, EndpointAuthConfig, InspectConfig,
+    McpConfig, McpHooksConfig, RerankAdapter, RerankConfig, RerankScoreScale, Scope, ScopeFilter,
+    ScopeGlob, ScopePriority, ScopeResolution, ScopesConfig, SearchConfig, TalonConfig,
 };
 pub use contracts::{
     ContainerPath, ErrorEnvelope, PositiveCount, ResponseMeta, TalonEnvelope, TalonInput,
@@ -58,6 +59,7 @@ pub use indexing::{
     perform_note_deletion, read_db_version, run_migrations, upsert_aliases, upsert_chunks,
     upsert_frontmatter_fields, upsert_links, upsert_note, upsert_tags,
 };
+pub use inference::{EmbeddingClient, InferenceError, RerankClient};
 pub use links::{
     LinkEdge, LinkGraphStats, NoteReference, ResolvedLink, build_link_edges, compute_backlinks,
     compute_link_stats, find_unresolved_links, resolve_wiki_link_target, resolve_wiki_links,
@@ -72,6 +74,7 @@ pub use query::{
     query_status, run_read, run_recall, run_recall_with_mode, run_search,
     run_search_with_expanded_queries,
 };
+pub use runtime::{TalonClients, build_ask_chat_client, build_expansion_client};
 pub use rusqlite::Connection;
 pub use search::{
     AnchorKind, Direction, FrontmatterFilter, GraphSearchDiagnostics, MatchAnchor, MatchKind,

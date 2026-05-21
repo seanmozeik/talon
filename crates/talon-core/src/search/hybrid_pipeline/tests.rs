@@ -8,7 +8,7 @@ use super::super::pre_filter::PreFilter;
 use super::test_support::{cleanup, dummy_embed_response, insert_note, runtime, unique_db_path};
 use super::*;
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
+
 use crate::store::open_database;
 
 fn test_opts(fast: bool, queries: Vec<String>, intent: Option<String>) -> HybridPipelineOptions {
@@ -81,14 +81,15 @@ fn full_pipeline_calls_embed_expand_and_rerank() {
         "atomic notes for thinking and learning",
     );
 
-    let inference = InferenceClient::new(server.uri()).unwrap();
+    let (embedding, rerank) = test_support::test_clients(server.uri());
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
     let opts = test_opts(false, vec![], None);
 
     let output = run_hybrid_pipeline_with_metadata(
         &conn,
-        &inference,
+        &embedding,
+        &rerank,
         Some(&expansion),
         "atomic notes",
         &opts,
@@ -145,14 +146,15 @@ fn strong_signal_probe_skips_expansion_and_rerank() {
         "unique term found nowhere else",
     );
 
-    let inference = InferenceClient::new(server.uri()).unwrap();
+    let (embedding, rerank) = test_support::test_clients(server.uri());
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
     let opts = test_opts(false, vec![], None);
 
     let results = run_hybrid_pipeline(
         &conn,
-        &inference,
+        &embedding,
+        &rerank,
         Some(&expansion),
         "crystallophosphene",
         &opts,
@@ -210,12 +212,12 @@ fn fast_flag_skips_expansion_and_rerank() {
         "fast lexical search content",
     );
 
-    let inference = InferenceClient::new(server.uri()).unwrap();
+    let (embedding, rerank) = test_support::test_clients(server.uri());
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
     let opts = test_opts(true, vec![], None);
 
-    let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "fast", &opts);
+    let results = run_hybrid_pipeline(&conn, &embedding, &rerank, Some(&expansion), "fast", &opts);
 
     let received = rt.block_on(server.received_requests()).unwrap_or_default();
     assert!(
@@ -259,12 +261,19 @@ fn no_expansion_client_returns_results() {
         "knowledge management and note taking",
     );
 
-    let inference = InferenceClient::new(server.uri()).unwrap();
+    let (embedding, rerank) = test_support::test_clients(server.uri());
 
     let opts = test_opts(false, vec![], None);
 
     // expansion=None: pipeline must degrade gracefully (no LLM call).
-    let results = run_hybrid_pipeline(&conn, &inference, None, "knowledge management", &opts);
+    let results = run_hybrid_pipeline(
+        &conn,
+        &embedding,
+        &rerank,
+        None,
+        "knowledge management",
+        &opts,
+    );
 
     assert!(
         !results.is_empty(),
@@ -309,12 +318,19 @@ fn pre_supplied_queries_bypass_llm_expansion() {
         "flashcard review system anki",
     );
 
-    let inference = InferenceClient::new(server.uri()).unwrap();
+    let (embedding, rerank) = test_support::test_clients(server.uri());
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
 
     let opts = test_opts(false, vec!["anki flashcards".to_owned()], None);
 
-    let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "memory systems", &opts);
+    let results = run_hybrid_pipeline(
+        &conn,
+        &embedding,
+        &rerank,
+        Some(&expansion),
+        "memory systems",
+        &opts,
+    );
 
     let received = rt.block_on(server.received_requests()).unwrap_or_default();
     assert!(

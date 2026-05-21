@@ -5,7 +5,7 @@
 use rusqlite::Connection;
 
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
+use crate::inference::{EmbeddingClient, RerankClient};
 use crate::search::hybrid_pipeline::{HybridPipelineOptions, run_hybrid_pipeline_with_metadata};
 use crate::search::pre_filter::PreFilter;
 use crate::search::types::{RawSearchResult, SearchScores};
@@ -23,7 +23,8 @@ pub(super) enum HybridOutcome {
 pub(super) struct HybridArgs<'a> {
     pub(super) conn: &'a Connection,
     pub(super) input: &'a SearchInput,
-    pub(super) inference: Option<&'a InferenceClient>,
+    pub(super) embedding: Option<&'a EmbeddingClient>,
+    pub(super) rerank: Option<&'a RerankClient>,
     pub(super) expansion: Option<&'a ExpansionClient>,
     pub(super) query: &'a str,
     pub(super) limit: u32,
@@ -34,7 +35,7 @@ pub(super) struct HybridArgs<'a> {
 }
 
 pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
-    let Some(inference) = args.inference else {
+    let (Some(embedding), Some(rerank)) = (args.embedding, args.rerank) else {
         return HybridOutcome::NoInference;
     };
     let opts = HybridPipelineOptions {
@@ -48,8 +49,14 @@ pub(super) fn run_hybrid_mode(args: &HybridArgs<'_>) -> HybridOutcome {
         pre_filter: args.pre_filter.clone(),
         deadline_at: None,
     };
-    let output =
-        run_hybrid_pipeline_with_metadata(args.conn, inference, args.expansion, args.query, &opts);
+    let output = run_hybrid_pipeline_with_metadata(
+        args.conn,
+        embedding,
+        rerank,
+        args.expansion,
+        args.query,
+        &opts,
+    );
     let (expanded_queries, diagnostics) = if args.include_expanded_queries {
         let diag = SearchDiagnostics {
             expansion_ms: output.expansion_ms,

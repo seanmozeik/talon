@@ -1,37 +1,33 @@
 use eyre::{Result, WrapErr as _};
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
-use std::time::Duration;
-use talon_core::{AskClient, ChatClient, ReasoningEffort};
+use talon_core::{AskClient, ChatClient, ReasoningEffort, runtime::build_ask_chat_client};
 
-const ASK_CHAT_TIMEOUT: Duration = Duration::from_mins(2);
 pub(super) fn build_ask_client(config: &talon_core::TalonConfig, fast: bool) -> Result<AskClient> {
-    let ask_model = config
-        .ask
-        .model
-        .as_deref()
-        .unwrap_or(config.expansion.model.as_str());
-    let planning_effort = ask_reasoning_effort(config.ask.planning_reasoning_effort, fast);
-    let synthesis_effort = ask_reasoning_effort(config.ask.synthesis_reasoning_effort, fast);
+    let expansion = &config.chat.expansion;
+    let ask = &config.chat.ask;
+    let ask_model = ask.resolved_model(expansion);
+    let planning_effort = ask_reasoning_effort(ask.planning_reasoning_effort, fast);
+    let synthesis_effort = ask_reasoning_effort(ask.synthesis_reasoning_effort, fast);
     let planning_enable_thinking =
-        ask_enable_thinking(planning_effort, config.ask.planning_enable_thinking, fast);
+        ask_enable_thinking(planning_effort, ask.planning_enable_thinking, fast);
     let synthesis_enable_thinking =
-        ask_enable_thinking(synthesis_effort, config.ask.synthesis_enable_thinking, fast);
+        ask_enable_thinking(synthesis_effort, ask.synthesis_enable_thinking, fast);
     let planning_chat = ask_chat_client(
         config,
         ask_model,
-        Some(config.ask.max_output_tokens),
+        Some(ask.max_output_tokens),
         planning_enable_thinking,
         planning_effort,
-        ask_kwargs(config.ask.planning_chat_template_kwargs.as_ref(), fast),
+        ask_kwargs(ask.planning_chat_template_kwargs.as_ref(), fast),
     )?;
     let synthesis_chat = ask_chat_client(
         config,
         ask_model,
-        Some(config.ask.max_output_tokens),
+        Some(ask.max_output_tokens),
         synthesis_enable_thinking,
         synthesis_effort,
-        ask_kwargs(config.ask.synthesis_chat_template_kwargs.as_ref(), fast),
+        ask_kwargs(ask.synthesis_chat_template_kwargs.as_ref(), fast),
     )?;
     Ok(AskClient::with_stage_clients(planning_chat, synthesis_chat))
 }
@@ -76,13 +72,8 @@ fn ask_chat_client(
     reasoning_effort: Option<ReasoningEffort>,
     chat_template_kwargs: Option<&BTreeMap<String, Value>>,
 ) -> Result<ChatClient> {
-    let mut chat = ChatClient::with_timeout_and_max_tokens(
-        config.expansion.base_url.clone(),
-        ask_model,
-        ASK_CHAT_TIMEOUT,
-        max_tokens,
-    )
-    .wrap_err("building ask chat client")?;
+    let mut chat = build_ask_chat_client(config, ask_model, max_tokens)
+        .wrap_err("building ask chat client")?;
     if let Some(reasoning_effort) = reasoning_effort {
         chat = chat.with_reasoning_effort(reasoning_effort);
     }

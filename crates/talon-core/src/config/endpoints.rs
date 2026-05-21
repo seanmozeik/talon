@@ -1,78 +1,60 @@
-//! TEI/OpenAI-compatible endpoint configuration types.
+//! HTTP capability endpoint configuration.
 
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use super::auth::EndpointAuthConfig;
 use crate::llm::ReasoningEffort;
 
-/// TEI-compatible inference endpoint configuration.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InferenceConfig {
-    /// Base URL for TEI-compatible routes.
-    pub base_url: String,
-    /// Model names used by the endpoint.
-    pub models: InferenceModels,
-    /// Reranker protocol and score semantics.
-    #[serde(default)]
-    pub rerank: RerankConfig,
-}
-
-/// Inference model names.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InferenceModels {
-    /// Query embedding model.
-    pub query_embedding: String,
-    /// Query embedding input context window.
-    #[serde(default = "default_query_embedding_context_tokens")]
-    pub query_embedding_context_tokens: u32,
-    /// Document embedding model.
-    pub document_embedding: String,
-    /// Chunk embedding model.
-    pub chunk_embedding: String,
-    /// Reranker model.
-    pub reranker: String,
-    /// Reranker query/text input context window.
-    #[serde(default = "default_reranker_context_tokens")]
-    pub reranker_context_tokens: u32,
-}
-
-/// Reranker protocol and score semantics.
+/// Wire protocol for embedding HTTP calls.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RerankConfig {
-    /// Request body shape sent to `/rerank`.
-    #[serde(default)]
-    pub request_shape: RerankRequestShape,
-    /// Score semantics returned by the endpoint.
-    #[serde(default)]
-    pub score_scale: RerankScoreScale,
-    /// Whether to ask TEI-style servers to truncate overlong inputs.
-    #[serde(default = "default_rerank_truncate")]
-    pub truncate: bool,
+#[serde(rename_all = "kebab-case")]
+pub enum EmbeddingAdapter {
+    /// TEI-compatible `/embed` and `/embed-chunked` routes.
+    Tei,
+    /// OpenAI-compatible `POST /embeddings`.
+    OpenAi,
 }
 
-impl Default for RerankConfig {
-    fn default() -> Self {
-        Self {
-            request_shape: RerankRequestShape::default(),
-            score_scale: RerankScoreScale::default(),
-            truncate: default_rerank_truncate(),
-        }
+/// Embedding endpoint configuration (`[embedding]`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EmbeddingConfig {
+    pub base_url: String,
+    #[serde(flatten)]
+    pub auth: EndpointAuthConfig,
+    pub adapter: EmbeddingAdapter,
+    /// Model slug for query vectors and single-chunk notes.
+    pub model: String,
+    /// Model slug for multi-chunk notes; defaults to [`Self::model`].
+    #[serde(default)]
+    pub document_model: Option<String>,
+    /// Prompt budget hint for query embedding and recall distillation.
+    #[serde(default = "default_embedding_context_tokens")]
+    pub context_tokens: u32,
+}
+
+impl EmbeddingConfig {
+    /// Model slug persisted for multi-chunk document embeddings.
+    #[must_use]
+    pub fn document_model(&self) -> &str {
+        self.document_model.as_deref().unwrap_or(&self.model)
     }
 }
 
-/// Reranker request body variant.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+/// Wire protocol for rerank HTTP calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum RerankRequestShape {
-    /// Minimal common reranker shape: `query`, `texts`, `return_text`.
-    #[default]
-    Minimal,
-    /// TEI-compatible shape, adding `raw_scores` and `truncate`.
+pub enum RerankAdapter {
+    /// TEI-compatible `/rerank` with `raw_scores` and `truncate`.
     Tei,
+    /// Common minimal `/rerank` with `{ query, texts, return_text }`.
+    Minimal,
+    /// Cohere-style `/rerank` with `{ query, documents, top_n }`.
+    Cohere,
+    /// Jina-style `/rerank` (same response mapping as [`Self::Cohere`]).
+    Jina,
 }
 
 /// Score scale emitted by the reranker endpoint.
@@ -86,101 +68,135 @@ pub enum RerankScoreScale {
     Logits,
 }
 
-const fn default_rerank_truncate() -> bool {
-    true
-}
-
-/// OpenAI-compatible query expansion configuration.
+/// Rerank endpoint configuration (`[rerank]`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct ExpansionConfig {
-    /// Provider label, such as `openai-compatible`.
-    pub provider: String,
-    /// Chat-completions-compatible base URL.
+pub struct RerankConfig {
     pub base_url: String,
-    /// Expansion model name.
+    #[serde(flatten)]
+    pub auth: EndpointAuthConfig,
+    pub adapter: RerankAdapter,
     pub model: String,
-    /// Total usable context window for the expansion/distillation model.
-    #[serde(default = "default_expansion_context_tokens")]
+    #[serde(default)]
+    pub score_scale: RerankScoreScale,
+    /// Whether to ask TEI-style servers to truncate overlong inputs.
+    #[serde(default = "default_rerank_truncate")]
+    pub truncate: bool,
+}
+
+/// Wire protocol for chat HTTP calls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChatAdapter {
+    /// OpenAI-compatible `POST /chat/completions`.
+    #[default]
+    OpenAi,
+}
+
+/// Query expansion chat endpoint (`[chat.expansion]`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatExpansionConfig {
+    pub base_url: String,
+    #[serde(flatten)]
+    pub auth: EndpointAuthConfig,
+    #[serde(default)]
+    pub adapter: ChatAdapter,
+    pub model: String,
+    #[serde(default = "default_chat_context_tokens")]
     pub context_tokens: u32,
-    /// Optional generated output token cap.
-    ///
-    /// Leave unset for thinking models because many OpenAI-compatible local
-    /// servers count hidden reasoning tokens against this budget.
     #[serde(default)]
     pub max_output_tokens: Option<u32>,
 }
 
-/// Ask-command chat model override.
+/// Ask chat endpoint overrides (`[chat.ask]`).
 ///
-/// Transport settings are shared with `[expansion]`; this table only selects
-/// the model and reasoning behavior used by `talon ask`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Unset transport fields inherit from [`ChatExpansionConfig`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-pub struct AskConfig {
-    /// Ask planner/synthesis model name. Falls back to `[expansion].model`.
+pub struct ChatAskConfig {
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(flatten)]
+    pub auth: EndpointAuthConfig,
+    #[serde(default)]
+    pub adapter: Option<ChatAdapter>,
     #[serde(default)]
     pub model: Option<String>,
-    /// Total usable context window for ask planning and synthesis.
     #[serde(default = "default_ask_context_tokens")]
     pub context_tokens: u32,
-    /// Optional generated output token cap for ask planning and synthesis.
     #[serde(default = "default_ask_max_output_tokens")]
     pub max_output_tokens: u32,
-    /// Provider-specific Qwen-style thinking toggle for query planning.
-    ///
-    /// When set, Talon sends `chat_template_kwargs.enable_thinking` in the
-    /// OpenAI-compatible planning request body. Servers that do not support
-    /// this field may ignore it.
     #[serde(default)]
     pub planning_enable_thinking: Option<bool>,
-    /// Provider-specific Qwen-style thinking toggle for answer synthesis.
-    ///
-    /// When set, Talon sends `chat_template_kwargs.enable_thinking` in the
-    /// OpenAI-compatible synthesis request body. Leave unset to use the
-    /// provider default.
     #[serde(default)]
     pub synthesis_enable_thinking: Option<bool>,
-    /// OpenAI-compatible reasoning effort for query planning.
-    ///
-    /// Serialized as `reasoning_effort` on chat-completions requests. The
-    /// value `"off"` is accepted as a config alias for `"none"`.
     #[serde(default)]
     pub planning_reasoning_effort: Option<ReasoningEffort>,
-    /// OpenAI-compatible reasoning effort for answer synthesis.
-    ///
-    /// Serialized as `reasoning_effort` on chat-completions requests. The
-    /// value `"off"` is accepted as a config alias for `"none"`.
     #[serde(default)]
     pub synthesis_reasoning_effort: Option<ReasoningEffort>,
-    /// Extra provider-specific `chat_template_kwargs` for query planning.
-    ///
-    /// These are merged with `planning_enable_thinking`; explicit keys in this
-    /// map win over the shorthand boolean.
     #[serde(default)]
     pub planning_chat_template_kwargs: Option<BTreeMap<String, serde_json::Value>>,
-    /// Extra provider-specific `chat_template_kwargs` for answer synthesis.
-    ///
-    /// These are merged with `synthesis_enable_thinking`; explicit keys in this
-    /// map win over the shorthand boolean.
     #[serde(default)]
     pub synthesis_chat_template_kwargs: Option<BTreeMap<String, serde_json::Value>>,
 }
 
-impl Default for AskConfig {
-    fn default() -> Self {
-        Self {
-            model: None,
-            context_tokens: default_ask_context_tokens(),
-            max_output_tokens: default_ask_max_output_tokens(),
-            planning_enable_thinking: None,
-            synthesis_enable_thinking: None,
-            planning_reasoning_effort: None,
-            synthesis_reasoning_effort: None,
-            planning_chat_template_kwargs: None,
-            synthesis_chat_template_kwargs: None,
+impl ChatAskConfig {
+    /// Effective chat-completions base URL.
+    #[must_use]
+    pub fn resolved_base_url<'a>(&'a self, expansion: &'a ChatExpansionConfig) -> &'a str {
+        self.base_url
+            .as_deref()
+            .filter(|url| !url.is_empty())
+            .unwrap_or(expansion.base_url.as_str())
+    }
+
+    /// Effective ask model name.
+    #[must_use]
+    pub fn resolved_model<'a>(&'a self, expansion: &'a ChatExpansionConfig) -> &'a str {
+        self.model
+            .as_deref()
+            .filter(|model| !model.is_empty())
+            .unwrap_or(expansion.model.as_str())
+    }
+
+    /// Effective chat adapter.
+    #[must_use]
+    pub fn resolved_adapter(&self, expansion: &ChatExpansionConfig) -> ChatAdapter {
+        self.adapter.unwrap_or(expansion.adapter)
+    }
+
+    /// Merged auth: ask overrides win when set, otherwise expansion auth applies.
+    #[must_use]
+    pub fn resolved_auth(&self, expansion: &ChatExpansionConfig) -> EndpointAuthConfig {
+        EndpointAuthConfig {
+            credential: self
+                .auth
+                .credential
+                .clone()
+                .or_else(|| expansion.auth.credential.clone()),
+            api_key: self
+                .auth
+                .api_key
+                .clone()
+                .or_else(|| expansion.auth.api_key.clone()),
+            api_key_env: self
+                .auth
+                .api_key_env
+                .clone()
+                .or_else(|| expansion.auth.api_key_env.clone()),
+            extra_headers: merge_headers(&expansion.auth.extra_headers, &self.auth.extra_headers),
         }
     }
+}
+
+/// Chat capability group (`[chat]`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ChatSection {
+    pub expansion: ChatExpansionConfig,
+    #[serde(default)]
+    pub ask: ChatAskConfig,
 }
 
 /// MCP runtime configuration.
@@ -209,15 +225,24 @@ impl Default for McpHooksConfig {
     }
 }
 
-const fn default_query_embedding_context_tokens() -> u32 {
+fn merge_headers(
+    base: &BTreeMap<String, String>,
+    override_headers: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut merged = base.clone();
+    merged.extend(override_headers.iter().map(|(k, v)| (k.clone(), v.clone())));
+    merged
+}
+
+const fn default_embedding_context_tokens() -> u32 {
     512
 }
 
-const fn default_reranker_context_tokens() -> u32 {
-    512
+const fn default_rerank_truncate() -> bool {
+    true
 }
 
-const fn default_expansion_context_tokens() -> u32 {
+const fn default_chat_context_tokens() -> u32 {
     32_768
 }
 

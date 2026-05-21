@@ -132,7 +132,7 @@ fn has_time_for_distillation(deadline_at: Option<Instant>) -> bool {
 
 fn query_embedding_budget(config: Option<&TalonConfig>) -> usize {
     config
-        .map(|cfg| cfg.inference.models.query_embedding_context_tokens)
+        .map(|cfg| cfg.embedding.context_tokens)
         .and_then(|tokens| usize::try_from(tokens).ok())
         .filter(|tokens| *tokens > 0)
         .unwrap_or(DEFAULT_QUERY_EMBEDDING_CONTEXT_TOKENS)
@@ -143,8 +143,8 @@ fn expansion_input_budget(config: Option<&TalonConfig>) -> usize {
         return 4_000;
     };
     expansion_input_budget_for_limits(
-        config.expansion.context_tokens,
-        config.expansion.max_output_tokens,
+        config.chat.expansion.context_tokens,
+        config.chat.expansion.max_output_tokens,
     )
 }
 

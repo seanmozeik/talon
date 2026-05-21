@@ -70,7 +70,7 @@ fn search_query_tag_syntax_filters_candidates() {
         mode: SearchMode::Fulltext,
         ..SearchInput::default()
     };
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
 
     assert_eq!(response.results.len(), 1);
     assert_eq!(response.results[0].vault_path.as_str(), "notes/included.md");
@@ -92,7 +92,7 @@ fn search_query_heading_syntax_filters_candidates() {
         mode: SearchMode::Fulltext,
         ..SearchInput::default()
     };
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
 
     assert_eq!(response.results.len(), 1);
     assert_eq!(response.results[0].vault_path.as_str(), "notes/included.md");

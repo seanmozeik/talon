@@ -38,6 +38,13 @@ pub enum InferenceError {
         /// Redacted detail.
         message: String,
     },
+
+    /// Configuration is invalid or incomplete.
+    #[error("inference config error: {message}")]
+    Config {
+        /// Configuration detail.
+        message: String,
+    },
 }
 
 /// Compiles a static regex literal. The pattern is hard-coded so a

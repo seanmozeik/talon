@@ -27,7 +27,7 @@ fn fixture_vault_related_hub_depth2() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -36,7 +36,7 @@ fn fixture_vault_related_hub_depth2() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -105,7 +105,7 @@ fn fixture_vault_meta_where_archived() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -114,7 +114,7 @@ fn fixture_vault_meta_where_archived() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -179,7 +179,7 @@ fn fixture_vault_inspect_orphans() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -188,7 +188,7 @@ fn fixture_vault_inspect_orphans() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -255,7 +255,7 @@ fn fixture_vault_frontmatter_excluded_from_chunks() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -264,7 +264,7 @@ fn fixture_vault_frontmatter_excluded_from_chunks() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();

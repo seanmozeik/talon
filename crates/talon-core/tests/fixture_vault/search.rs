@@ -1,4 +1,5 @@
 use super::*;
+use talon_core::inference::EmbeddingClient;
 
 #[test]
 fn fixture_vault_fulltext_search_orchard() {
@@ -27,7 +28,7 @@ fn fixture_vault_fulltext_search_orchard() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -36,7 +37,7 @@ fn fixture_vault_fulltext_search_orchard() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -63,7 +64,7 @@ fn fixture_vault_fulltext_search_orchard() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
     assert!(
         !response.results.is_empty(),
         "fulltext 'orchard' must return results"
@@ -106,7 +107,7 @@ fn fixture_vault_fulltext_search_banana() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -115,7 +116,7 @@ fn fixture_vault_fulltext_search_banana() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -142,7 +143,7 @@ fn fixture_vault_fulltext_search_banana() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
     assert!(
         !response.results.is_empty(),
         "fulltext 'banana grove' must return results"
@@ -187,7 +188,7 @@ fn fixture_vault_title_search_cafe_alias() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -196,7 +197,7 @@ fn fixture_vault_title_search_cafe_alias() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -223,7 +224,7 @@ fn fixture_vault_title_search_cafe_alias() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
     assert!(
         !response.results.is_empty(),
         "title search 'Cafe del Sol' must return results"

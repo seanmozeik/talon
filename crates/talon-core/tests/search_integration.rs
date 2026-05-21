@@ -9,8 +9,11 @@ use serde_json::json;
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
 use talon_core::{
-    SearchInput, SearchMode, WhereClause, WhereOperator, bump_db_version, embed::EmbedPassOptions,
-    indexer::IndexerConfig, inference::InferenceClient, open_database, run_search, run_sync,
+    SearchInput, SearchMode, WhereClause, WhereOperator, bump_db_version,
+    embed::EmbedPassOptions,
+    indexer::IndexerConfig,
+    inference::{EmbeddingClient, RerankClient},
+    open_database, run_search, run_sync,
     vec_ext::register_sqlite_vec,
 };
 use wiremock::matchers::{method, path};
@@ -69,7 +72,7 @@ fn dummy_embed_response() -> serde_json::Value {
 fn mock_embed_sidecar() -> (
     tokio::runtime::Runtime,
     MockServer,
-    talon_core::inference::InferenceClient,
+    talon_core::inference::EmbeddingClient,
 ) {
     let rt = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -82,6 +85,7 @@ fn mock_embed_sidecar() -> (
             .respond_with(ResponseTemplate::new(200).set_body_json(dummy_embed_response()))
             .mount(&server),
     );
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client =
+        talon_core::inference::EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     (rt, server, client)
 }

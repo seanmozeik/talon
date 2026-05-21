@@ -42,7 +42,8 @@ fn search_hybrid_mode_returns_results() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
+    let rerank = RerankClient::tei_for_tests(server.uri(), 32).unwrap();
     let expansion = talon_core::ExpansionClient::new(server.uri(), "test-model").unwrap();
     let config = IndexerConfig::index_all();
 
@@ -52,7 +53,7 @@ fn search_hybrid_mode_returns_results() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
     )
     .unwrap();
     assert_eq!(stats.indexed, 3);
@@ -79,7 +80,14 @@ fn search_hybrid_mode_returns_results() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, Some(&client), Some(&expansion), None);
+    let response = run_search(
+        &conn,
+        &input,
+        Some(&embedding),
+        Some(&rerank),
+        Some(&expansion),
+        None,
+    );
 
     assert!(
         !response.results.is_empty(),
@@ -142,7 +150,7 @@ fn search_fulltext_mode_returns_results() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
 
     assert!(
         !response.results.is_empty(),
@@ -205,7 +213,7 @@ fn search_title_mode_returns_results() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
 
     assert!(
         !response.results.is_empty(),

@@ -29,7 +29,7 @@ use crate::indexer::{
 };
 use crate::indexing::change_tracking::TOMBSTONE_RETENTION_MS;
 use crate::indexing::migrations::read_db_version;
-use crate::inference::InferenceClient;
+use crate::inference::EmbeddingClient;
 
 pub use lock::{SyncLock, SyncLockError, acquire_sync_lock, is_sync_lock_held_by_live_process};
 pub use relink::relink_unresolved;
@@ -110,7 +110,7 @@ pub fn refresh_index_locked(
 /// (best-effort) prunes tombstones older than [`TOMBSTONE_RETENTION_MS`],
 /// then optionally runs the embed pass.
 ///
-/// When `embed_config` and `inference` are both `Some`, the embed pass runs
+/// When `embed_config` and `embedding` are both `Some`, the embed pass runs
 /// after reconciliation. When either is `None` (e.g. `--fast` mode), the
 /// embed pass is skipped entirely.
 ///
@@ -126,7 +126,7 @@ pub fn run_sync(
     lock_path: &Path,
     config: &IndexerConfig,
     embed_config: Option<EmbedPassOptions>,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
 ) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
     run_sync_with_chunker(
         conn,
@@ -134,7 +134,7 @@ pub fn run_sync(
         lock_path,
         config,
         embed_config,
-        inference,
+        embedding,
         &ChunkerConfig::default(),
     )
 }
@@ -152,7 +152,7 @@ pub fn run_sync_with_chunker(
     lock_path: &Path,
     config: &IndexerConfig,
     embed_config: Option<EmbedPassOptions>,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
     chunker_config: &ChunkerConfig,
 ) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
     let lock = acquire_sync_lock(lock_path).map_err(SyncError::from_lock)?;
@@ -161,7 +161,7 @@ pub fn run_sync_with_chunker(
         vault_root,
         config,
         embed_config,
-        inference,
+        embedding,
         chunker_config,
         lock,
     )
@@ -177,7 +177,7 @@ pub fn run_sync_with_chunker_locked(
     vault_root: &Path,
     config: &IndexerConfig,
     embed_config: Option<EmbedPassOptions>,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
     chunker_config: &ChunkerConfig,
     _lock: SyncLock,
 ) -> Result<(IndexerStats, Option<EmbedPassStats>), SyncError> {
@@ -214,7 +214,7 @@ pub fn run_sync_with_chunker_locked(
     let _ = OffsetDateTime::now_utc();
 
     // Run embed pass after reconciliation if configured.
-    let embed_stats = if let (Some(opts), Some(client)) = (embed_config, inference) {
+    let embed_stats = if let (Some(opts), Some(client)) = (embed_config, embedding) {
         Some(run_embed_pass(conn, client, &opts).map_err(|e| SyncError::Embed(e.to_string()))?)
     } else {
         None

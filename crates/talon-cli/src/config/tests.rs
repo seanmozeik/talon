@@ -46,12 +46,9 @@ fn config_template_parses_indexer_chunk_settings() {
     assert_eq!(config.search.rerank_cache_size, 2000);
     assert_eq!(config.search.rerank_batch_size, 4);
     assert_eq!(config.search.rerank_max_tokens, 128);
+    assert_eq!(config.rerank.adapter, talon_core::RerankAdapter::Minimal);
     assert_eq!(
-        config.inference.rerank.request_shape,
-        talon_core::RerankRequestShape::Minimal
-    );
-    assert_eq!(
-        config.inference.rerank.score_scale,
+        config.rerank.score_scale,
         talon_core::RerankScoreScale::Normalized
     );
     assert!(
@@ -63,7 +60,7 @@ fn config_template_parses_indexer_chunk_settings() {
 
 #[test]
 fn load_config_file_parses_search_tunables() {
-    let config = r#"
+    const CONFIG: &str = r#"
 vault_path = "/tmp/vault"
 db_path = "/tmp/index.sqlite"
 
@@ -75,27 +72,24 @@ rerank_cache_size = 2000
 rerank_batch_size = 4
 rerank_max_tokens = 128
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
-
-[inference.rerank]
-request_shape = "tei"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "tei"
+model = "rerank"
 score_scale = "logits"
 truncate = false
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#;
 
-    let config = load_config_str("search-tunables", config)
+    let config = load_config_str("search-tunables", CONFIG)
         .unwrap_or_else(|err| panic!("config should load: {err}"));
 
     assert_eq!(config.search.candidate_limit, 60);
@@ -104,20 +98,17 @@ model = "gemma-smol"
     assert_eq!(config.search.rerank_cache_size, 2000);
     assert_eq!(config.search.rerank_batch_size, 4);
     assert_eq!(config.search.rerank_max_tokens, 128);
+    assert_eq!(config.rerank.adapter, talon_core::RerankAdapter::Tei);
     assert_eq!(
-        config.inference.rerank.request_shape,
-        talon_core::RerankRequestShape::Tei
-    );
-    assert_eq!(
-        config.inference.rerank.score_scale,
+        config.rerank.score_scale,
         talon_core::RerankScoreScale::Logits
     );
-    assert!(!config.inference.rerank.truncate);
+    assert!(!config.rerank.truncate);
 }
 
 #[test]
 fn load_config_file_resolves_relative_paths_from_config_dir() {
-    let config = r#"
+    const CONFIG: &str = r#"
 vault_path = "vault"
 db_path = "state/index.sqlite"
 
@@ -126,22 +117,22 @@ chunk_tokens = 512
 chunk_overlap = 64
 chunk_min_tokens = 16
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#;
     let path = temp_config_path("relative-paths");
-    fs_err::write(&path, config).unwrap_or_else(|err| panic!("write config: {err}"));
+    fs_err::write(&path, CONFIG).unwrap_or_else(|err| panic!("write config: {err}"));
 
     let loaded = load_config_file(&path).unwrap_or_else(|err| panic!("load config: {err}"));
 
@@ -155,7 +146,7 @@ model = "gemma-smol"
 
 #[test]
 fn load_config_file_rejects_invalid_chunk_overlap() {
-    let config = r#"
+    const CONFIG: &str = r#"
 vault_path = "/tmp/vault"
 db_path = "/tmp/index.sqlite"
 
@@ -164,21 +155,21 @@ chunk_tokens = 64
 chunk_overlap = 64
 chunk_min_tokens = 16
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#;
-    let Err(err) = load_config_str("invalid-chunk-overlap", config) else {
+    let Err(err) = load_config_str("invalid-chunk-overlap", CONFIG) else {
         panic!("invalid chunk overlap should fail");
     };
     assert!(
@@ -203,17 +194,17 @@ chunkTokens = 512
 chunkOverlap = 64
 chunkMinTokens = 16
 
-[inference]
+[embedding]
 baseUrl = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
 
-[inference.models]
-queryEmbedding = "embed"
-documentEmbedding = "embed"
-chunkEmbedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+baseUrl = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 baseUrl = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#,
@@ -229,17 +220,17 @@ chunk_tokens = 512
 chunk_overlap = 64
 chunk_min_tokens = 16
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#,

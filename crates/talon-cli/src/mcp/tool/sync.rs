@@ -3,9 +3,9 @@ use std::time::Instant;
 
 use color_eyre::eyre::{Result, WrapErr as _};
 use talon_core::{
-    IndexerConfig, ResponseMeta, SyncInput, SyncResponse, SyncStatus, TalonConfig, TalonEnvelope,
-    TalonResponseData, acquire_sync_lock, embed::EmbedPassOptions, inference::InferenceClient,
-    open_database, vec_ext::register_sqlite_vec,
+    EmbeddingClient, IndexerConfig, ResponseMeta, SyncInput, SyncResponse, SyncStatus, TalonConfig,
+    TalonEnvelope, TalonResponseData, acquire_sync_lock, embed::EmbedPassOptions, open_database,
+    vec_ext::register_sqlite_vec,
 };
 
 use crate::config;
@@ -34,13 +34,13 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
     }
     let mut conn = open_database(&db_path)
         .wrap_err_with(|| format!("opening index at {}", db_path.display()))?;
-    let (embed_opts, inference) = embed_options(&config, input)?;
+    let (embed_opts, embedding) = embed_options(&config, input)?;
     let (stats, embed_stats) = talon_core::run_sync_with_chunker_locked(
         &mut conn,
         &vault_path,
         &indexer_config,
         embed_opts,
-        inference.as_ref(),
+        embedding.as_ref(),
         &config.chunker,
         lock,
     )
@@ -90,17 +90,17 @@ pub(super) fn dispatch_sync(input: &SyncInput) -> Result<TalonEnvelope> {
 fn embed_options(
     config: &TalonConfig,
     input: &SyncInput,
-) -> Result<(Option<EmbedPassOptions>, Option<InferenceClient>)> {
+) -> Result<(Option<EmbedPassOptions>, Option<EmbeddingClient>)> {
     if input.fast {
         return Ok((None, None));
     }
     let opts = EmbedPassOptions {
         force: input.force,
         restrict_paths: input.paths.clone(),
-        chunk_embedding_model: config.inference.models.chunk_embedding.clone(),
-        document_embedding_model: config.inference.models.document_embedding.clone(),
+        chunk_embedding_model: config.embedding.model.clone(),
+        document_embedding_model: config.embedding.document_model().to_owned(),
     };
-    let inference =
-        InferenceClient::new(&config.inference.base_url).wrap_err("building inference client")?;
-    Ok((Some(opts), Some(inference)))
+    let embedding = EmbeddingClient::from_config(&config.embedding, &config.credentials)
+        .wrap_err("building embedding client")?;
+    Ok((Some(opts), Some(embedding)))
 }

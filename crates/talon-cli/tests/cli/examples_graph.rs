@@ -9,6 +9,7 @@ fn examples_config_sync_builds_graph_tables() {
         .args([
             "sync",
             "--fast",
+            "--rebuild",
             "--agent",
             "--config",
             "../../examples/config.toml",

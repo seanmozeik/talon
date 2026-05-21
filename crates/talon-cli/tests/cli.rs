@@ -52,17 +52,18 @@ chunk_tokens = 512
 chunk_overlap = 64
 chunk_min_tokens = 16
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
+document_model = "embed_chunked"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#,

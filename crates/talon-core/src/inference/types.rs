@@ -76,3 +76,47 @@ pub struct RerankResult {
     /// Cross-encoder relevance score emitted by the sidecar after label extraction.
     pub score: f32,
 }
+
+/// OpenAI-compatible `POST /embeddings` request body.
+#[derive(Debug, Clone, Serialize)]
+pub struct OpenAiEmbeddingRequest {
+    pub model: String,
+    pub input: Vec<String>,
+}
+
+/// One row of an OpenAI-compatible embeddings response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAiEmbeddingDataItem {
+    pub embedding: Vec<f32>,
+    pub index: u32,
+}
+
+/// OpenAI-compatible embeddings response envelope.
+#[derive(Debug, Clone, Deserialize)]
+pub struct OpenAiEmbeddingResponse {
+    pub data: Vec<OpenAiEmbeddingDataItem>,
+    pub model: String,
+}
+
+/// Cohere-style `POST /rerank` request body.
+#[derive(Debug, Clone, Serialize)]
+pub struct CohereRerankRequest {
+    pub model: String,
+    pub query: String,
+    pub documents: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_n: Option<u32>,
+}
+
+/// One row of a Cohere-style rerank response.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CohereRerankResult {
+    pub index: u32,
+    pub relevance_score: f32,
+}
+
+/// Cohere-style rerank response envelope.
+#[derive(Debug, Clone, Deserialize)]
+pub struct CohereRerankResponse {
+    pub results: Vec<CohereRerankResult>,
+}

@@ -72,7 +72,7 @@ fn fts_tokenchars_cpp_search() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
     assert!(
         !response.results.is_empty(),
         "search for C++ must return results"
@@ -89,7 +89,7 @@ fn fts_tokenchars_cpp_search() {
         ..input
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
     assert!(
         !response.results.is_empty(),
         "search for C# must return results"
@@ -103,7 +103,7 @@ fn fts_tokenchars_cpp_search() {
     // Test F# search
     input.query = Some("F#".to_string());
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
     assert!(
         !response.results.is_empty(),
         "search for F# must return results"

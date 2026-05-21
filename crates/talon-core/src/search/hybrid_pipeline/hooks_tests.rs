@@ -10,7 +10,7 @@ use super::super::pre_filter::PreFilter;
 use super::test_support::{cleanup, dummy_embed_response, insert_note, runtime, unique_db_path};
 use super::*;
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
+
 use crate::store::open_database;
 
 fn build_recording_hooks(
@@ -124,7 +124,7 @@ fn hooks_record_expand_before_rerank() {
     let events: Arc<Mutex<Vec<(&'static str, u128)>>> = Arc::new(Mutex::new(Vec::new()));
     let hooks = build_recording_hooks(&events, Instant::now());
 
-    let inference = InferenceClient::new(server.uri()).unwrap();
+    let (embedding, rerank) = test_support::test_clients(server.uri());
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
     let opts = HybridPipelineOptions {
         limit: 10,
@@ -138,7 +138,14 @@ fn hooks_record_expand_before_rerank() {
         deadline_at: None,
     };
 
-    let results = run_hybrid_pipeline(&conn, &inference, Some(&expansion), "atomic notes", &opts);
+    let results = run_hybrid_pipeline(
+        &conn,
+        &embedding,
+        &rerank,
+        Some(&expansion),
+        "atomic notes",
+        &opts,
+    );
 
     assert!(!results.is_empty(), "pipeline must still return results");
 

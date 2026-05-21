@@ -37,7 +37,7 @@ Sync flags change cost or depth:
 
 ## Standalone Embedder
 
-Set `inference.base_url` in `~/.config/talon/config.toml` to a local HTTP TEI-compatible endpoint. Good defaults are Hugging Face `text-embeddings-inference`, Infinity, or ultraclaw's local sidecar if you are running one. Talon only expects `/embed`, `/embed-chunked`, and `/rerank` endpoints with the shapes described in the design doc.
+Set `embedding.base_url` and `rerank.base_url` in `~/.config/talon/config.toml` to a local HTTP TEI-compatible endpoint. Good defaults are Hugging Face `text-embeddings-inference`, Infinity, or ultraclaw's local sidecar if you are running one. Talon only expects `/embed`, `/embed-chunked`, and `/rerank` endpoints with the shapes described in the design doc.
 
 ## Ask
 
@@ -50,10 +50,14 @@ talon --fast ask "summarize my notes on knife skills"
 
 Ask uses the configured ask model to plan search queries, runs Talon's normal search stack, expands the matched notes into the most relevant source chunks, and asks the model to synthesize an answer. Unlike `search`, ask may feed multiple snippets from the same document to the synthesis model when several chunks are relevant.
 
-Configure the ask model under `[ask]`; it reuses the OpenAI-compatible `[expansion]` endpoint:
+Configure the ask model under `[chat.ask]`; transport defaults inherit from `[chat.expansion]`:
 
 ```toml
-[ask]
+[chat.expansion]
+base_url = "http://localhost:8000/v1"
+model = "bonsai"
+
+[chat.ask]
 model = "qwen-smol"
 planning_reasoning_effort = "none"
 synthesis_reasoning_effort = "medium"

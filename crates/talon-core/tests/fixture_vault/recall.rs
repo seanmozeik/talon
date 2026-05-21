@@ -1,4 +1,5 @@
 use super::*;
+use talon_core::inference::EmbeddingClient;
 
 #[test]
 fn fixture_vault_recall_returns_active_notes() {
@@ -27,7 +28,7 @@ fn fixture_vault_recall_returns_active_notes() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -36,7 +37,7 @@ fn fixture_vault_recall_returns_active_notes() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -48,7 +49,7 @@ fn fixture_vault_recall_returns_active_notes() {
         ..RecallInput::default()
     };
 
-    let response = run_recall(&conn, None, None, &input, None);
+    let response = run_recall(&conn, None, None, None, &input, None);
     assert!(
         !response.excluded_by_budget.is_empty() || response.excluded_by_budget.is_empty(),
         "excluded_by_budget must be a Vec"
@@ -84,7 +85,7 @@ fn fixture_vault_recall_budget_trims_payload() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -93,7 +94,7 @@ fn fixture_vault_recall_budget_trims_payload() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -105,7 +106,7 @@ fn fixture_vault_recall_budget_trims_payload() {
         ..RecallInput::default()
     };
 
-    let response = run_recall(&conn, None, None, &input, None);
+    let response = run_recall(&conn, None, None, None, &input, None);
 
     let max_allowed: u32 = 200 + 200 / 50;
     assert!(
@@ -146,7 +147,7 @@ fn fixture_vault_recall_exclude_suppresses_paths() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -155,7 +156,7 @@ fn fixture_vault_recall_exclude_suppresses_paths() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -169,7 +170,7 @@ fn fixture_vault_recall_exclude_suppresses_paths() {
         ..RecallInput::default()
     };
 
-    let response = run_recall(&conn, None, None, &input, None);
+    let response = run_recall(&conn, None, None, None, &input, None);
 
     if let Some(vr) = &response.vault_recall {
         for note in &vr.active_notes {
@@ -212,7 +213,7 @@ fn fixture_vault_recall_min_confidence_gates_weak_queries() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -221,7 +222,7 @@ fn fixture_vault_recall_min_confidence_gates_weak_queries() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -234,7 +235,7 @@ fn fixture_vault_recall_min_confidence_gates_weak_queries() {
         ..RecallInput::default()
     };
 
-    let response = run_recall(&conn, None, None, &input, None);
+    let response = run_recall(&conn, None, None, None, &input, None);
 
     assert!(
         response.skipped,
@@ -275,7 +276,7 @@ fn fixture_vault_recall_fast_skips_expansion() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -284,7 +285,7 @@ fn fixture_vault_recall_fast_skips_expansion() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -296,7 +297,7 @@ fn fixture_vault_recall_fast_skips_expansion() {
         ..RecallInput::default()
     };
 
-    let response = run_recall(&conn, None, None, &input, None);
+    let response = run_recall(&conn, None, None, None, &input, None);
     let _ = response.evidence_score;
 
     drop(conn);

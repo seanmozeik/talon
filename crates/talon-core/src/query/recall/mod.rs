@@ -14,7 +14,7 @@ use rusqlite::Connection;
 use crate::ScopeFilter;
 use crate::config::TalonConfig;
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
+use crate::inference::{EmbeddingClient, RerankClient};
 use crate::query::{RecallDiagnostics, RecallInput, RecallResponse, VaultRecall};
 use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
 
@@ -44,7 +44,7 @@ pub enum RecallRuntimeMode {
 
 /// Runs the full recall pipeline and returns a `RecallResponse`.
 ///
-/// When `inference` is `None` or `fast == true`, expansion and reranking are
+/// When `embedding` or `rerank` is `None`, or `fast == true`, expansion and reranking are
 /// skipped (the pipeline falls back to BM25+title lexical search).
 ///
 /// # Panics
@@ -55,14 +55,16 @@ pub enum RecallRuntimeMode {
 #[must_use]
 pub fn run_recall(
     conn: &Connection,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
+    rerank: Option<&RerankClient>,
     expansion: Option<&ExpansionClient>,
     input: &RecallInput,
     config: Option<&TalonConfig>,
 ) -> RecallResponse {
     run_recall_with_mode(
         conn,
-        inference,
+        embedding,
+        rerank,
         expansion,
         input,
         config,
@@ -80,7 +82,8 @@ pub fn run_recall(
 #[must_use]
 pub fn run_recall_with_mode(
     conn: &Connection,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
+    rerank: Option<&RerankClient>,
     expansion: Option<&ExpansionClient>,
     input: &RecallInput,
     config: Option<&TalonConfig>,
@@ -112,7 +115,8 @@ pub fn run_recall_with_mode(
     let retrieval_started = Instant::now();
     let retrieval_output = retrieve_pipeline_results(&RetrievePipelineArgs {
         conn,
-        inference,
+        embedding,
+        rerank,
         expansion,
         query: &query_plan.main_query,
         queries: &query_plan.queries,

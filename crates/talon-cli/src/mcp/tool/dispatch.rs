@@ -2,11 +2,11 @@ use std::time::Instant;
 
 use color_eyre::eyre::{Result, WrapErr as _};
 use talon_core::{
-    ChangesInput, ExpansionClient, InspectInput, MetaInput, ReadInput, RecallInput, RelatedInput,
-    ResponseMeta, SearchInput, SearchMode, SyncLockError, TalonEnvelope, TalonInput,
-    TalonResponseData, acquire_sync_lock, find_related, inference::InferenceClient, open_database,
-    open_database_read_only, query_changes, query_inspect, query_meta, run_read, run_recall,
-    run_search, vec_ext::register_sqlite_vec,
+    ChangesInput, InspectInput, MetaInput, ReadInput, RecallInput, RelatedInput, ResponseMeta,
+    SearchInput, SearchMode, SyncLockError, TalonClients, TalonEnvelope, TalonInput,
+    TalonResponseData, acquire_sync_lock, find_related, open_database, open_database_read_only,
+    query_changes, query_inspect, query_meta, run_read, run_recall, run_search,
+    vec_ext::register_sqlite_vec,
 };
 
 use crate::config::{self, RefreshLockPolicy};
@@ -33,32 +33,18 @@ fn dispatch_search(input: &SearchInput) -> Result<TalonEnvelope> {
     let mode = input.mode;
     let fast = input.fast;
     let conn = open_search_database(&config, fast)?;
-    let (inference, expansion) =
-        if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
-            (None, None)
-        } else {
-            talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
-            (
-                InferenceClient::with_rerank_options_and_protocol(
-                    &config.inference.base_url,
-                    config.search.rerank_batch_size,
-                    config.search.rerank_max_tokens,
-                    config.inference.rerank,
-                )
-                .ok(),
-                ExpansionClient::with_max_tokens(
-                    config.expansion.base_url.clone(),
-                    &config.expansion.model,
-                    config.expansion.max_output_tokens,
-                )
-                .ok(),
-            )
-        };
+    let clients = if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
+        None
+    } else {
+        talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
+        TalonClients::from_config(&config).ok()
+    };
     let response = run_search(
         &conn,
         input,
-        inference.as_ref(),
-        expansion.as_ref(),
+        clients.as_ref().map(|c| &c.embedding),
+        clients.as_ref().map(|c| &c.rerank),
+        clients.as_ref().map(|c| &c.expansion),
         Some(&config),
     );
     let meta = ResponseMeta {
@@ -247,30 +233,17 @@ fn dispatch_recall(input: &RecallInput) -> Result<TalonEnvelope> {
     let conn = open_database_read_only(&config.db_path)
         .wrap_err_with(|| format!("opening index at {}", config.db_path.display()))?;
     let fast = input.fast;
-    let (inference, expansion) = if fast {
-        (None, None)
+    let clients = if fast {
+        None
     } else {
         talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
-        (
-            InferenceClient::with_rerank_options_and_protocol(
-                &config.inference.base_url,
-                config.search.rerank_batch_size,
-                config.search.rerank_max_tokens,
-                config.inference.rerank,
-            )
-            .ok(),
-            ExpansionClient::with_max_tokens(
-                config.expansion.base_url.clone(),
-                &config.expansion.model,
-                config.expansion.max_output_tokens,
-            )
-            .ok(),
-        )
+        TalonClients::from_config(&config).ok()
     };
     let response = run_recall(
         &conn,
-        inference.as_ref(),
-        expansion.as_ref(),
+        clients.as_ref().map(|c| &c.embedding),
+        clients.as_ref().map(|c| &c.rerank),
+        clients.as_ref().map(|c| &c.expansion),
         input,
         Some(&config),
     );

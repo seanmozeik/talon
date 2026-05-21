@@ -99,6 +99,13 @@ pub enum TalonError {
         path: String,
     },
 
+    /// Configuration is invalid or incomplete.
+    #[error("config error: {message}")]
+    Config {
+        /// Configuration detail.
+        message: String,
+    },
+
     /// Internal/server error.
     #[error("internal error: {message}")]
     Internal {
@@ -131,6 +138,7 @@ impl TalonError {
             Self::Internal { .. }
             | Self::NotImplemented { .. }
             | Self::InvalidInput { .. }
+            | Self::Config { .. }
             | Self::Sqlite { .. } => ErrorCode::Internal,
         }
     }

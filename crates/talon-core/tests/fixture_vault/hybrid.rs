@@ -43,7 +43,8 @@ fn fixture_vault_hybrid_search_returns_results() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
+    let rerank = RerankClient::tei_for_tests(server.uri(), 32).unwrap();
     let expansion = talon_core::ExpansionClient::new(server.uri(), "test-model").unwrap();
     let config = IndexerConfig::index_all();
 
@@ -53,7 +54,7 @@ fn fixture_vault_hybrid_search_returns_results() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -80,7 +81,14 @@ fn fixture_vault_hybrid_search_returns_results() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, Some(&client), Some(&expansion), None);
+    let response = run_search(
+        &conn,
+        &input,
+        Some(&embedding),
+        Some(&rerank),
+        Some(&expansion),
+        None,
+    );
     assert!(
         !response.results.is_empty(),
         "hybrid search must return results"
@@ -151,7 +159,8 @@ fn fixture_vault_hybrid_search_with_intent_ranks_web_performance_first() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
+    let rerank = RerankClient::tei_for_tests(server.uri(), 32).unwrap();
     let expansion = talon_core::ExpansionClient::new(server.uri(), "test-model").unwrap();
     run_sync_with_chunker(
         &mut conn,
@@ -159,7 +168,7 @@ fn fixture_vault_hybrid_search_with_intent_ranks_web_performance_first() {
         &lock,
         &IndexerConfig::index_all(),
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -186,7 +195,14 @@ fn fixture_vault_hybrid_search_with_intent_ranks_web_performance_first() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, Some(&client), Some(&expansion), None);
+    let response = run_search(
+        &conn,
+        &input,
+        Some(&embedding),
+        Some(&rerank),
+        Some(&expansion),
+        None,
+    );
     assert_eq!(
         response
             .results

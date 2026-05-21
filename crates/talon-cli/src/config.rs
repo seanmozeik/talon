@@ -3,7 +3,11 @@
 use eyre::{Result, WrapErr as _, bail};
 use fs_err as fs;
 use std::path::{Component, Path, PathBuf};
-use talon_core::{ContainerPath, InferenceConfig, InferenceModels, TalonConfig};
+use talon_core::{
+    ChatAdapter, ChatAskConfig, ChatExpansionConfig, ChatSection, ContainerPath, CredentialsConfig,
+    EmbeddingAdapter, EmbeddingConfig, EndpointAuthConfig, RerankAdapter, RerankConfig,
+    TalonConfig,
+};
 
 /// Default config filename.
 pub const CONFIG_FILE_NAME: &str = "config.toml";
@@ -63,41 +67,32 @@ rerank_cache_size = 2000
 rerank_batch_size = 4
 rerank_max_tokens = 128
 
-[inference]
-base_url = "http://localhost:8080"
+[embedding]
+base_url = "http://localhost:8000"
+adapter = "tei"
+model = "embed"
+document_model = "embed_chunked"
+context_tokens = 512
 
-[inference.models]
-query_embedding = "embed"
-query_embedding_context_tokens = 512
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
-reranker_context_tokens = 512
-
-[inference.rerank]
-# Minimal common reranker API:
-#   POST /rerank { query, texts, return_text } -> [{ index, score }]
-# Use request_shape = "tei" to also send TEI's raw_scores/truncate flags.
-request_shape = "minimal"
-# normalized = endpoint returns [0, 1]; logits = Talon applies sigmoid.
+[rerank]
+base_url = "http://localhost:8000"
+adapter = "minimal"
+model = "rerank"
 score_scale = "normalized"
 truncate = true
 
-[expansion]
-provider = "openai-compatible"
-base_url = "http://localhost:1234/v1"
-model = "gemma-smol"
-context_tokens = 32768
-# Optional generated output cap. Leave unset for thinking models.
-# max_output_tokens = 768
+[chat.expansion]
+base_url = "http://localhost:8000/v1"
+model = "bonsai"
+context_tokens = 16000
+max_output_tokens = 768
 
-[ask]
-# Optional larger model for `talon ask`. Reuses the [expansion] endpoint.
-# model = "qwen3-32b"
+[chat.ask]
+model = "qwen-smol"
 context_tokens = 65536
-max_output_tokens = 2048
-# planning_reasoning_effort = "none"
-# synthesis_reasoning_effort = "medium"
+max_output_tokens = 4096
+planning_reasoning_effort = "none"
+synthesis_reasoning_effort = "none"
 
 [mcp.hooks]
 recall_deadline_ms = 20000
@@ -221,26 +216,34 @@ pub fn default_config_for_vault(vault_path: PathBuf) -> TalonConfig {
             "templates/**".to_string(),
             "*.canvas".to_string(),
         ],
-        inference: InferenceConfig {
-            base_url: "http://localhost:8080".to_string(),
-            models: InferenceModels {
-                query_embedding: "embed".to_string(),
-                query_embedding_context_tokens: 512,
-                document_embedding: "embed".to_string(),
-                chunk_embedding: "embed_chunked".to_string(),
-                reranker: "rerank".to_string(),
-                reranker_context_tokens: 512,
+        credentials: CredentialsConfig::default(),
+        embedding: EmbeddingConfig {
+            base_url: "http://localhost:8000".to_string(),
+            auth: EndpointAuthConfig::default(),
+            adapter: EmbeddingAdapter::Tei,
+            model: "embed".to_string(),
+            document_model: Some("embed_chunked".to_string()),
+            context_tokens: 512,
+        },
+        rerank: RerankConfig {
+            base_url: "http://localhost:8000".to_string(),
+            auth: EndpointAuthConfig::default(),
+            adapter: RerankAdapter::Minimal,
+            model: "rerank".to_string(),
+            score_scale: talon_core::RerankScoreScale::default(),
+            truncate: true,
+        },
+        chat: ChatSection {
+            expansion: ChatExpansionConfig {
+                base_url: "http://localhost:8000/v1".to_string(),
+                auth: EndpointAuthConfig::default(),
+                adapter: ChatAdapter::default(),
+                model: "bonsai".to_string(),
+                context_tokens: 16_000,
+                max_output_tokens: Some(768),
             },
-            rerank: talon_core::RerankConfig::default(),
+            ask: ChatAskConfig::default(),
         },
-        expansion: talon_core::ExpansionConfig {
-            provider: "openai-compatible".to_string(),
-            base_url: "http://localhost:1234/v1".to_string(),
-            model: "gemma-smol".to_string(),
-            context_tokens: 32768,
-            max_output_tokens: None,
-        },
-        ask: talon_core::AskConfig::default(),
         mcp: talon_core::McpConfig::default(),
         scopes: default_karpathy_scopes(),
         search: talon_core::SearchConfig::default(),

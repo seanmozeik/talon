@@ -1,10 +1,7 @@
 use rusqlite::{Connection, params};
 
 use super::*;
-use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, RerankConfig, Scope,
-    ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
-};
+use crate::config::{Scope, ScopeGlob, ScopePriority, ScopesConfig, TalonConfig, test_literals};
 use crate::indexing::migrations::run_migrations;
 use crate::query::MetaInput;
 use crate::search::{WhereClause, WhereOperator};
@@ -23,38 +20,12 @@ fn test_config_with_scopes(scopes: Vec<(&str, &str)>) -> TalonConfig {
             },
         );
     }
-    TalonConfig {
-        vault_path: PathBuf::from("/vault"),
-        db_path: PathBuf::from("/vault/.talon/index.db"),
-        config_file_path: None,
-        include_patterns: Vec::new(),
-        ignore_patterns: Vec::new(),
-        inference: InferenceConfig {
-            base_url: "http://localhost:8080".to_string(),
-            models: InferenceModels {
-                query_embedding: "q".to_string(),
-                query_embedding_context_tokens: 512,
-                document_embedding: "d".to_string(),
-                chunk_embedding: "c".to_string(),
-                reranker: "r".to_string(),
-                reranker_context_tokens: 512,
-            },
-            rerank: RerankConfig::default(),
-        },
-        expansion: ExpansionConfig {
-            provider: "openai-compatible".to_string(),
-            base_url: "http://localhost:8080".to_string(),
-            model: "x".to_string(),
-            context_tokens: 32768,
-            max_output_tokens: None,
-        },
-        ask: crate::config::AskConfig::default(),
-        mcp: crate::config::McpConfig::default(),
-        scopes: map,
-        search: SearchConfig::default(),
-        inspect: crate::config::InspectConfig::default(),
-        chunker: ChunkerConfig::default(),
-    }
+    test_literals::minimal_for_paths(
+        PathBuf::from("/vault"),
+        PathBuf::from("/vault/.talon/index.db"),
+        "http://localhost:8080",
+        map,
+    )
 }
 
 fn fresh_db() -> Connection {

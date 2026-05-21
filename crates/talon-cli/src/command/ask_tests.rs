@@ -10,8 +10,8 @@ use super::{
 #[test]
 fn trim_ask_sources_greedily_packs_ranked_sources_into_input_budget() {
     let mut config = crate::config::default_config_for_vault(PathBuf::from("/tmp/vault"));
-    config.ask.context_tokens = 1_000;
-    config.ask.max_output_tokens = 100;
+    config.chat.ask.context_tokens = 1_000;
+    config.chat.ask.max_output_tokens = 100;
     let question = "topic";
     let queries = vec!["topic".to_string()];
     let mut sources = vec![
@@ -22,7 +22,7 @@ fn trim_ask_sources_greedily_packs_ranked_sources_into_input_budget() {
 
     trim_ask_sources_to_budget(question, &queries, &mut sources, &config);
 
-    let input_budget = config.ask.context_tokens as usize * ASK_SYNTHESIS_INPUT_NUMERATOR
+    let input_budget = config.chat.ask.context_tokens as usize * ASK_SYNTHESIS_INPUT_NUMERATOR
         / ASK_SYNTHESIS_INPUT_DENOMINATOR;
     assert!(ask_synthesis_tokens(question, &queries, &sources) <= input_budget);
     assert_eq!(

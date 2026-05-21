@@ -2,10 +2,7 @@ use rusqlite::{Connection, params};
 
 use super::budget::trim_to_budget;
 use super::*;
-use crate::config::{
-    ChunkerConfig, ExpansionConfig, InferenceConfig, InferenceModels, InspectConfig, RerankConfig,
-    Scope, ScopeGlob, ScopePriority, ScopesConfig, SearchConfig, TalonConfig,
-};
+use crate::config::{Scope, ScopeGlob, ScopePriority, ScopesConfig, TalonConfig, test_literals};
 use crate::contracts::VaultPath;
 use crate::indexing::migrations::run_migrations;
 use crate::query::{LinkedNote, NoteExcerpt};
@@ -64,44 +61,18 @@ fn scoped_config() -> TalonConfig {
         },
     );
 
-    TalonConfig {
-        vault_path: PathBuf::from("/tmp/vault"),
-        db_path: PathBuf::from("/tmp/vault/idx.sqlite"),
-        config_file_path: None,
-        include_patterns: Vec::new(),
-        ignore_patterns: Vec::new(),
-        inference: InferenceConfig {
-            base_url: "http://localhost".to_string(),
-            models: InferenceModels {
-                query_embedding: "query".to_string(),
-                query_embedding_context_tokens: 512,
-                document_embedding: "document".to_string(),
-                chunk_embedding: "chunk".to_string(),
-                reranker: "reranker".to_string(),
-                reranker_context_tokens: 512,
-            },
-            rerank: RerankConfig::default(),
-        },
-        expansion: ExpansionConfig {
-            provider: "openai-compatible".to_string(),
-            base_url: "http://localhost".to_string(),
-            model: "expansion".to_string(),
-            context_tokens: 32768,
-            max_output_tokens: None,
-        },
-        ask: crate::config::AskConfig::default(),
-        mcp: crate::config::McpConfig::default(),
+    test_literals::minimal_for_paths(
+        PathBuf::from("/tmp/vault"),
+        PathBuf::from("/tmp/vault/idx.sqlite"),
+        "http://localhost",
         scopes,
-        search: SearchConfig::default(),
-        inspect: InspectConfig::default(),
-        chunker: ChunkerConfig::default(),
-    }
+    )
 }
 
 #[test]
 fn empty_message_returns_skipped() {
     let conn = fresh_db();
-    let result = run_recall(&conn, None, None, &recall_input("   "), None);
+    let result = run_recall(&conn, None, None, None, &recall_input("   "), None);
     assert!(result.skipped);
     assert_eq!(result.evidence_score, 0.0);
 }
@@ -109,7 +80,7 @@ fn empty_message_returns_skipped() {
 #[test]
 fn no_results_returns_skipped() {
     let conn = fresh_db();
-    let result = run_recall(&conn, None, None, &recall_input("nothing here"), None);
+    let result = run_recall(&conn, None, None, None, &recall_input("nothing here"), None);
     assert!(result.skipped);
 }
 
@@ -120,7 +91,14 @@ fn default_false_scopes_are_excluded_from_recall_unless_scoped_in() {
     insert_note(&conn, "wiki/Lease.md", "Lease Public");
     insert_note(&conn, "private/Lease.md", "Lease Private");
 
-    let default_result = run_recall(&conn, None, None, &recall_input("Lease"), Some(&config));
+    let default_result = run_recall(
+        &conn,
+        None,
+        None,
+        None,
+        &recall_input("Lease"),
+        Some(&config),
+    );
     let default_paths: Vec<String> = default_result
         .vault_recall
         .as_ref()
@@ -135,7 +113,7 @@ fn default_false_scopes_are_excluded_from_recall_unless_scoped_in() {
         scope: vec!["private".to_string()],
         ..recall_input("Lease")
     };
-    let scoped_result = run_recall(&conn, None, None, &input, Some(&config));
+    let scoped_result = run_recall(&conn, None, None, None, &input, Some(&config));
     let scoped_paths: Vec<String> = scoped_result
         .vault_recall
         .as_ref()
@@ -157,7 +135,7 @@ fn exclude_does_not_panic() {
         budget_tokens: 10_000,
         ..RecallInput::default()
     };
-    let result = run_recall(&conn, None, None, &input, None);
+    let result = run_recall(&conn, None, None, None, &input, None);
     // excluded path must not appear in active_notes
     if let Some(vr) = &result.vault_recall {
         for note in &vr.active_notes {
@@ -173,7 +151,7 @@ fn linked_context_does_not_panic() {
     insert_note(&conn, "Child.md", "Child");
     insert_link(&conn, "Hub.md", "Child.md");
 
-    let result = run_recall(&conn, None, None, &recall_input("Hub"), None);
+    let result = run_recall(&conn, None, None, None, &recall_input("Hub"), None);
     assert!(result.excluded_by_budget.is_empty());
 }
 

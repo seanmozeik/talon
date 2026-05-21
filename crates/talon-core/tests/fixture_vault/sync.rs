@@ -27,7 +27,7 @@ fn fixture_vault_sync_indexes_all_notes() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     let (stats, embed_stats) = run_sync_with_chunker(
@@ -94,7 +94,7 @@ fn fixture_vault_status_counts() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let client = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(

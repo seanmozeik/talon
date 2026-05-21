@@ -8,10 +8,9 @@ use eyre::{Result, WrapErr as _, bail};
 use std::io;
 use std::time::Instant;
 use talon_core::{
-    ExpansionClient, ResponseMeta, ScopeFilter, SearchInput, SearchMode, SyncLockError,
-    TalonEnvelope, TalonResponseData, acquire_sync_lock, inference::InferenceClient, open_database,
-    open_database_read_only, run_search, run_search_with_expanded_queries,
-    vec_ext::register_sqlite_vec,
+    ResponseMeta, ScopeFilter, SearchInput, SearchMode, SyncLockError, TalonClients, TalonEnvelope,
+    TalonResponseData, acquire_sync_lock, open_database, open_database_read_only, run_search,
+    run_search_with_expanded_queries, vec_ext::register_sqlite_vec,
 };
 
 pub(super) async fn emit(args: &SearchArgs, cli: &Cli) -> Result<()> {
@@ -119,33 +118,27 @@ pub(super) fn execute_search(
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
     let (conn, sync_skipped) = open_search_database(config, &config.db_path, fast)?;
 
-    let (inference, expansion) =
+    let (embedding, rerank, expansion) =
         if fast || mode == SearchMode::Fulltext || mode == SearchMode::Title {
-            (None, None)
+            (None, None, None)
         } else {
             talon_core::cache::rerank::configure_capacity(config.search.rerank_cache_size);
-            let inference = InferenceClient::with_rerank_options_and_protocol(
-                &config.inference.base_url,
-                config.search.rerank_batch_size,
-                config.search.rerank_max_tokens,
-                config.inference.rerank,
-            )
-            .wrap_err("building inference client")
-            .ok();
-            let expansion = ExpansionClient::with_max_tokens(
-                config.expansion.base_url.clone(),
-                &config.expansion.model,
-                config.expansion.max_output_tokens,
-            )
-            .ok();
-            (inference, expansion)
+            match TalonClients::from_config(config) {
+                Ok(clients) => (
+                    Some(clients.embedding),
+                    Some(clients.rerank),
+                    Some(clients.expansion),
+                ),
+                Err(_) => (None, None, None),
+            }
         };
 
     let mut response = if include_expanded_queries {
         run_search_with_expanded_queries(
             &conn,
             &input,
-            inference.as_ref(),
+            embedding.as_ref(),
+            rerank.as_ref(),
             expansion.as_ref(),
             Some(config),
         )
@@ -153,7 +146,8 @@ pub(super) fn execute_search(
         run_search(
             &conn,
             &input,
-            inference.as_ref(),
+            embedding.as_ref(),
+            rerank.as_ref(),
             expansion.as_ref(),
             Some(config),
         )

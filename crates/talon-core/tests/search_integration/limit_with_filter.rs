@@ -69,7 +69,7 @@ fn limit_with_where_filter_returns_full_limit() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
 
     assert_eq!(
         response.results.len(),

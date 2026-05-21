@@ -51,7 +51,7 @@ fn search_where_filter_applies() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
 
     assert!(
         response.results.is_empty(),
@@ -107,7 +107,7 @@ fn search_since_filter_applies() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, None, None, None);
+    let response = run_search(&conn, &input, None, None, None, None);
 
     assert!(
         response.results.is_empty(),
@@ -163,7 +163,7 @@ fn search_empty_query_returns_empty() {
         anchors: None,
     };
 
-    let response = run_search(&conn, &input, Some(&client), None, None);
+    let response = run_search(&conn, &input, Some(&client), None, None, None);
 
     assert!(response.results.is_empty());
     assert_eq!(response.total, 0);

@@ -3,6 +3,7 @@
 use std::env::temp_dir;
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use crate::inference::{EmbeddingClient, RerankClient};
 use rusqlite::{Connection, params};
 use serde_json::json;
 
@@ -39,4 +40,12 @@ pub(super) fn runtime() -> tokio::runtime::Runtime {
 pub(super) fn dummy_embed_response() -> serde_json::Value {
     // 3-dim vector — search_vector returns empty on empty vec_chunks regardless.
     json!([[0.1_f32, 0.2_f32, 0.3_f32]])
+}
+
+pub(super) fn test_clients(uri: impl Into<String>) -> (EmbeddingClient, RerankClient) {
+    let uri = uri.into();
+    (
+        EmbeddingClient::tei_for_tests(uri.clone(), "embed").unwrap(),
+        RerankClient::tei_for_tests(uri, 32).unwrap(),
+    )
 }

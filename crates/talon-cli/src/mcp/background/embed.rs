@@ -53,8 +53,7 @@ fn run_embed_ticker(state: &Arc<McpServerState>) -> color_eyre::eyre::Result<()>
 fn run_embed_tick(state: &Arc<McpServerState>) -> color_eyre::eyre::Result<()> {
     use color_eyre::eyre::WrapErr as _;
     use talon_core::{
-        embed::EmbedPassOptions, inference::InferenceClient, open_database,
-        vec_ext::register_sqlite_vec,
+        EmbeddingClient, embed::EmbedPassOptions, open_database, vec_ext::register_sqlite_vec,
     };
 
     register_sqlite_vec().wrap_err("registering sqlite-vec extension")?;
@@ -64,18 +63,15 @@ fn run_embed_tick(state: &Arc<McpServerState>) -> color_eyre::eyre::Result<()> {
     let opts = EmbedPassOptions {
         force: false,
         restrict_paths: Vec::new(),
-        chunk_embedding_model: state.config.config.inference.models.chunk_embedding.clone(),
-        document_embedding_model: state
-            .config
-            .config
-            .inference
-            .models
-            .document_embedding
-            .clone(),
+        chunk_embedding_model: state.config.config.embedding.model.clone(),
+        document_embedding_model: state.config.config.embedding.document_model().to_owned(),
     };
 
-    let client = InferenceClient::new(&state.config.config.inference.base_url)
-        .wrap_err("building inference client")?;
+    let client = EmbeddingClient::from_config(
+        &state.config.config.embedding,
+        &state.config.config.credentials,
+    )
+    .wrap_err("building embedding client")?;
 
     talon_core::embed::run_embed_pass(&conn, &client, &opts)
         .map(|_| ())

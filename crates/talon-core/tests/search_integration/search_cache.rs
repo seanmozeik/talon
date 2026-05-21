@@ -1,4 +1,5 @@
 use super::*;
+use talon_core::inference::{EmbeddingClient, RerankClient};
 
 #[test]
 fn repeated_semantic_search_uses_cache_until_db_version_changes() {
@@ -21,17 +22,18 @@ fn repeated_semantic_search_uses_cache_until_db_version_changes() {
     );
 
     let conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
+    let rerank = RerankClient::tei_for_tests(server.uri(), 32).unwrap();
     let input = SearchInput {
         query: Some("cache probe unique query".to_string()),
         mode: SearchMode::Semantic,
         ..SearchInput::default()
     };
 
-    let first = run_search(&conn, &input, Some(&client), None, None);
-    let second = run_search(&conn, &input, Some(&client), None, None);
+    let first = run_search(&conn, &input, Some(&embedding), Some(&rerank), None, None);
+    let second = run_search(&conn, &input, Some(&embedding), Some(&rerank), None, None);
     bump_db_version(&conn).unwrap();
-    let third = run_search(&conn, &input, Some(&client), None, None);
+    let third = run_search(&conn, &input, Some(&embedding), Some(&rerank), None, None);
 
     assert_eq!(first, second);
     assert_eq!(third.total, first.total);

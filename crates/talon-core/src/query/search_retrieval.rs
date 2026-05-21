@@ -6,7 +6,7 @@
 use rusqlite::Connection;
 
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
+use crate::inference::{EmbeddingClient, RerankClient};
 use crate::search::bm25::search_bm25;
 use crate::search::constants::DEFAULT_SNIPPET_LENGTH;
 use crate::search::fuzzy_title::search_fuzzy_title;
@@ -37,7 +37,8 @@ pub(super) fn retrieve_raw_results(
     conn: &Connection,
     input: &SearchInput,
     pre_filter: &PreFilter,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
+    rerank: Option<&RerankClient>,
     expansion: Option<&ExpansionClient>,
     query: &str,
     limit: u32,
@@ -57,7 +58,8 @@ pub(super) fn retrieve_raw_results(
             return match run_hybrid_mode(&HybridArgs {
                 conn,
                 input,
-                inference,
+                embedding,
+                rerank,
                 expansion,
                 query,
                 limit,
@@ -79,10 +81,10 @@ pub(super) fn retrieve_raw_results(
             };
         }
         SearchMode::Semantic => {
-            let Some(inference) = inference else {
+            let Some(embedding) = embedding else {
                 return RetrievalOutcome::Empty;
             };
-            let Ok(embeddings) = inference.embed(std::slice::from_ref(&query.to_string())) else {
+            let Ok(embeddings) = embedding.embed(std::slice::from_ref(&query.to_string())) else {
                 return RetrievalOutcome::Empty;
             };
             let embedding = embeddings.first().map_or(&[] as &[f32], Vec::as_slice);

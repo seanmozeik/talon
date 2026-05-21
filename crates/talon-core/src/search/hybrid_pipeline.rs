@@ -8,22 +8,25 @@ use std::time::Instant;
 
 use crate::expansion::client::ExpansionClient;
 use crate::indexing::migrations::read_db_version;
-use crate::inference::InferenceClient;
+use crate::inference::{EmbeddingClient, RerankClient};
 
 use super::bm25::search_bm25;
 use super::cache::dedupe_query_variants;
 use super::constants::{
     DEFAULT_SNIPPET_LENGTH, HYBRID_PROBE_LEXICAL_LIMIT, HYBRID_PROBE_TITLE_LIMIT, RERANK_TOP_K,
 };
-use super::fuse::{estimate_strong_signal, fuse_hybrid_result_lists};
+use super::fuse::estimate_strong_signal;
+use super::fuse::fuse_hybrid_result_lists;
 use super::fuzzy_title::search_title_parts;
 use super::hooks::SearchHooks;
-use super::hybrid_single::{HybridSingleResult, run_hybrid_single};
+use super::hybrid_single::run_hybrid_single;
 use super::pool;
 use super::pre_filter::PreFilter;
 use super::rerank_pipeline::{IntentRerankOptions, rerank_candidates_with_intent};
-use super::rrf::{RrfInputs, RrfList, RrfScoreAccumulator, normalize_and_merge_rrf_results};
-use super::types::{HybridScoreData, RawSearchResult, SearchScores};
+use super::types::RawSearchResult;
+
+mod convert;
+use convert::{lexical_probe_results, single_to_raw_list};
 
 /// Default number of LLM expansion variants to request per query.
 const EXPANSION_N_VARIANTS: u8 = 3;
@@ -85,19 +88,21 @@ pub struct HybridPipelineOutput {
 #[must_use]
 pub fn run_hybrid_pipeline(
     conn: &Connection,
-    inference: &InferenceClient,
+    embedding: &EmbeddingClient,
+    rerank: &RerankClient,
     expansion: Option<&ExpansionClient>,
     query: &str,
     options: &HybridPipelineOptions,
 ) -> Vec<RawSearchResult> {
-    run_hybrid_pipeline_with_metadata(conn, inference, expansion, query, options).results
+    run_hybrid_pipeline_with_metadata(conn, embedding, rerank, expansion, query, options).results
 }
 
 /// Runs the full hybrid search pipeline and returns expansion metadata.
 #[must_use]
 pub fn run_hybrid_pipeline_with_metadata(
     conn: &Connection,
-    inference: &InferenceClient,
+    embedding: &EmbeddingClient,
+    rerank: &RerankClient,
     expansion: Option<&ExpansionClient>,
     query: &str,
     options: &HybridPipelineOptions,
@@ -151,7 +156,7 @@ pub fn run_hybrid_pipeline_with_metadata(
 
     let rrf_size = pool::rrf_pool(options.limit, options.candidate_limit);
     let per_variant =
-        retrieve_query_variants(conn, inference, &queries_to_search, options, rrf_size);
+        retrieve_query_variants(conn, embedding, &queries_to_search, options, rrf_size);
 
     // Cross-variant RRF fusion.
     // Original query (index 0) gets 2× weight; expansion variants get 1.0.
@@ -167,7 +172,7 @@ pub fn run_hybrid_pipeline_with_metadata(
         if skip_expensive || deadline_exceeded(options.deadline_at) {
             (fused, None, None)
         } else {
-            run_rerank_stage(conn, inference, query, options, fused)
+            run_rerank_stage(conn, rerank, query, options, fused)
         };
 
     HybridPipelineOutput {
@@ -225,7 +230,7 @@ fn build_query_list(query: &str, has_supplied: bool, variants: &[String]) -> Vec
 
 fn retrieve_query_variants(
     conn: &Connection,
-    inference: &InferenceClient,
+    embedding: &EmbeddingClient,
     queries_to_search: &[String],
     options: &HybridPipelineOptions,
     rrf_size: u32,
@@ -235,14 +240,14 @@ fn retrieve_query_variants(
         .take_while(|_| !deadline_exceeded(options.deadline_at))
         .map(|q| {
             options.hooks.emit_embed_batch(1);
-            let embedding = inference
+            let embedding_vec = embedding
                 .embed(std::slice::from_ref(q))
                 .ok()
                 .and_then(|mut vecs| vecs.pop());
             let single = run_hybrid_single(
                 conn,
                 q,
-                embedding.as_deref(),
+                embedding_vec.as_deref(),
                 options.limit,
                 options.candidate_limit,
                 &options.pre_filter,
@@ -254,7 +259,7 @@ fn retrieve_query_variants(
 
 fn run_rerank_stage(
     conn: &Connection,
-    inference: &InferenceClient,
+    rerank: &RerankClient,
     query: &str,
     options: &HybridPipelineOptions,
     fused: Vec<RawSearchResult>,
@@ -267,7 +272,7 @@ fn run_rerank_stage(
     let started = Instant::now();
     let reranked = rerank_candidates_with_intent(IntentRerankOptions {
         conn,
-        inference,
+        rerank,
         query,
         intent: options.intent.as_deref(),
         candidates: fused,
@@ -281,60 +286,6 @@ fn run_rerank_stage(
 
 fn deadline_exceeded(deadline_at: Option<Instant>) -> bool {
     deadline_at.is_some_and(|deadline| Instant::now() >= deadline)
-}
-
-fn lexical_probe_results(
-    bm25_probe: &[RawSearchResult],
-    title_probe: &super::fuzzy_title::TitleSearchParts,
-    limit: u32,
-) -> Vec<RawSearchResult> {
-    let mut title = title_probe.exact_alias.clone();
-    title.extend(title_probe.fuzzy.clone());
-    fuse_hybrid_result_lists(&[bm25_probe, title.as_slice()], &[1.0, 1.0], limit as usize)
-}
-
-/// Runs per-signal weighted RRF on the three [`HybridSingleResult`] buckets
-/// and converts the output to [`RawSearchResult`] for cross-variant fusion.
-fn single_to_raw_list(single: &HybridSingleResult, limit: usize) -> Vec<RawSearchResult> {
-    let mut acc = RrfScoreAccumulator::new();
-    acc.accumulate(&single.vector, RrfList::Semantic);
-    acc.accumulate(&single.bm25, RrfList::Bm25);
-    acc.accumulate(&single.fuzzy_title_parts.exact_alias, RrfList::ExactAlias);
-    acc.accumulate(&single.fuzzy_title_parts.fuzzy, RrfList::Fuzzy);
-
-    let inputs = RrfInputs {
-        semantic: &single.vector,
-        bm25: &single.bm25,
-        exact_alias: &single.fuzzy_title_parts.exact_alias,
-        fuzzy: &single.fuzzy_title_parts.fuzzy,
-    };
-
-    normalize_and_merge_rrf_results(&acc, &inputs, limit)
-        .iter()
-        .map(hybrid_data_to_raw)
-        .collect()
-}
-
-/// Converts [`HybridScoreData`] (post-RRF) to [`RawSearchResult`].
-fn hybrid_data_to_raw(h: &HybridScoreData) -> RawSearchResult {
-    RawSearchResult {
-        path: h.path.clone(),
-        title: h.title.clone(),
-        tags: h.tags.clone(),
-        aliases: h.aliases.clone(),
-        snippet: h.snippet.clone(),
-        score: h.hybrid_before_norm.unwrap_or(0.0),
-        scores: SearchScores {
-            bm25: h.bm25,
-            fuzzy_title: h.fuzzy_title,
-            hybrid: h.hybrid_before_norm,
-            semantic: h.semantic,
-            rerank: None,
-        },
-        semantic_heading: h.semantic_heading.clone(),
-        semantic_char_start: h.semantic_char_start,
-        semantic_char_end: h.semantic_char_end,
-    }
 }
 
 #[cfg(test)]

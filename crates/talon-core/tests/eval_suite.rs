@@ -21,8 +21,11 @@ mod eval;
 use serde_json::json;
 use talon_core::{
     ChunkerConfig, ExpansionClient, PositiveCount, SearchInput, SearchMode,
-    embed::EmbedPassOptions, indexer::IndexerConfig, inference::InferenceClient, open_database,
-    run_search, run_sync_with_chunker, vec_ext::register_sqlite_vec,
+    embed::EmbedPassOptions,
+    indexer::IndexerConfig,
+    inference::{EmbeddingClient, RerankClient},
+    open_database, run_search, run_sync_with_chunker,
+    vec_ext::register_sqlite_vec,
 };
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -82,7 +85,8 @@ fn eval_suite_run_golden_set_and_write_results() {
             .mount(&server),
     );
 
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
+    let rerank = RerankClient::tei_for_tests(server.uri(), 32).unwrap();
     let expansion = ExpansionClient::new(server.uri(), "test").unwrap();
 
     let mut conn = open_database(&db).unwrap();
@@ -92,7 +96,7 @@ fn eval_suite_run_golden_set_and_write_results() {
         &lock,
         &IndexerConfig::index_all(),
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -110,7 +114,7 @@ fn eval_suite_run_golden_set_and_write_results() {
                 limit: PositiveCount::new(10, "limit").unwrap(),
                 ..SearchInput::default()
             };
-            run_search(&conn, &input, Some(&client), None, None)
+            run_search(&conn, &input, Some(&embedding), Some(&rerank), None, None)
                 .results
                 .into_iter()
                 .map(|r| r.vault_path.as_str().to_string())
@@ -129,11 +133,18 @@ fn eval_suite_run_golden_set_and_write_results() {
                 limit: PositiveCount::new(10, "limit").unwrap(),
                 ..SearchInput::default()
             };
-            run_search(&conn, &input, Some(&client), Some(&expansion), None)
-                .results
-                .into_iter()
-                .map(|r| r.vault_path.as_str().to_string())
-                .collect()
+            run_search(
+                &conn,
+                &input,
+                Some(&embedding),
+                Some(&rerank),
+                Some(&expansion),
+                None,
+            )
+            .results
+            .into_iter()
+            .map(|r| r.vault_path.as_str().to_string())
+            .collect()
         })
         .collect();
 

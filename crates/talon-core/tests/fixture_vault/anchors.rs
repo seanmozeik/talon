@@ -1,4 +1,5 @@
 use super::*;
+use talon_core::inference::EmbeddingClient;
 
 #[test]
 fn fixture_vault_search_with_anchors() {
@@ -27,7 +28,7 @@ fn fixture_vault_search_with_anchors() {
     );
 
     let mut conn = open_database(&db).unwrap();
-    let client = InferenceClient::new(server.uri()).unwrap();
+    let embedding = EmbeddingClient::tei_for_tests(server.uri(), "embed").unwrap();
     let config = IndexerConfig::index_all();
 
     run_sync_with_chunker(
@@ -36,7 +37,7 @@ fn fixture_vault_search_with_anchors() {
         &lock,
         &config,
         Some(EmbedPassOptions::defaults()),
-        Some(&client),
+        Some(&embedding),
         &fixture_chunker(),
     )
     .unwrap();
@@ -48,7 +49,7 @@ fn fixture_vault_search_with_anchors() {
         anchors: Some(true),
         ..SearchInput::default()
     };
-    let resp = run_search(&conn, &anchors_input, None, None, None);
+    let resp = run_search(&conn, &anchors_input, None, None, None, None);
     if !resp.results.is_empty() {
         let first = &resp.results[0];
         assert!(
@@ -81,7 +82,7 @@ fn fixture_vault_search_with_anchors() {
         anchors: None,
         ..SearchInput::default()
     };
-    let resp_no = run_search(&conn, &no_anchors_input, None, None, None);
+    let resp_no = run_search(&conn, &no_anchors_input, None, None, None, None);
     for result in &resp_no.results {
         assert!(
             result.preview_anchors.is_none(),

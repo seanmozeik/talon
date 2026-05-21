@@ -3,22 +3,24 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
+mod auth;
 mod chunker;
 mod defaults;
 mod endpoints;
 mod scope_filter;
+mod search;
+#[doc(hidden)]
+pub mod test_literals;
 use crate::indexer::build_include_globset;
-use defaults::{
-    default_candidate_limit, default_limit, default_rerank_batch_size, default_rerank_cache_size,
-    default_rerank_max_tokens, default_search_cache_size,
-};
 
+pub use auth::{CredentialEntry, CredentialsConfig, EndpointAuthConfig, ResolvedAuth};
 pub use chunker::ChunkerConfig;
 pub use endpoints::{
-    AskConfig, ExpansionConfig, InferenceConfig, InferenceModels, McpConfig, McpHooksConfig,
-    RerankConfig, RerankRequestShape, RerankScoreScale,
+    ChatAdapter, ChatAskConfig, ChatExpansionConfig, ChatSection, EmbeddingAdapter,
+    EmbeddingConfig, McpConfig, McpHooksConfig, RerankAdapter, RerankConfig, RerankScoreScale,
 };
 pub use scope_filter::ScopeFilter;
+pub use search::{InspectConfig, SearchConfig};
 
 /// Priority tier for scope-based ranking.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -172,13 +174,15 @@ pub struct TalonConfig {
     /// Glob-style ignore patterns.
     #[serde(default)]
     pub ignore_patterns: Vec<String>,
-    /// Embedding and rerank endpoint configuration.
-    pub inference: InferenceConfig,
-    /// Query expansion endpoint configuration.
-    pub expansion: ExpansionConfig,
-    /// Ask-command model override.
+    /// Named API credentials referenced by capability blocks.
     #[serde(default)]
-    pub ask: AskConfig,
+    pub credentials: CredentialsConfig,
+    /// Embedding endpoint configuration.
+    pub embedding: EmbeddingConfig,
+    /// Rerank endpoint configuration.
+    pub rerank: RerankConfig,
+    /// Chat endpoints for expansion and ask.
+    pub chat: ChatSection,
     /// MCP runtime settings.
     #[serde(default)]
     pub mcp: McpConfig,
@@ -299,52 +303,4 @@ fn matches_path_glob(path: &Path, glob: &ScopeGlob) -> bool {
 
 fn glob_matches_path(pattern: &str, path: &str) -> bool {
     build_include_globset(&[pattern.to_string()]).is_ok_and(|set| set.is_match(path))
-}
-
-/// Lint settings.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct InspectConfig {
-    /// Glob-style patterns of file paths to skip when reporting inspect findings.
-    /// Takes precedence over per-scope `inspect = true`. Files matching these
-    /// globs are still indexed for link resolution.
-    #[serde(default)]
-    pub ignore: Vec<String>,
-}
-
-/// Search defaults and process-level cache/client tunables.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct SearchConfig {
-    /// Candidate pool size used when no CLI flag is provided.
-    #[serde(default = "default_candidate_limit")]
-    pub candidate_limit: u16,
-    /// Result limit used when no CLI flag is provided.
-    #[serde(default = "default_limit")]
-    pub limit: u16,
-    /// Search-response LRU capacity.
-    #[serde(default = "default_search_cache_size")]
-    pub cache_size: usize,
-    /// Rerank score LRU capacity.
-    #[serde(default = "default_rerank_cache_size")]
-    pub rerank_cache_size: usize,
-    /// Reranker HTTP request batch size.
-    #[serde(default = "default_rerank_batch_size")]
-    pub rerank_batch_size: usize,
-    /// Approximate reranker text budget.
-    #[serde(default = "default_rerank_max_tokens")]
-    pub rerank_max_tokens: u32,
-}
-
-impl Default for SearchConfig {
-    fn default() -> Self {
-        Self {
-            candidate_limit: default_candidate_limit(),
-            limit: default_limit(),
-            cache_size: default_search_cache_size(),
-            rerank_cache_size: default_rerank_cache_size(),
-            rerank_batch_size: default_rerank_batch_size(),
-            rerank_max_tokens: default_rerank_max_tokens(),
-        }
-    }
 }

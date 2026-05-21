@@ -12,7 +12,7 @@ use crate::cache::search as search_cache;
 use crate::config::{ScopeFilter, TalonConfig};
 use crate::contracts::VaultPath;
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
+use crate::inference::{EmbeddingClient, RerankClient};
 use crate::numeric::count_u32;
 use crate::search::anchor::{build_anchors, maybe_expand_bm25_snippet, resolve_snippet_heading};
 use crate::search::pre_filter::{PreFilter, scope_to_note_ids};
@@ -48,28 +48,31 @@ pub(super) struct ScoredRawSearchResult {
 pub fn run_search(
     conn: &Connection,
     input: &SearchInput,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
+    rerank: Option<&RerankClient>,
     expansion: Option<&ExpansionClient>,
     config: Option<&TalonConfig>,
 ) -> SearchResponse {
-    run_search_inner(conn, input, inference, expansion, config, false)
+    run_search_inner(conn, input, embedding, rerank, expansion, config, false)
 }
 
 #[allow(clippy::missing_errors_doc)]
 pub fn run_search_with_expanded_queries(
     conn: &Connection,
     input: &SearchInput,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
+    rerank: Option<&RerankClient>,
     expansion: Option<&ExpansionClient>,
     config: Option<&TalonConfig>,
 ) -> SearchResponse {
-    run_search_inner(conn, input, inference, expansion, config, true)
+    run_search_inner(conn, input, embedding, rerank, expansion, config, true)
 }
 
 fn run_search_inner(
     conn: &Connection,
     input: &SearchInput,
-    inference: Option<&InferenceClient>,
+    embedding: Option<&EmbeddingClient>,
+    rerank: Option<&RerankClient>,
     expansion: Option<&ExpansionClient>,
     config: Option<&TalonConfig>,
     include_expanded_queries: bool,
@@ -81,7 +84,7 @@ fn run_search_inner(
     let query_syntax = parse_query_syntax(&raw_query);
     let query = query_syntax.query;
 
-    let use_cache = inference.is_some() && !include_expanded_queries;
+    let use_cache = embedding.is_some() && !include_expanded_queries;
     if use_cache && let Some(response) = search_cache::lookup(conn, input, config) {
         return response;
     }
@@ -114,7 +117,8 @@ fn run_search_inner(
         conn,
         input,
         &pre_filter,
-        inference,
+        embedding,
+        rerank,
         expansion,
         &query,
         limit,
@@ -149,7 +153,7 @@ fn run_search_inner(
     let expanded = (expansion.is_some() || !input.queries.is_empty())
         && !input.fast
         && input.mode == SearchMode::Hybrid;
-    let reranked = input.mode == SearchMode::Hybrid && !input.fast;
+    let reranked = input.mode == SearchMode::Hybrid && !input.fast && rerank.is_some();
 
     let anchors_requested = input.anchors.unwrap_or(false);
     let diagnostics =

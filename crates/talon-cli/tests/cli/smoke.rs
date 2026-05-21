@@ -126,17 +126,18 @@ db_path = "{db}"
 include_patterns = ["**/*.md"]
 ignore_patterns = []
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
+document_model = "embed_chunked"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#,
@@ -189,17 +190,18 @@ fn status_ignores_empty_talon_config_file_env() {
             r#"vault_path = "{vault}"
 db_path = "{db}"
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
+document_model = "embed_chunked"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#,
@@ -246,17 +248,18 @@ fn status_ignores_empty_talon_vault_env() {
             r#"vault_path = "{vault}"
 db_path = "{db}"
 
-[inference]
+[embedding]
 base_url = "http://localhost:8080"
+adapter = "tei"
+model = "embed"
+document_model = "embed_chunked"
 
-[inference.models]
-query_embedding = "embed"
-document_embedding = "embed"
-chunk_embedding = "embed_chunked"
-reranker = "rerank"
+[rerank]
+base_url = "http://localhost:8080"
+adapter = "minimal"
+model = "rerank"
 
-[expansion]
-provider = "openai-compatible"
+[chat.expansion]
 base_url = "http://localhost:1234/v1"
 model = "gemma-smol"
 "#,

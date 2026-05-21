@@ -8,7 +8,6 @@ use super::super::pre_filter::PreFilter;
 use super::test_support::{cleanup, dummy_embed_response, insert_note, runtime, unique_db_path};
 use super::*;
 use crate::expansion::client::ExpansionClient;
-use crate::inference::InferenceClient;
 use crate::store::open_database;
 
 #[test]
@@ -60,7 +59,7 @@ fn intent_disables_strong_signal_probe_short_circuit() {
         "unique term found nowhere else",
     );
 
-    let inference = InferenceClient::new(server.uri()).unwrap();
+    let (embedding, rerank) = test_support::test_clients(server.uri());
     let expansion = ExpansionClient::new(server.uri(), "test-model").unwrap();
     let opts = HybridPipelineOptions {
         limit: 10,
@@ -76,7 +75,8 @@ fn intent_disables_strong_signal_probe_short_circuit() {
 
     let _ = run_hybrid_pipeline(
         &conn,
-        &inference,
+        &embedding,
+        &rerank,
         Some(&expansion),
         "crystallophosphene",
         &opts,

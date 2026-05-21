@@ -12,7 +12,7 @@
 use std::time::Instant;
 
 use crate::cache::rerank as rerank_cache;
-use crate::inference::InferenceClient;
+use crate::inference::RerankClient;
 use rusqlite::Connection;
 
 use super::chunk_excerpt::{
@@ -25,7 +25,7 @@ use super::types::RawSearchResult;
 
 pub(crate) struct IntentRerankOptions<'a> {
     pub(crate) conn: &'a Connection,
-    pub(crate) inference: &'a InferenceClient,
+    pub(crate) rerank: &'a RerankClient,
     pub(crate) query: &'a str,
     pub(crate) intent: Option<&'a str>,
     pub(crate) candidates: Vec<RawSearchResult>,
@@ -72,7 +72,7 @@ fn rerank_text(candidate: &RawSearchResult) -> String {
 /// no `scores.rerank` field set.
 #[must_use]
 pub fn rerank_candidates(
-    inference: &InferenceClient,
+    rerank: &RerankClient,
     query: &str,
     candidates: Vec<RawSearchResult>,
     top_k: u32,
@@ -80,7 +80,7 @@ pub fn rerank_candidates(
 ) -> Vec<RawSearchResult> {
     let options = RerankOptions {
         conn: None,
-        inference,
+        rerank,
         query,
         intent: None,
         candidates,
@@ -94,7 +94,7 @@ pub fn rerank_candidates(
 /// Calls the inference sidecar with a `db_version`-scoped per-snippet cache.
 #[must_use]
 pub fn rerank_candidates_with_db_version(
-    inference: &InferenceClient,
+    rerank: &RerankClient,
     query: &str,
     candidates: Vec<RawSearchResult>,
     top_k: u32,
@@ -103,7 +103,7 @@ pub fn rerank_candidates_with_db_version(
 ) -> Vec<RawSearchResult> {
     let options = RerankOptions {
         conn: None,
-        inference,
+        rerank,
         query,
         intent: None,
         candidates,
@@ -121,7 +121,7 @@ pub(crate) fn rerank_candidates_with_intent(
 ) -> Vec<RawSearchResult> {
     rerank_candidates_inner(RerankOptions {
         conn: Some(options.conn),
-        inference: options.inference,
+        rerank: options.rerank,
         query: options.query,
         intent: options.intent,
         candidates: options.candidates,
@@ -133,7 +133,7 @@ pub(crate) fn rerank_candidates_with_intent(
 
 struct RerankOptions<'a> {
     conn: Option<&'a Connection>,
-    inference: &'a InferenceClient,
+    rerank: &'a RerankClient,
     query: &'a str,
     intent: Option<&'a str>,
     candidates: Vec<RawSearchResult>,
@@ -145,7 +145,7 @@ struct RerankOptions<'a> {
 fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
     let RerankOptions {
         conn,
-        inference,
+        rerank,
         query,
         intent,
         candidates,
@@ -184,7 +184,7 @@ fn rerank_candidates_inner(options: RerankOptions<'_>) -> Vec<RawSearchResult> {
     }
 
     if !missing_texts.is_empty() {
-        let Ok(rerank_results) = inference.rerank(&rerank_query, &missing_texts, false) else {
+        let Ok(rerank_results) = rerank.rerank(&rerank_query, &missing_texts, false) else {
             let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
             hooks.emit_rerank_end(elapsed_ms);
             return active;
