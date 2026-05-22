@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::io::{IsTerminal, Write};
 
 const BANNER_TALON: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/talon.txt"));
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/embedded/talon.txt"));
 
 const LINE_INDENT: &str = "  ";
 const GRADIENT_STOPS: [(u8, u8, u8); 4] = [

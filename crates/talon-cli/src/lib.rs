@@ -14,7 +14,7 @@ mod telemetry;
 
 /// Embedded skill contract printed by `talon --skill`.
 pub const SKILL_MD: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../skill/SKILL.md"));
+    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/embedded/SKILL.md"));
 
 /// Runs the CLI and returns a process exit code.
 #[must_use]
