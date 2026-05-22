@@ -244,6 +244,32 @@ talon ask "summarize my notes on X"
 
 ---
 
+## Credentials
+
+Talon stores API keys in the OS keychain (macOS Keychain, Linux kernel keyring, Windows Credential Manager) as a single encrypted JSON blob. No keys in config files.
+
+```bash
+talon secrets set openrouter sk-your-key   # store a key
+talon secrets status                        # list stored credential names
+talon secrets delete openrouter            # remove a key
+```
+
+Reference a stored credential from `config.toml`:
+
+```toml
+[credentials.openrouter]
+# no api_key or api_key_env needed — resolved from keychain by name
+
+[chat.expansion]
+credential = "openrouter"
+base_url = "https://openrouter.ai/api/v1"
+model = "mistralai/mistral-7b-instruct"
+```
+
+Resolution order per endpoint: inline `api_key` → `api_key_env` → named credential inline key → named credential env var → keychain blob. The keychain is the last leg, so existing env-var workflows keep working unchanged.
+
+---
+
 ## Embedding sidecar
 
 Talon calls a local HTTP sidecar for embeddings and reranking. Any TEI-compatible server works: Hugging Face `text-embeddings-inference`, Infinity, or a local LLM sidecar with the right endpoint shapes (`/embed`, `/embed-chunked`, `/rerank`).
