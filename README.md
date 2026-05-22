@@ -164,6 +164,26 @@ Exposed tools: `talon_search`, `talon_read`, `talon_related`. `talon_ask` is int
 
 ---
 
+## Vault health
+
+`talon inspect` audits the vault's link graph and reports four categories of structural issue:
+
+- **Orphans** -- notes with no incoming links from any other note
+- **Broken links** -- wikilinks pointing at a title or alias that doesn't exist in the index
+- **Dangling refs** -- paths listed in a note's `sources:` frontmatter that don't resolve to an active note
+- **Unreferenced** -- notes with neither outgoing links nor incoming links: isolated islands
+
+```bash
+talon inspect
+talon inspect --scope wiki    # limit to a specific scope
+```
+
+Findings respect scope `inspect = false` flags, so `daily/` and `private/` don't generate noise. The check runs against the live index, so it reflects the current sync state without re-scanning the filesystem.
+
+For agents running curation passes, `talon inspect --agent` emits a compact JSON findings list with vault paths and finding types.
+
+---
+
 ## Scopes
 
 Scopes partition the vault by role and control what gets searched, ranked, and linted.
