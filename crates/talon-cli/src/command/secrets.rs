@@ -7,6 +7,7 @@ pub enum SecretsSubcommand {
     Set { name: String, key: String },
     Delete { name: String },
     Status,
+    Get { name: String },
 }
 
 pub fn emit(sub: &SecretsSubcommand) -> Result<()> {
@@ -23,6 +24,10 @@ pub fn emit(sub: &SecretsSubcommand) -> Result<()> {
                 writeln!(stdout, "not found: {name}")?;
             }
         }
+        SecretsSubcommand::Get { name } => match keychain::get(name)? {
+            Some(key) => writeln!(stdout, "{key}")?,
+            None => writeln!(stdout, "not found: {name}")?,
+        },
         SecretsSubcommand::Status => {
             let names = keychain::list_names()?;
             if names.is_empty() {

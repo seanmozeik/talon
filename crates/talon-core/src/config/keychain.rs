@@ -1,32 +1,54 @@
 //! OS keychain-backed credential storage.
 //!
 //! One JSON blob stored at service="talon", account="credentials" in the OS
-//! keychain (macOS Keychain, Linux kernel keyring, Windows Credential Manager).
-//! The blob is a `BTreeMap<String, String>` where each key is a credential name.
+//! keychain. The blob is a `BTreeMap<String, String>` where each key is a
+//! credential name.
+//!
+//! On macOS: uses `security-framework` passwords API (`SecItem`, no UI prompt).
+//! On Linux: uses `keyring-core` + linux-keyutils.
+//! On Windows: uses `keyring-core` + windows-native-keyring-store.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
-
-use keyring_core::error::Error as KeyringError;
-use keyring_core::{Entry, set_default_store};
 
 use crate::error::TalonError;
 
 const SERVICE: &str = "talon";
 const ACCOUNT: &str = "credentials";
 
-/// Initializes the platform credential store exactly once.
+fn config_error(e: impl std::fmt::Display) -> TalonError {
+    TalonError::Config {
+        message: format!("keychain error: {e}"),
+    }
+}
+
+// ── macOS ──────────────────────────────────────────────────────────────────
+
+#[cfg(target_os = "macos")]
+fn read_raw() -> Result<Option<Vec<u8>>, TalonError> {
+    use security_framework::passwords::get_generic_password;
+    match get_generic_password(SERVICE, ACCOUNT) {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(e) if e.code() == -25300 => Ok(None), // errSecItemNotFound
+        Err(e) => Err(config_error(e)),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn write_raw(data: &[u8]) -> Result<(), TalonError> {
+    use security_framework::passwords::set_generic_password;
+    set_generic_password(SERVICE, ACCOUNT, data).map_err(config_error)
+}
+
+// ── Linux / Windows (keyring-core) ─────────────────────────────────────────
+
+#[cfg(not(target_os = "macos"))]
 fn ensure_store() {
+    use keyring_core::set_default_store;
+    use std::sync::Arc;
     use std::sync::OnceLock;
+
     static INIT: OnceLock<()> = OnceLock::new();
     INIT.get_or_init(|| {
-        #[cfg(target_os = "macos")]
-        {
-            use apple_native_keyring_store::keychain::Store;
-            if let Ok(store) = Store::new() {
-                set_default_store(store as Arc<_>);
-            }
-        }
         #[cfg(target_os = "linux")]
         {
             use linux_keyutils_keyring_store::Store;
@@ -44,28 +66,46 @@ fn ensure_store() {
     });
 }
 
-fn entry() -> Result<Entry, TalonError> {
+#[cfg(not(target_os = "macos"))]
+fn read_raw() -> Result<Option<Vec<u8>>, TalonError> {
+    use keyring_core::Entry;
+    use keyring_core::error::Error as KeyringError;
     ensure_store();
-    Entry::new(SERVICE, ACCOUNT).map_err(config_error)
+    match Entry::new(SERVICE, ACCOUNT)
+        .map_err(config_error)?
+        .get_secret()
+    {
+        Ok(bytes) => Ok(Some(bytes)),
+        Err(KeyringError::NoEntry) => Ok(None),
+        Err(e) => Err(config_error(e)),
+    }
 }
 
+#[cfg(not(target_os = "macos"))]
+fn write_raw(data: &[u8]) -> Result<(), TalonError> {
+    use keyring_core::Entry;
+    ensure_store();
+    Entry::new(SERVICE, ACCOUNT)
+        .map_err(config_error)?
+        .set_secret(data)
+        .map_err(config_error)
+}
+
+// ── Shared blob logic ───────────────────────────────────────────────────────
+
 fn read_blob() -> Result<BTreeMap<String, String>, TalonError> {
-    match entry()?.get_password() {
-        Ok(raw) => serde_json::from_str(&raw).map_err(config_error),
-        Err(KeyringError::NoEntry) => Ok(BTreeMap::new()),
-        Err(e) => Err(config_error(e)),
+    match read_raw()? {
+        None => Ok(BTreeMap::new()),
+        Some(bytes) => {
+            let s = String::from_utf8(bytes).map_err(config_error)?;
+            serde_json::from_str(&s).map_err(config_error)
+        }
     }
 }
 
 fn write_blob(blob: &BTreeMap<String, String>) -> Result<(), TalonError> {
     let json = serde_json::to_string(blob).map_err(config_error)?;
-    entry()?.set_password(&json).map_err(config_error)
-}
-
-fn config_error(e: impl std::fmt::Display) -> TalonError {
-    TalonError::Config {
-        message: format!("keychain error: {e}"),
-    }
+    write_raw(json.as_bytes())
 }
 
 /// Returns the API key for `name` from the keychain blob, or `None` if not set.

@@ -1,26 +1,25 @@
-# Talon remote configuration — OpenRouter endpoints.
+# Talon example configuration — OpenRouter remote endpoints.
 #
-# All AI capabilities (embeddings, reranking, query expansion, ask) route
-# through OpenRouter with a single API key. No local sidecar required.
+# Same as config.toml but routes all AI through OpenRouter instead of a local
+# sidecar. One API key, no GPU required.
 #
 # Setup:
 #   1. Get an API key at openrouter.ai
 #   2. Store it: talon secrets set openrouter <your-key>
-#   3. Copy this file: cp examples/config-remote.toml ~/.config/talon/config.toml
-#   4. Set vault_path and db_path below
-#   5. talon sync
+#   3. Copy to ~/.config/talon/config.toml and adjust vault_path / db_path
 #
-# Model choices (May 2026):
-#   embedding   google/gemini-embedding-2-preview   $0.20/M tokens, 8K ctx, 3072-dim
-#   rerank      cohere/rerank-4-pro                 $0.0025/search, 33K ctx, best quality
-#   expansion   google/gemma-4-26b-a4b-it           cheap, fast, strong instruction following
+# Models (May 2026):
+#   embedding   google/gemini-embedding-2-preview   $0.20/M tokens, 8K ctx
+#   rerank      cohere/rerank-4-pro                 $0.0025/search, 33K ctx
+#   expansion   google/gemma-4-26b-a4b-it           cheap, fast instruction following
 #   ask         deepseek/deepseek-v4-flash          strong reasoning, low cost
 
-vault_path = "/path/to/your/obsidian/vault"
-db_path    = "~/.local/share/talon/index.sqlite"
+# Relative paths resolved against this file's directory (i.e. examples/).
+vault_path = "calle-sur-vault"
+db_path = "calle-sur-vault/.talon/calle-sur-remote.db"
 
 include_patterns = ["**/*.md"]
-ignore_patterns  = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
+ignore_patterns = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
 
 # ── Credentials ────────────────────────────────────────────────────────────
 # Store your key with: talon secrets set openrouter <key>
@@ -29,123 +28,128 @@ ignore_patterns  = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
 [credentials.openrouter]
 api_key_env = "OPENROUTER_API_KEY"
 
-# ── Indexer ─────────────────────────────────────────────────────────────────
-
 [indexer]
-chunk_tokens     = 512
-chunk_overlap    = 64
+chunk_tokens = 512
+chunk_overlap = 64
 chunk_min_tokens = 16
 
-# ── Search ───────────────────────────────────────────────────────────────────
-
 [search]
-candidate_limit   = 60
-limit             = 10
-cache_size        = 200
+candidate_limit = 60
+limit = 10
+cache_size = 200
 rerank_cache_size = 2000
-rerank_batch_size = 8
-rerank_max_tokens = 512
-
-# ── Embedding ────────────────────────────────────────────────────────────────
-# OpenRouter exposes OpenAI-compatible /v1/embeddings.
-# gemini-embedding-2-preview: Google's multimodal embedding model, 8K context,
-# up to 3072 dimensions. Released April 2026.
+rerank_batch_size = 4
+rerank_max_tokens = 128
 
 [embedding]
-base_url       = "https://openrouter.ai/api/v1"
-adapter        = "openai"
-model          = "google/gemini-embedding-2-preview"
+base_url = "https://openrouter.ai/api/v1"
+adapter = "open-ai"
+model = "google/gemini-embedding-2-preview"
 context_tokens = 8192
-credential     = "openrouter"
-
-# ── Reranking ────────────────────────────────────────────────────────────────
-# OpenRouter /v1/rerank uses Cohere's wire format.
-# cohere/rerank-4-pro: 33K context, 100+ languages, $0.0025/search. Released April 2026.
-# Downgrade to cohere/rerank-4-fast if latency matters more than quality.
-
-[rerank]
-base_url   = "https://openrouter.ai/api/v1"
-adapter    = "cohere"
-model      = "cohere/rerank-4-pro"
 credential = "openrouter"
 
-# ── Chat: query expansion ────────────────────────────────────────────────────
-# Short task: input ~500 tokens, output ~100 tokens. Runs on every search.
-# gemma-4-26b-a4b-it: Google's MoE Gemma 4 variant, fast and cheap for
-# short instruction-following tasks.
+[rerank]
+base_url = "https://openrouter.ai/api/v1"
+adapter = "cohere"
+model = "cohere/rerank-4-pro"
+credential = "openrouter"
 
 [chat.expansion]
-base_url          = "https://openrouter.ai/api/v1"
-model             = "google/gemma-4-26b-a4b-it"
-context_tokens    = 4096
+base_url = "https://openrouter.ai/api/v1"
+model = "google/gemma-4-26b-a4b-it"
+context_tokens = 4096
 max_output_tokens = 256
-credential        = "openrouter"
-
-# ── Chat: ask ────────────────────────────────────────────────────────────────
-# Used for talon ask synthesis — needs strong multi-document reasoning.
-# deepseek/deepseek-v4-flash: fast, strong reasoning, low cost.
+credential = "openrouter"
 
 [chat.ask]
-model                      = "deepseek/deepseek-v4-flash"
-context_tokens             = 65536
-max_output_tokens          = 2048
-planning_reasoning_effort  = "none"
+base_url = "https://openrouter.ai/api/v1"
+model = "deepseek/deepseek-v4-flash"
+context_tokens = 65536
+max_output_tokens = 2048
+planning_reasoning_effort = "none"
 synthesis_reasoning_effort = "medium"
-credential                 = "openrouter"
+credential = "openrouter"
 
 [mcp.hooks]
 recall_deadline_ms = 45000
 
-# ── Scopes ───────────────────────────────────────────────────────────────────
-# Karpathy LLM-Wiki preset. Adjust to match your vault layout.
+# ── Scopes ─────────────────────────────────────────────────────────────────
+# Karpathy LLM-Wiki preset. Rationale per directory:
+#   wiki/      compiled, agent-curated knowledge — top signal
+#   projects/  active workspaces — strong signal
+#   artifacts/ agent outputs for the user — neutral
+#   daily/     ephemeral; only useful when the user asks about a date or
+#              when the agent is processing today's note
+#   raw/       source material the agent hasn't compiled yet — useful but noisy
+#   archive/   completed/stale — deprioritised heavily
+#   private/   sensitive — never auto-searched, only via explicit --scope private
+#   _meta/     vault infrastructure — only via --scope meta
+#
+# Three knobs per scope:
+#   priority   scope label for filtering, inspect behavior, and ranking
+#              weights. Positive boosts are gated by relevance so weak high-
+#              priority hits do not shout over stronger matches.
+#              Defaults: boosted=1.2, elevated=1.1, normal=1.0,
+#              muted=0.85, buried=0.5.
+#   default    if false, the scope is excluded from default queries entirely
+#              (not just down-ranked); re-include via --scope NAME or --scope-all
+#   lint       if false, files in this scope don't appear in `talon inspect`
+#              findings — but stay indexed and continue to satisfy link-target
+#              resolution. Useful for ephemeral/closed/sensitive areas.
+#
+# Iteration follows TOML declaration order — narrower or more sensitive
+# scopes declared above broader ones win when their globs overlap.
 
 [scopes.wiki]
-glob     = ["wiki/**"]
+glob = ["wiki/**"]
 priority = "boosted"
-default  = true
-inspect  = true
+default = true
+inspect = true
 
 [scopes.projects]
-glob     = ["projects/**"]
+glob = ["projects/**"]
 priority = "elevated"
-default  = true
-inspect  = true
+default = true
+inspect = true
 
 [scopes.artifacts]
-glob     = ["artifacts/**"]
+glob = ["artifacts/**"]
 priority = "elevated"
-default  = true
-inspect  = true
+default = true
+inspect = true
 
 [scopes.daily]
-glob     = ["daily/**"]
+glob = ["daily/**"]
 priority = "muted"
-default  = false
-inspect  = false
+default = false
+inspect = false     # daily notes are written-from, not written-to
 
 [scopes.raw]
-glob     = ["raw/**"]
+glob = ["raw/**"]
 priority = "muted"
-default  = false
-inspect  = true
+default = false
+inspect = true     # raw clips can have broken links worth catching
 
 [scopes.archive]
-glob     = ["archive/**"]
+glob = ["archive/**"]
 priority = "buried"
-default  = false
-inspect  = false
+default = false
+inspect = false       # closed projects don't need ongoing curation
 
 [scopes.private]
-glob     = ["private/**"]
+glob = ["private/**"]
 priority = "buried"
-default  = false
-inspect  = false
+default = false
+inspect = false
 
 [scopes.meta]
-glob     = ["_meta/**"]
+glob = ["_meta/**"]
 priority = "buried"
-default  = false
-inspect  = false
+default = false
+inspect = false
 
+# ── Lint global ignore ─────────────────────────────────────────────────────
+# Globs of paths to skip when reporting inspect findings. Takes precedence over
+# per-scope `inspect = true`. Excluded paths remain indexed and link-resolvable.
 [inspect]
 ignore = ["**/_drafts/**", "**/scratch.md"]

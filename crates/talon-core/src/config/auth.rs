@@ -97,7 +97,10 @@ pub fn resolve_api_key(
         return Ok(Some(key.to_owned()));
     }
     if let Some(env_name) = non_empty(entry.api_key_env.as_deref()) {
-        return read_env_key(env_name);
+        // NotPresent falls through to keychain; only return if found or error.
+        if let Some(key) = try_env_key(env_name)? {
+            return Ok(Some(key));
+        }
     }
     match crate::config::keychain::get(credential_name) {
         Ok(Some(key)) => Ok(Some(key)),
@@ -106,6 +109,21 @@ pub fn resolve_api_key(
             tracing::debug!(%credential_name, %error, "failed to read credential from keychain");
             Ok(None)
         }
+    }
+}
+
+/// Reads an env var, returning `None` if not set. Used for credential-table
+/// `api_key_env` so an absent var falls through to the keychain.
+fn try_env_key(env_name: &str) -> Result<Option<String>, TalonError> {
+    match env::var(env_name) {
+        Ok(value) if value.is_empty() => Err(TalonError::Config {
+            message: format!("environment variable {env_name} is empty"),
+        }),
+        Ok(value) => Ok(Some(value)),
+        Err(env::VarError::NotPresent) => Ok(None),
+        Err(env::VarError::NotUnicode(_)) => Err(TalonError::Config {
+            message: format!("environment variable {env_name} is not valid UTF-8"),
+        }),
     }
 }
 
