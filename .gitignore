@@ -7,3 +7,7 @@ __pycache__/
 *.py[cod]
 .venv/
 dist/
+
+# Local dev config
+.mcp.json
+prd.json

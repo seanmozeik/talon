@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "talon": {
-      "command": "/home/yolo/.cache/cargo-target/b78c7d3a819db4de/debug/talon",
-      "args": ["--config", "/home/yolo/talon/examples/config.toml", "mcp"]
-    }
-  }
-}
