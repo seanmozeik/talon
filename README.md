@@ -1,152 +1,201 @@
 # Talon
 
-Talon is a standalone Rust binary for Obsidian vault search, grounded answers, read, sync, related-note traversal, status, recall, and MCP-over-stdio integration.
+Talon is a Rust binary that indexes an Obsidian vault and makes it queryable: hybrid search, grounded answers, graph traversal, and an MCP server that drops vault context into any AI agent. One binary, no cloud, no daemon.
 
-## Layout
+---
 
-- `crates/talon-core`: typed contracts, config, search/indexing/query logic, shared LLM clients, and output types.
-- `crates/talon-cli`: `clap` CLI, `--agent`, `--skill`, human output, `--mcp` entry point, config loading, and process wiring.
-- `skill/SKILL.md`: agent-facing contract printed by `talon --skill`.
-- `ts/`: thin npm wrapper skeleton for binary resolution and MCP child specs.
+## What it does
 
-## CLI UX Direction
+**Search** your vault with natural language. Talon fuses five retrieval signals per query: BM25 lexical matching, dense vector search, title and alias matching, query expansion via a local LLM, and graph-aware reranking that boosts notes your other notes already trust. Results are reranked by a cross-encoder before they reach you.
 
-Human output is a product surface. Talon uses `anstyle`/`anstream` for terminal styling, `rattles` for indeterminate spinners, and compact cards for search/read/ask results. Agent output is separate: `--agent` emits compact JSON with plain vault paths and no envelope metadata.
+```
+talon search "what did I write about fermentation and salt ratios"
+```
 
-## Development
+**Ask** a question and get a grounded answer synthesized from the matching notes, not a hallucination.
+
+```
+talon ask "what's my current thinking on pricing the hot sauce line"
+```
+
+**Navigate the graph.** `talon related` traverses link and backlink edges with graph-community scoring so the most structurally central notes rank above loosely-connected ones.
+
+**Serve agents.** `talon mcp` is an MCP-over-stdio server exposing `talon_search`, `talon_read`, and `talon_related`. Point Claude Code, Cursor, or any MCP-compatible agent at it and the vault becomes searchable context.
+
+**Inject recall automatically.** The `UserPromptSubmit` hook fires `talon recall` on every turn, scores the prompt against the vault, and injects the highest-signal notes into the agent's context window before the model sees the message.
+
+---
+
+## Why it's built in Rust
+
+The indexer, BM25 store, vector metadata store, graph engine, and query pipeline all run in a single process with no coordinator. Cold queries on a 3,000-note vault take under 100ms lexical-only; hybrid queries depend on your embedding sidecar latency, not Talon's overhead. Memory use is flat at rest.
+
+---
+
+## Quick start
 
 ```bash
-just check
-cargo run -p talon-cli -- --help
-cargo run -p talon-cli -- init
-cargo run -p talon-cli -- --skill
+cargo install --path crates/talon-cli
+
+# Point at your vault
+cp examples/config.toml ~/.config/talon/config.toml
+# edit vault_path to your Obsidian vault
+
+# Build the index
+talon sync
+
+# Search
+talon search "your query here"
+
+# Ask
+talon ask "summarize my notes on X"
 ```
 
-## Index Lifecycle
+For the full config reference, see `examples/config.toml`. It's annotated.
 
-`talon sync` keeps the index in step with the configured vault. It scans Markdown files, reindexes new or changed files, skips unchanged files by mtime and size, then cleans up active index rows whose source paths were deleted, moved, renamed, or excluded by the current include/ignore filters.
+---
 
-For a move or rename, the next sync indexes the new path and soft-deletes the old path in the same run. The old note row remains inactive for history/change queries, but its chunks, link rows, aliases, tags, frontmatter fields, and vector metadata are removed. Link edits inside changed files are reindexed with the file. If a link target moves without editing the source file, sync tries to relink unresolved wikilinks against current active note titles and aliases.
+## Hybrid retrieval
 
-Sync flags change cost or depth:
+A normal search query runs this pipeline:
 
-- `talon sync`: incremental index refresh, stale path cleanup, and pending/changed embeddings.
-- `talon sync --fast`: same index refresh and stale path cleanup, with no embedding pass.
-- `talon sync --force`: incremental index refresh, then rebuild embeddings for every active chunk.
-- `talon sync --rebuild`: delete the SQLite index files, recreate the schema, and index the vault from scratch. Combine with `--fast` for a lexical-only rebuild.
+1. BM25 and title/alias probes retrieve a candidate set
+2. If a local LLM is configured, a query expansion step rewrites the query into search-optimized forms
+3. Dense vector retrieval runs in parallel against the BM25 candidates
+4. Reciprocal-rank fusion merges the two result lists
+5. A cross-encoder reranks the fused set
+6. Graph scoring adjusts final ranks: notes at the center of your link graph, in tightly-knit communities with your top results, get a modest structural boost
 
-## Standalone Embedder
+`--fast` skips steps 2-6 and returns BM25+title results only. Useful when you need speed and the query is exact enough that lexical matching is sufficient.
 
-Set `embedding.base_url` and `rerank.base_url` in `~/.config/talon/config.toml` to a local HTTP TEI-compatible endpoint. Good defaults are Hugging Face `text-embeddings-inference`, Infinity, or ultraclaw's local sidecar if you are running one. Talon only expects `/embed`, `/embed-chunked`, and `/rerank` endpoints with the shapes described in the design doc.
+---
 
-## Ask
+## Agent output
 
-`talon ask` is a human-facing way to get a compact answer grounded in the vault:
+Every command accepts `--agent`. Agent mode emits compact JSON with plain vault paths and no formatting, designed to be parsed by a calling agent rather than read by a human.
 
 ```bash
-talon ask "what do my notes say about cooking lamb"
-talon --fast ask "summarize my notes on knife skills"
+talon --agent search "fermentation notes"
+talon --agent read "[[Hot Sauce Formulation#Targets]]"
+talon --agent related "wiki/Lacto-Fermentation.md"
 ```
 
-Ask uses the configured ask model to plan search queries, runs Talon's normal search stack, expands the matched notes into the most relevant source chunks, and asks the model to synthesize an answer. Unlike `search`, ask may feed multiple snippets from the same document to the synthesis model when several chunks are relevant.
+Read accepts Obsidian references directly. Heading reads return only the requested section, with line numbers, so the agent knows where in the file it landed.
 
-Configure the ask model under `[chat.ask]`; transport defaults inherit from `[chat.expansion]`:
+---
 
-```toml
-[chat.expansion]
-base_url = "http://localhost:8000/v1"
-model = "bonsai"
+## MCP integration
 
-[chat.ask]
-model = "qwen-smol"
-planning_reasoning_effort = "none"
-synthesis_reasoning_effort = "medium"
+```bash
+talon mcp
 ```
 
-Non-fast ask does not cap output tokens. `--fast` forces both ask stages to `reasoning_effort = "none"`, sends `chat_template_kwargs.enable_thinking = false`, caps completion output at 2048 tokens, and runs the retrieval stage in fast lexical mode.
+Runs a stateless MCP-over-stdio server. Wire it into Claude Code's `.mcp.json` or any MCP-compatible host:
+
+```json
+{
+  "mcpServers": {
+    "talon": {
+      "command": "talon",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+Exposed tools: `talon_search`, `talon_read`, `talon_related`. `talon_ask` is intentionally not exposed: agents are better served searching and synthesizing with their own model.
+
+---
+
+## Recall hook (Claude Code)
+
+Talon ships a recall command designed to run on every agent turn:
+
+```bash
+talon recall --format prompt-xml
+```
+
+It distills the incoming prompt into weighted search phrases, runs hybrid retrieval, and emits a `<vault_recall>` XML block the agent host injects into context. The `integrations/hermes-talon-recall/` directory contains a drop-in Hermes memory provider that automates this for Hermes-hosted agents.
+
+For Claude Code, add to your `settings.json`:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "talon recall --format prompt-xml"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
 
 ## Scopes
 
-Scopes partition the vault by role and let queries opt in or out of each partition. Declare them in `~/.config/talon/config.toml`:
+Scopes partition the vault by role. Declare them in `config.toml`, set `default = false` on sensitive or noisy directories, and they're excluded from queries unless you opt in.
 
 ```toml
 [scopes.wiki]
-glob = "wiki/**"
+glob = ["wiki/**"]
 priority = "boosted"
 default = true
-lint = true
-
-[scopes.daily]
-glob = "daily/**"
-priority = "muted"
-default = true
-lint = false        # daily notes still indexed; just not reported by `talon lint`
 
 [scopes.private]
-glob = "private/**"
+glob = ["private/**"]
 priority = "buried"
-default = false     # excluded from queries unless --scope private / --scope-all
-lint = false
+default = false   # excluded unless you pass --scope private
 ```
 
-Scope iteration follows TOML declaration order — narrower or more sensitive scopes declared above broader ones win when their globs overlap.
+Priority weights are `boosted=1.2`, `elevated=1.1`, `normal=1.0`, `muted=0.85`, `buried=0.5`. Boosts are relevance-gated: a weak high-priority hit won't outrank a stronger normal-priority match.
 
-By default, queries (`search`, `recall`, `related`, `meta`, `changes`, `lint`) cover only scopes with `default = true`. Scopes with `default = false` are **excluded** entirely — not just down-ranked. Scope priority weights are modest by default (`boosted=1.2`, `elevated=1.1`, `normal=1.0`, `muted=0.85`, `buried=0.5`) and positive boosts are gated by relevance so a weak high-priority hit cannot shout over a stronger match.
+---
 
-To include a `default = false` scope, opt in explicitly:
+## Sync
 
-- `--scope NAME` (repeatable, additive, short form `-s`): adds the named scope to the default pool.
-- `--scope-only NAME` (repeatable): searches only the named scope(s).
-- `--scope-all`: searches every configured scope, overriding the `default` flag.
+```bash
+talon sync            # incremental refresh, stale cleanup, pending embeddings
+talon sync --fast     # incremental refresh and cleanup, no embedding pass
+talon sync --force    # rebuild embeddings for every active chunk
+talon sync --rebuild  # drop and rebuild the index from scratch
+```
 
-The three are mutually exclusive on a single invocation. Unknown scope names error with the list of configured names. The response's `meta.scope_set` echoes the resolved active scope names. See `examples/config.toml` for a Karpathy-style preset.
+The index lives in a SQLite file alongside the vault. Sync is safe to run at any frequency; it skips unchanged files by mtime and size.
 
-### Lint exclusion
+---
 
-Per-scope `lint = false` skips a scope's files in `talon lint` findings — useful for ephemeral journals (`daily/`), closed work (`archive/`), or sensitive material (`private/`). Excluded files are still indexed and continue to satisfy link-target resolution, so a wiki note linking to a `daily/` file isn't reported as broken.
+## Embedding sidecar
 
-For globs that don't fit cleanly into a scope, set a global ignore list:
+Talon expects a local HTTP sidecar with `/embed`, `/embed-chunked`, and `/rerank` endpoints. Any TEI-compatible server works: Hugging Face `text-embeddings-inference`, Infinity, or a local ultraclaw sidecar.
 
 ```toml
-[lint]
-ignore = ["**/_drafts/**", "**/scratch.md"]
+[embedding]
+base_url = "http://localhost:8000"
+model = "embed"
+
+[rerank]
+base_url = "http://localhost:8000"
+model = "rerank"
 ```
 
-Global `lint.ignore` takes precedence over per-scope `lint = true`.
+Without a sidecar, Talon runs in lexical-only mode. Search and recall still work; they just skip vector retrieval and reranking.
 
-## Per-result fields
+---
 
-`search`, `related`, and `meta` results carry these fields in `--json` mode. Search's `isIndex`, `citations`, `links`, `backlinks`, `tags`, and `aliases` are also included in `--agent` mode when non-empty because they are compact navigation cues.
+## Example vault
 
-- `scope`: resolved scope name. Omitted for paths that match no scope.
-- `mtime`: file modification time in the system local timezone. `"HH:MM"` (e.g. `"15:42"`) for edits within the last 24 hours, `"YYYY-MM-DD"` (e.g. `"2026-04-25"`) otherwise. Recent edits get instantly-readable wall-clock time; older edits collapse to date. For sub-day precision on indexing/deletion events, see `changes`.
-- `isIndex` (`search` only): true for generic index pages such as `index.md`, `README.md`, and `*_index.md`.
-- `citations` (`search` only): source paths listed in the result note's `sources:` frontmatter, capped for compact output.
-- `links` (`search` / `read`): resolved outgoing Obsidian wikilinks, capped for compact search output.
-- `backlinks` (`search` only): notes that link to the result, capped for compact output.
-- `tags` / `aliases` (`search` / `read`): Obsidian frontmatter and inline metadata indexed for the note.
-- `count` (`related` only): number of distinct link rows between source and target — a rough edge-strength signal.
+`examples/calle-sur-vault/` is a 78-note synthetic vault built around a fictional chef-restaurateur. It uses the Karpathy LLM-Wiki layout (`wiki/`, `projects/`, `artifacts/`, `daily/`, `raw/`, `private/`, `archive/`, `_meta/`) and works out of the box with `examples/config.toml` for hands-on testing without touching your real vault.
 
-`changes.indexed_at` and `tombstones.deleted_at` use full RFC 3339 UTC (`"2026-04-25T10:23:00Z"`) since `--since` consumers compare exact timestamps.
+---
 
-`read` accepts Obsidian references such as `[[Hot Sauce Formulation]]`, `[[Hot Sauce Formulation#Targets]]`, and `Hot Sauce Formulation#Targets`. Heading reads return only that section plus line metadata.
+## License
 
-`search` query text supports tag and heading filters: `#fermentation`, `tag:fermentation`, `heading:Targets`, and `h:Targets`.
-
-## Chunking
-
-Markdown chunking is configured under `[indexer]` in `talon.toml`:
-
-```toml
-[indexer]
-chunk_tokens = 512
-chunk_overlap = 64
-chunk_min_tokens = 16
-```
-
-The text-splitter/tokenx chunker strips frontmatter from BM25 and embedding text. Existing indexes will be re-chunked on the next `talon sync`, which also queues the new chunks for embedding. On a large vault, the first post-upgrade sync can spend 30+ minutes re-embedding against a real sidecar.
-
-## Integrations
-
-- `talon mcp` exposes public MCP tools for agents: `talon_search`, `talon_read`, and `talon_related`. It intentionally does **not** expose `talon_ask`; agents are better served by searching/reading the vault and synthesizing with their own model.
-- [`integrations/hermes-talon-recall/`](integrations/hermes-talon-recall/README.md) — Hermes Agent Memory Provider plugin that wraps `talon recall --format prompt-xml` to inject vault-native context on every agent turn. Recall-only; agent host handles vault writes.
+MIT
