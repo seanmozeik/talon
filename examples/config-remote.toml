@@ -1,0 +1,153 @@
+# Talon remote configuration — OpenRouter endpoints.
+#
+# All three AI capabilities (embeddings, reranking, query expansion + ask)
+# route through OpenRouter with a single API key. No local sidecar required.
+#
+# Setup:
+#   1. Get an API key at openrouter.ai
+#   2. Store it: talon secrets set openrouter <your-key>
+#   3. Copy this file: cp examples/config-remote.toml ~/.config/talon/config.toml
+#   4. Set vault_path and db_path below
+#   5. talon sync
+#
+# Model choices (May 2026):
+#   embedding   openai/text-embedding-3-small   $0.02/M tokens, 1536-dim
+#   rerank      cohere/rerank-4-fast            fast, accurate, OpenRouter /v1/rerank
+#   expansion   google/gemma-3n-e4b-it          ~$0.06/M tokens, fast instruction following
+#   ask         google/gemma-3n-e4b-it          same model; upgrade to something larger if needed
+
+vault_path = "/path/to/your/obsidian/vault"
+db_path    = "~/.local/share/talon/index.sqlite"
+
+include_patterns = ["**/*.md"]
+ignore_patterns  = [".obsidian/**", ".git/**", "templates/**", "*.canvas"]
+
+# ── Credentials ────────────────────────────────────────────────────────────
+# Store your key with: talon secrets set openrouter <key>
+# Or set the env var:  export OPENROUTER_API_KEY=<key>
+
+[credentials.openrouter]
+api_key_env = "OPENROUTER_API_KEY"
+
+# ── Indexer ─────────────────────────────────────────────────────────────────
+
+[indexer]
+chunk_tokens     = 512
+chunk_overlap    = 64
+chunk_min_tokens = 16
+
+# ── Search ───────────────────────────────────────────────────────────────────
+# rerank_batch_size: OpenRouter rerank accepts up to 1000 documents per call,
+# but smaller batches keep latency predictable.
+
+[search]
+candidate_limit  = 60
+limit            = 10
+cache_size       = 200
+rerank_cache_size   = 2000
+rerank_batch_size   = 8
+rerank_max_tokens   = 512
+
+# ── Embedding ────────────────────────────────────────────────────────────────
+# OpenRouter exposes OpenAI-compatible /v1/embeddings.
+# text-embedding-3-small: 1536 dimensions, $0.02/M tokens.
+# document_model omitted — OpenRouter uses the same model for both.
+
+[embedding]
+base_url       = "https://openrouter.ai/api/v1"
+adapter        = "openai"
+model          = "openai/text-embedding-3-small"
+context_tokens = 8192
+credential     = "openrouter"
+
+# ── Reranking ────────────────────────────────────────────────────────────────
+# OpenRouter /v1/rerank uses Cohere's wire format.
+# cohere/rerank-4-fast: fast cross-encoder, good quality/cost tradeoff.
+# cohere/rerank-4: higher accuracy, slower, use if quality matters more than latency.
+
+[rerank]
+base_url   = "https://openrouter.ai/api/v1"
+adapter    = "cohere"
+model      = "cohere/rerank-4-fast"
+credential = "openrouter"
+
+# ── Chat: query expansion ────────────────────────────────────────────────────
+# Used to rewrite search queries before vector retrieval.
+# Short task: input ~500 tokens, output ~100 tokens.
+# gemma-3n-e4b-it is cheap and fast enough for this.
+
+[chat.expansion]
+base_url          = "https://openrouter.ai/api/v1"
+model             = "google/gemma-3n-e4b-it"
+context_tokens    = 4096
+max_output_tokens = 256
+credential        = "openrouter"
+
+# ── Chat: ask ────────────────────────────────────────────────────────────────
+# Used for talon ask synthesis. Upgrade to a larger model if answer quality
+# matters more than cost (e.g. google/gemini-2.0-flash or anthropic/claude-haiku-4-5).
+
+[chat.ask]
+model                      = "google/gemma-3n-e4b-it"
+context_tokens             = 32768
+max_output_tokens          = 2048
+planning_reasoning_effort  = "none"
+synthesis_reasoning_effort = "medium"
+credential                 = "openrouter"
+
+[mcp.hooks]
+recall_deadline_ms = 45000
+
+# ── Scopes ───────────────────────────────────────────────────────────────────
+# Karpathy LLM-Wiki preset. Same as config.toml — adjust to match your vault layout.
+
+[scopes.wiki]
+glob     = ["wiki/**"]
+priority = "boosted"
+default  = true
+inspect  = true
+
+[scopes.projects]
+glob     = ["projects/**"]
+priority = "elevated"
+default  = true
+inspect  = true
+
+[scopes.artifacts]
+glob     = ["artifacts/**"]
+priority = "elevated"
+default  = true
+inspect  = true
+
+[scopes.daily]
+glob     = ["daily/**"]
+priority = "muted"
+default  = false
+inspect  = false
+
+[scopes.raw]
+glob     = ["raw/**"]
+priority = "muted"
+default  = false
+inspect  = true
+
+[scopes.archive]
+glob     = ["archive/**"]
+priority = "buried"
+default  = false
+inspect  = false
+
+[scopes.private]
+glob     = ["private/**"]
+priority = "buried"
+default  = false
+inspect  = false
+
+[scopes.meta]
+glob     = ["_meta/**"]
+priority = "buried"
+default  = false
+inspect  = false
+
+[inspect]
+ignore = ["**/_drafts/**", "**/scratch.md"]
