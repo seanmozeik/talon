@@ -96,10 +96,17 @@ pub fn resolve_api_key(
     if let Some(key) = non_empty(entry.api_key.as_deref()) {
         return Ok(Some(key.to_owned()));
     }
-    let Some(env_name) = non_empty(entry.api_key_env.as_deref()) else {
-        return Ok(None);
-    };
-    read_env_key(env_name)
+    if let Some(env_name) = non_empty(entry.api_key_env.as_deref()) {
+        return read_env_key(env_name);
+    }
+    match crate::config::keychain::get(credential_name) {
+        Ok(Some(key)) => Ok(Some(key)),
+        Ok(None) => Ok(None),
+        Err(error) => {
+            tracing::debug!(%credential_name, %error, "failed to read credential from keychain");
+            Ok(None)
+        }
+    }
 }
 
 fn read_env_key(env_name: &str) -> Result<Option<String>, TalonError> {

@@ -7,6 +7,7 @@ mod auth;
 mod chunker;
 mod defaults;
 mod endpoints;
+pub mod keychain;
 mod scope_filter;
 mod search;
 #[doc(hidden)]

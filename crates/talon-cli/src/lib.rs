@@ -47,6 +47,7 @@ pub async fn run() -> u8 {
                     cli::Commands::Changes(_) => "changes",
                     cli::Commands::Inspect(_) => "inspect",
                     cli::Commands::Recall(_) => "recall",
+                    cli::Commands::Secrets(_) => "secrets",
                 });
                 let envelope = talon_core::TalonEnvelope::err(
                     action,

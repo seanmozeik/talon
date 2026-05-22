@@ -31,6 +31,12 @@ pub use search_args::{CliSearchMode, SearchArgs, SharedSearchArgs};
 pub use status_args::StatusArgs;
 pub use sync_args::SyncArgs;
 
+#[derive(Debug, Clone, clap::Args)]
+pub struct SecretsArgs {
+    #[command(subcommand)]
+    pub subcommand: crate::command::secrets::SecretsSubcommand,
+}
+
 /// Talon — Obsidian vault search, indexing, and MCP server.
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Debug, Clone, Parser)]
@@ -112,6 +118,9 @@ pub enum Commands {
 
     #[command(about = "Recall relevant vault context for a message.")]
     Recall(RecallArgs),
+
+    #[command(about = "Manage API keys stored in the OS keychain.")]
+    Secrets(SecretsArgs),
 
     #[command(about = "Run MCP-over-stdio mode.")]
     Mcp,

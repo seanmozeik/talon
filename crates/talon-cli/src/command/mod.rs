@@ -11,6 +11,7 @@ mod read;
 mod recall;
 mod related;
 mod search;
+pub(crate) mod secrets;
 mod status;
 mod sync;
 
@@ -82,6 +83,7 @@ pub async fn run(cli: &Cli) -> Result<()> {
         Commands::Changes(args) => changes::emit(args, cli).await,
         Commands::Inspect(args) => inspect::emit(args, cli).await,
         Commands::Recall(args) => recall::emit(args, cli).await,
+        Commands::Secrets(args) => secrets::emit(&args.subcommand),
     }
 }
 
