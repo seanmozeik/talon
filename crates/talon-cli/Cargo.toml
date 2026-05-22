@@ -6,8 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
 readme.workspace = true
+description = "Talon CLI: hybrid retrieval over Obsidian vaults and markdown corpora, with grounded answers, MCP server, and agent-native output."
+keywords = ["obsidian", "search", "retrieval", "rag", "mcp"]
+categories = ["command-line-utilities", "text-processing"]
 default-run = "talon"
 
 [[bin]]

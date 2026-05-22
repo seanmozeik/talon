@@ -123,6 +123,88 @@ publish-npm-root: pack-no-smoke
 publish-npm-dry-run: pack-no-smoke
     bun scripts/npm-publish.ts all --dry-run
 
+# ── crates.io publish ─────────────────────────────────────────────
+# Workspace publish order: talon-core, then talon-cli (cli depends on core).
+# The sleep gives the crates.io index a moment to surface talon-core before
+# talon-cli tries to resolve it. Bump if you see "no matching package".
+
+publish-cargo-dry-run:
+    cargo publish -p talon-core --dry-run --locked
+    cargo publish -p talon-cli --dry-run --locked
+
+publish-cargo:
+    cargo publish -p talon-core --locked
+    @echo "Waiting 30s for crates.io to index talon-core..."
+    sleep 30
+    cargo publish -p talon-cli --locked
+
+# ── Homebrew tarballs ─────────────────────────────────────────────
+# Repackage the multi-platform binaries from target/ into dist/ as
+# brew-compatible tarballs (single executable at the root). Run after
+# `just build-all`. Windows is npm-only — brew doesn't ship there.
+
+dist:
+    rm -rf dist && mkdir -p dist
+    @bash -c ' \
+        set -eu; \
+        for t in aarch64-apple-darwin:darwin-arm64 x86_64-apple-darwin:darwin-x64 aarch64-unknown-linux-gnu:linux-arm64 x86_64-unknown-linux-gnu:linux-x64; do \
+            triple="${t%%:*}"; label="${t##*:}"; \
+            src="target/$triple/release/talon"; \
+            if [ ! -f "$src" ]; then echo "missing $src — run just build-all first" >&2; exit 1; fi; \
+            cp "$src" "dist/talon-$label"; \
+            chmod 0755 "dist/talon-$label"; \
+            tar -czf "dist/talon-$label.tar.gz" -C dist "talon-$label"; \
+            rm "dist/talon-$label"; \
+            echo "  packaged dist/talon-$label.tar.gz"; \
+        done'
+
+# ── Homebrew formula ──────────────────────────────────────────────
+# Render Formula/talon.rb against the tarballs in dist/.
+
+brew-formula VERSION:
+    bun scripts/brew-formula.ts --version {{ VERSION }}
+
+# Copy the rendered formula into the tap repo and push.
+# Assumes ~/dev/tap is the seanmozeik/tap clone.
+publish-brew VERSION: (brew-formula VERSION)
+    cp Formula/talon.rb ~/dev/tap/Formula/talon.rb
+    @bash -c 'cd ~/dev/tap && git add Formula/talon.rb && git commit -m "talon {{ VERSION }}" && git push'
+
+# ── GitHub release ────────────────────────────────────────────────
+# Create the GH release with the dist/ tarballs attached. Pulls the
+# top-of-CHANGELOG section as the release notes.
+
+release-github VERSION:
+    @bash -c ' \
+        set -eu; \
+        if [ -f CHANGELOG.md ]; then \
+            notes=$(awk "/^## \\[/{count++} count==1" CHANGELOG.md | tail -n +2); \
+            gh release create "v{{ VERSION }}" dist/*.tar.gz \
+                --title "v{{ VERSION }}" --notes "$notes"; \
+        else \
+            gh release create "v{{ VERSION }}" dist/*.tar.gz \
+                --title "v{{ VERSION }}" --generate-notes; \
+        fi'
+
+# ── Umbrella release ──────────────────────────────────────────────
+# Full release flow. Bump Cargo.toml workspace version + CHANGELOG.md
+# manually first, commit + tag, then run `just release VERSION`.
+#
+#   build-all       → produce 5 platform binaries in target/
+#   dist            → flat tarballs for brew (4 platforms; no win32)
+#   release-github  → GH release with tarballs and changelog notes
+#   publish-brew    → render formula, copy to ~/dev/tap, push
+#   publish-cargo   → cargo publish talon-core then talon-cli
+#   publish-npm     → existing npm flow (pack + publish all workspaces)
+
+release VERSION:
+    just build-all
+    just dist
+    just release-github {{ VERSION }}
+    just publish-brew {{ VERSION }}
+    just publish-cargo
+    just publish-npm
+
 # ── Install from source (host platform only) ──────────────────────
 install:
     cargo install --path crates/talon-cli --locked

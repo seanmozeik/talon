@@ -9,7 +9,6 @@ rust-version = "1.95"
 license = "MIT"
 repository = "https://github.com/seanmozeik/talon"
 homepage = "https://github.com/seanmozeik/talon"
-documentation = "https://docs.rs/talon"
 readme = "README.md"
 
 [workspace.dependencies]

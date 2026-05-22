@@ -6,8 +6,10 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
-documentation.workspace = true
 readme.workspace = true
+description = "Core retrieval engine for Talon: hybrid search (BM25 + semantic + reranker), indexing, and graph-aware ranking over markdown corpora."
+keywords = ["search", "retrieval", "embeddings", "bm25", "obsidian"]
+categories = ["text-processing", "database-implementations"]
 
 [dependencies]
 fs-err.workspace = true
