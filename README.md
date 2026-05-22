@@ -1,78 +1,133 @@
 # Talon
 
-Talon is a Rust binary that indexes an Obsidian vault and makes it queryable: hybrid search, grounded answers, graph traversal, and an MCP server that drops vault context into any AI agent. One binary, no cloud, no daemon.
+Talon is a Rust binary that indexes an Obsidian vault and makes it queryable from the command line and from AI agents: hybrid search with graph-aware reranking, grounded answers, structured vault queries, and an MCP server. One binary. No cloud. No daemon.
+
+---
+
+## Why Talon
+
+Most note search tools treat your vault as a bag of text. Talon treats it as a knowledge graph: wikilinks, backlinks, community structure, scope roles, and frontmatter all contribute to ranking. A note your other notes already cite heavily isn't just similar in content -- it's structurally important, and the ranking reflects that.
+
+Talon is also designed for the [Karpathy LLM-Wiki](https://karpathy.github.io/2024/04/27/hacking-the-wiki/) workflow: a vault structured as `wiki/`, `projects/`, `artifacts/`, `daily/`, `raw/`, `private/`. The scope system maps directly to this layout. Recall knows that a `wiki/` note and a `daily/` note are different kinds of signal. The example vault (`examples/calle-sur-vault/`) uses this layout out of the box.
+
+The other design decision that shapes everything: Talon is agent-native. `--agent` output, MCP tools, and the recall hook are first-class, not wrappers around a human CLI. Every query returns vault paths and graph metadata the calling agent can act on, not formatted prose the agent has to parse.
 
 ---
 
 ## What it does
 
-**Search** your vault with natural language. Talon fuses five retrieval signals per query: BM25 lexical matching, dense vector search, title and alias matching, query expansion via a local LLM, and graph-aware reranking that boosts notes your other notes already trust. Results are reranked by a cross-encoder before they reach you.
-
-```
-talon search "what did I write about fermentation and salt ratios"
-```
-
-**Ask** a question and get a grounded answer synthesized from the matching notes, not a hallucination.
-
-```
-talon ask "what's my current thinking on pricing the hot sauce line"
-```
-
-**Navigate the graph.** `talon related` traverses link and backlink edges with graph-community scoring so the most structurally central notes rank above loosely-connected ones.
-
-**Serve agents.** `talon mcp` is an MCP-over-stdio server exposing `talon_search`, `talon_read`, and `talon_related`. Point Claude Code, Cursor, or any MCP-compatible agent at it and the vault becomes searchable context.
-
-**Inject recall automatically.** The `UserPromptSubmit` hook fires `talon recall` on every turn, scores the prompt against the vault, and injects the highest-signal notes into the agent's context window before the model sees the message.
-
----
-
-## Why it's built in Rust
-
-The indexer, BM25 store, vector metadata store, graph engine, and query pipeline all run in a single process with no coordinator. Cold queries on a 3,000-note vault take under 100ms lexical-only; hybrid queries depend on your embedding sidecar latency, not Talon's overhead. Memory use is flat at rest.
-
----
-
-## Quick start
+**Search** with natural language. Talon fuses four retrieval signals with weighted RRF, reranks with a cross-encoder, then adjusts scores using the vault's link graph.
 
 ```bash
-cargo install --path crates/talon-cli
-
-# Point at your vault
-cp examples/config.toml ~/.config/talon/config.toml
-# edit vault_path to your Obsidian vault
-
-# Build the index
-talon sync
-
-# Search
-talon search "your query here"
-
-# Ask
-talon ask "summarize my notes on X"
+talon search "lacto-fermentation salt ratios"
+talon --fast search "knife skills"   # lexical only, no sidecar needed
 ```
 
-For the full config reference, see `examples/config.toml`. It's annotated.
+**Ask** and get a grounded answer synthesized from the matching notes, not a hallucination.
+
+```bash
+talon ask "what's my current thinking on co-packer pricing"
+```
+
+**Navigate the graph.** `talon related` scores related notes across six graph signals: direct links, backlinks, shared sources, common neighbors, Louvain community membership, and bridge position.
+
+```bash
+talon related "wiki/Lacto-Fermentation.md"
+```
+
+**Inspect the vault.** `talon inspect` reports structural issues: orphan notes with no incoming links, broken wikilink targets, dangling frontmatter source references, notes with neither links nor backlinks.
+
+```bash
+talon inspect
+```
+
+**Query frontmatter.** `talon meta` runs structured queries over indexed frontmatter fields with typed comparisons and `--since` filters.
+
+```bash
+talon meta --where "status=active" --scope projects
+talon meta --since 2026-04-01 --select title,status,tags
+```
+
+**Track changes.** `talon changes` returns indexed and tombstoned events with RFC 3339 timestamps for agent pipelines that need to know what changed since a given point.
+
+**Serve agents.** `talon mcp` runs a stateless MCP-over-stdio server so Claude Code, Cursor, or any MCP-compatible host can search and read the vault as a tool.
+
+**Inject recall per turn.** `talon recall` fires on every agent turn via a `UserPromptSubmit` hook: it distills the prompt, retrieves relevant notes, and injects context before the model sees the message.
 
 ---
 
-## Hybrid retrieval
+## Retrieval pipeline
 
-A normal search query runs this pipeline:
+A full hybrid query (`talon search`) runs in this order:
 
-1. BM25 and title/alias probes retrieve a candidate set
-2. If a local LLM is configured, a query expansion step rewrites the query into search-optimized forms
-3. Dense vector retrieval runs in parallel against the BM25 candidates
-4. Reciprocal-rank fusion merges the two result lists
-5. A cross-encoder reranks the fused set
-6. Graph scoring adjusts final ranks: notes at the center of your link graph, in tightly-knit communities with your top results, get a modest structural boost
+**1. Lexical probe.** BM25 (SQLite FTS5) and title/alias matching retrieve an initial candidate set. The title matcher handles exact Obsidian wikilink targets and fuzzy variants.
 
-`--fast` skips steps 2-6 and returns BM25+title results only. Useful when you need speed and the query is exact enough that lexical matching is sufficient.
+**2. Query expansion.** If a local chat LLM is configured, the query goes through an expansion step that rewrites it into multiple search-optimized reformulations. The expansion model receives a token-budgeted view of the query, not the raw text, to keep inference cost flat.
+
+**3. Parallel vector retrieval.** Dense embeddings are retrieved for each expanded query. Talon stores embedding metadata in SQLite and delegates inference to a local HTTP sidecar, keeping the binary free of model weights.
+
+**4. Weighted RRF.** Four signal lists (BM25, exact alias, fuzzy title, semantic) are fused per result using Reciprocal Rank Fusion with per-list weights:
+
+```
+score(result, list) = WEIGHT[list] / (RRF_K + rank + 1)
+```
+
+Scores are summed across lists and normalized against the theoretical maximum for the lists that returned results. A result that dominates one list doesn't automatically beat one with consistent moderate presence across all four.
+
+**5. Cross-encoder reranking.** The fused set goes through a cross-encoder that scores query-document pairs directly rather than relying on embedding similarity. This catches relevance misses that vector retrieval tends to produce for paraphrase-heavy queries.
+
+**6. Graph adjustment.** Final scores are adjusted by graph position. Notes that share a Louvain community with top results, have direct link relationships to high-scoring notes, or sit on bridge paths between dense clusters get a relevance-gated boost. The boost is capped: a structurally central but content-weak note cannot outrank a strong match.
+
+`--fast` skips steps 2-6 entirely and returns BM25+title results only. No sidecar required.
+
+---
+
+## Graph engine
+
+Talon builds and persists a weighted directed graph over Obsidian wikilinks, rebuilt incrementally on sync.
+
+**Community detection** runs deterministic Louvain modularity optimization: iterative node reassignment with modularity gain `Q = Σ [A_ij - k_i·k_j/(2m)] · δ(c_i,c_j) / 2m`, converging when gain drops below `1e-7` across up to 20 passes. Community assignments are stored in SQLite and reused by search ranking and recall without recomputation per query.
+
+**`talon related`** scores candidate notes across six signals:
+
+| Signal | What it measures |
+|---|---|
+| `direct_out` | Target is linked from the source note |
+| `direct_backlink` | Target links back to the source note |
+| `shared_sources` | Both notes cite overlapping `sources:` frontmatter entries |
+| `common_neighbors` | Overlap in the two notes' link neighborhoods |
+| `community_affinity` | Both notes fall in the same Louvain community |
+| `type_affinity` | Both notes share the same Obsidian note type |
+
+A `structural_penalty` reduces scores for high-bridge / low-cohesion notes -- index pages and routing nodes that connect the graph but don't belong strongly to any community.
+
+---
+
+## Recall pipeline
+
+`talon recall` is designed to run as a `UserPromptSubmit` hook on every agent turn, injecting vault context before the model sees the message.
+
+**Phrase extraction.** The incoming prompt is parsed into weighted search phrases without calling any model. Quoted strings and Obsidian wikilinks get weight 1.5. Tags, code identifiers, and file paths get lower weights. Proper noun sequences are scored with YAKE (Yet Another Keyword Extractor): a graph-based statistical method that weights terms by position, frequency, and co-occurrence without needing training data.
+
+**Distillation decision.** If the prompt exceeds the embedding token budget or is classified as noisy (multi-turn context with low signal density), Talon calls the expansion LLM to distill it into focused search queries. If there's no time before the deadline, it falls back to the phrase-extracted queries. If no LLM is configured, it uses phrase extraction only. The deadline is configurable per-hook (`recall_deadline_ms`).
+
+**Retrieval and scoring.** Recall runs the same hybrid pipeline as search, scoped to `default = true` scopes only (unless overridden). The output is scored with a composite evidence signal:
+
+```
+evidence = 0.50 * rerank + 0.20 * lexical + 0.20 * graph_density + 0.10 * recency
+```
+
+where `graph_density = min(link_count / 5, 1.0)` and `recency = exp(-days_since_modified / 14)`. A note with a strong rerank score, high link count, and recent modification ranks higher than one that's merely semantically similar.
+
+**Linked context.** Recall also includes a community-capped linked context: notes that the top results link to or cite, deduplicated across communities so no single cluster dominates the injected context.
+
+The output is an `<vault_recall>` XML block injected into the agent's context window.
 
 ---
 
 ## Agent output
 
-Every command accepts `--agent`. Agent mode emits compact JSON with plain vault paths and no formatting, designed to be parsed by a calling agent rather than read by a human.
+Every command accepts `--agent`. Agent mode emits compact JSON with plain vault paths, no ANSI formatting, and no envelope metadata.
 
 ```bash
 talon --agent search "fermentation notes"
@@ -80,7 +135,7 @@ talon --agent read "[[Hot Sauce Formulation#Targets]]"
 talon --agent related "wiki/Lacto-Fermentation.md"
 ```
 
-Read accepts Obsidian references directly. Heading reads return only the requested section, with line numbers, so the agent knows where in the file it landed.
+`read` accepts Obsidian references directly. Heading reads return only the requested section with `fromLine` and `toLine`. Search results include resolved `links`, `backlinks`, `tags`, `aliases`, and `citations` as compact graph navigation metadata.
 
 ---
 
@@ -90,7 +145,7 @@ Read accepts Obsidian references directly. Heading reads return only the request
 talon mcp
 ```
 
-Runs a stateless MCP-over-stdio server. Wire it into Claude Code's `.mcp.json` or any MCP-compatible host:
+Stateless MCP-over-stdio server. Wire it into `.mcp.json`:
 
 ```json
 {
@@ -103,59 +158,39 @@ Runs a stateless MCP-over-stdio server. Wire it into Claude Code's `.mcp.json` o
 }
 ```
 
-Exposed tools: `talon_search`, `talon_read`, `talon_related`. `talon_ask` is intentionally not exposed: agents are better served searching and synthesizing with their own model.
+Exposed tools: `talon_search`, `talon_read`, `talon_related`. `talon_ask` is intentionally excluded: agents search and synthesize better with their own model.
 
----
-
-## Recall hook (Claude Code)
-
-Talon ships a recall command designed to run on every agent turn:
-
-```bash
-talon recall --format prompt-xml
-```
-
-It distills the incoming prompt into weighted search phrases, runs hybrid retrieval, and emits a `<vault_recall>` XML block the agent host injects into context. The `integrations/hermes-talon-recall/` directory contains a drop-in Hermes memory provider that automates this for Hermes-hosted agents.
-
-For Claude Code, add to your `settings.json`:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "talon recall --format prompt-xml"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+`integrations/hermes-talon-recall/` is a drop-in Hermes memory provider that automates recall injection for Hermes-hosted agents.
 
 ---
 
 ## Scopes
 
-Scopes partition the vault by role. Declare them in `config.toml`, set `default = false` on sensitive or noisy directories, and they're excluded from queries unless you opt in.
+Scopes partition the vault by role and control what gets searched, ranked, and linted.
 
 ```toml
 [scopes.wiki]
 glob = ["wiki/**"]
-priority = "boosted"
+priority = "boosted"   # 1.2x weight, relevance-gated
 default = true
+inspect = true
+
+[scopes.daily]
+glob = ["daily/**"]
+priority = "muted"     # 0.85x weight
+default = false        # excluded from default queries
+inspect = false        # not reported by talon inspect
 
 [scopes.private]
 glob = ["private/**"]
-priority = "buried"
-default = false   # excluded unless you pass --scope private
+priority = "buried"    # 0.5x weight
+default = false
+inspect = false
 ```
 
-Priority weights are `boosted=1.2`, `elevated=1.1`, `normal=1.0`, `muted=0.85`, `buried=0.5`. Boosts are relevance-gated: a weak high-priority hit won't outrank a stronger normal-priority match.
+Priority weights are applied after relevance scoring, not before. A weak high-priority hit cannot outrank a strong normal-priority match. The `inspect = false` flag excludes a scope from `talon inspect` findings without removing it from the index.
+
+Scope iteration follows TOML declaration order, so narrower globs declared above broader ones win when they overlap.
 
 ---
 
@@ -168,13 +203,30 @@ talon sync --force    # rebuild embeddings for every active chunk
 talon sync --rebuild  # drop and rebuild the index from scratch
 ```
 
-The index lives in a SQLite file alongside the vault. Sync is safe to run at any frequency; it skips unchanged files by mtime and size.
+Sync skips unchanged files by mtime and size. Move and rename detection runs in the same pass: the new path is indexed and the old path soft-deleted, then Talon tries to re-resolve any wikilinks pointing at the old title against current active titles and aliases. Link edits inside changed files are reindexed with the file.
+
+---
+
+## Quick start
+
+```bash
+cargo install --path crates/talon-cli
+
+cp examples/config.toml ~/.config/talon/config.toml
+# edit vault_path to your Obsidian vault
+
+talon sync
+talon search "your query"
+talon ask "summarize my notes on X"
+```
+
+`examples/config.toml` is fully annotated with every knob. `examples/calle-sur-vault/` is a 78-note synthetic vault (fictional chef-restaurateur, full LLM-Wiki layout) that works out of the box without touching your real vault.
 
 ---
 
 ## Embedding sidecar
 
-Talon expects a local HTTP sidecar with `/embed`, `/embed-chunked`, and `/rerank` endpoints. Any TEI-compatible server works: Hugging Face `text-embeddings-inference`, Infinity, or a local ultraclaw sidecar.
+Talon calls a local HTTP sidecar for embeddings and reranking. Any TEI-compatible server works: Hugging Face `text-embeddings-inference`, Infinity, or a local LLM sidecar with the right endpoint shapes (`/embed`, `/embed-chunked`, `/rerank`).
 
 ```toml
 [embedding]
@@ -186,13 +238,7 @@ base_url = "http://localhost:8000"
 model = "rerank"
 ```
 
-Without a sidecar, Talon runs in lexical-only mode. Search and recall still work; they just skip vector retrieval and reranking.
-
----
-
-## Example vault
-
-`examples/calle-sur-vault/` is a 78-note synthetic vault built around a fictional chef-restaurateur. It uses the Karpathy LLM-Wiki layout (`wiki/`, `projects/`, `artifacts/`, `daily/`, `raw/`, `private/`, `archive/`, `_meta/`) and works out of the box with `examples/config.toml` for hands-on testing without touching your real vault.
+Without a sidecar, Talon runs in lexical-only mode. Search, recall, and all graph features still work.
 
 ---
 
