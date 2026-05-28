@@ -178,12 +178,12 @@ fn serde_value_to_fm(value: serde_yaml_ng::Value) -> FrontmatterValue {
             FrontmatterValue::String(String::new())
         }
         serde_yaml_ng::Value::Sequence(seq) => {
-            let flattened = flatten_list_value(&seq);
+            let flattened = flatten_list_value(&seq, true);
             FrontmatterValue::List(flattened)
         }
         serde_yaml_ng::Value::Mapping(map) => {
             let inner: Vec<serde_yaml_ng::Value> = map.iter().map(|(_, v)| v.clone()).collect();
-            let flattened = flatten_list_value(&inner);
+            let flattened = flatten_list_value(&inner, true);
             FrontmatterValue::List(flattened)
         }
     }
@@ -199,7 +199,7 @@ fn is_date_value(value: &str) -> bool {
 }
 
 /// Flattens a list of values into a list of strings.
-fn flatten_list_value(values: &[serde_yaml_ng::Value]) -> Vec<String> {
+fn flatten_list_value(values: &[serde_yaml_ng::Value], in_sequence: bool) -> Vec<String> {
     let mut result = Vec::new();
     for value in values {
         match value {
@@ -214,12 +214,16 @@ fn flatten_list_value(values: &[serde_yaml_ng::Value]) -> Vec<String> {
                     || (trimmed.starts_with('"') && trimmed.ends_with('"')))
                     && let Ok(parsed) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(trimmed)
                 {
-                    result.extend(flatten_list_value(&[parsed]));
+                    result.extend(flatten_list_value(&[parsed], false));
                     continue;
                 }
-                // Split comma/newline separated values
-                for item in split_list_text(trimmed) {
-                    result.push(item);
+                if in_sequence {
+                    result.push(strip_outer_quotes(trimmed));
+                } else {
+                    // Split comma/newline separated scalar values.
+                    for item in split_list_text(trimmed) {
+                        result.push(item);
+                    }
                 }
             }
             serde_yaml_ng::Value::Number(n) => {
@@ -229,11 +233,11 @@ fn flatten_list_value(values: &[serde_yaml_ng::Value]) -> Vec<String> {
                 result.push(b.to_string());
             }
             serde_yaml_ng::Value::Sequence(seq) => {
-                result.extend(flatten_list_value(seq));
+                result.extend(flatten_list_value(seq, true));
             }
             serde_yaml_ng::Value::Mapping(map) => {
                 let inner: Vec<serde_yaml_ng::Value> = map.iter().map(|(_, v)| v.clone()).collect();
-                result.extend(flatten_list_value(&inner));
+                result.extend(flatten_list_value(&inner, true));
             }
             serde_yaml_ng::Value::Tagged(_) | serde_yaml_ng::Value::Null => {
                 // Skip tagged and null values

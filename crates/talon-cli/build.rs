@@ -18,10 +18,7 @@ fn sync(src: &Path, dst: &Path) {
     let Ok(src_bytes) = std::fs::read(src) else {
         return;
     };
-    let needs_write = match std::fs::read(dst) {
-        Ok(existing) => existing != src_bytes,
-        Err(_) => true,
-    };
+    let needs_write = std::fs::read(dst).map_or(true, |existing| existing != src_bytes);
     if needs_write {
         if let Some(parent) = dst.parent() {
             let _ = std::fs::create_dir_all(parent);

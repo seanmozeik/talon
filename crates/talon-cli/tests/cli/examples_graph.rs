@@ -30,7 +30,7 @@ fn examples_config_sync_builds_graph_tables() {
 
     assert!(graph["nodeCount"].as_u64().unwrap_or(0) >= 70);
     assert!(graph["edgeCount"].as_u64().unwrap_or(0) >= 300);
-    assert!(graph["sourceCount"].as_u64().unwrap_or(0) >= 70);
+    assert!(graph["sourceCount"].as_u64().unwrap_or(0) >= 60);
 
     let output = Command::new(env!("CARGO_BIN_EXE_talon"))
         .args([

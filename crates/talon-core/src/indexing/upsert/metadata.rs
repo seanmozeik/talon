@@ -149,7 +149,7 @@ pub fn upsert_frontmatter_fields(
     for (field, value, value_type) in flat {
         let norm = normalize_keyword(&value);
         conn.execute(
-            "INSERT INTO note_frontmatter_fields (note_id, field, value, value_type, value_norm)
+            "INSERT OR IGNORE INTO note_frontmatter_fields (note_id, field, value, value_type, value_norm)
              VALUES (?, ?, ?, ?, ?)",
             params![note_id, field, value, value_type.as_db_str(), norm],
         )
@@ -159,4 +159,63 @@ pub fn upsert_frontmatter_fields(
         })?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::open_database;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    #[test]
+    fn duplicate_frontmatter_field_values_are_ignored() -> Result<(), TalonError> {
+        let path = unique_db();
+        let conn = open_database(&path)?;
+        let mut frontmatter = BTreeMap::new();
+        frontmatter.insert(
+            "sources".into(),
+            FrontmatterValue::List(vec!["same".into(), "same".into()]),
+        );
+
+        conn.execute(
+            "INSERT INTO notes
+             (id, vault_path, title, tags, aliases, content, mtime_ms, size_bytes, hash, docid, active)
+             VALUES (1, 'a.md', 'A', '[]', '[]', 'x', 0, 0, 'h', 'd', 1)",
+            [],
+        )
+        .map_err(|source| TalonError::Sqlite {
+            context: "insert test note",
+            source,
+        })?;
+        upsert_frontmatter_fields(&conn, 1, &frontmatter)?;
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM note_frontmatter_fields WHERE note_id = 1",
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|source| TalonError::Sqlite {
+                context: "count frontmatter fields",
+                source,
+            })?;
+
+        assert_eq!(count, 1);
+        cleanup(&path);
+        Ok(())
+    }
+
+    fn unique_db() -> std::path::PathBuf {
+        static COUNTER: AtomicU64 = AtomicU64::new(0);
+        std::env::temp_dir().join(format!(
+            "talon-frontmatter-upsert-{}-{}.sqlite",
+            std::process::id(),
+            COUNTER.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    fn cleanup(path: &std::path::Path) {
+        let _ = fs_err::remove_file(path);
+        let _ = fs_err::remove_file(path.with_extension("sqlite-wal"));
+        let _ = fs_err::remove_file(path.with_extension("sqlite-shm"));
+    }
 }

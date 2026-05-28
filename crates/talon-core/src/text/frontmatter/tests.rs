@@ -48,6 +48,19 @@ fn parse_frontmatter_accepts_obsidian_unquoted_colon_scalars() {
 }
 
 #[test]
+fn yaml_sequence_items_with_commas_stay_atomic() {
+    let content = "---\nsources:\n  - \"v4 recipe pipeline (oracle gpt-5.5-pro, 2026-05-26)\"\n---\n\nBody text.";
+    let result = parse_frontmatter(content);
+
+    assert_eq!(
+        result.frontmatter.get("sources"),
+        Some(&FrontmatterValue::List(vec![
+            "v4 recipe pipeline (oracle gpt-5.5-pro, 2026-05-26)".to_string()
+        ]))
+    );
+}
+
+#[test]
 fn test_parse_frontmatter_no_frontmatter() {
     let content = "No frontmatter here.";
     let result = parse_frontmatter(content);
