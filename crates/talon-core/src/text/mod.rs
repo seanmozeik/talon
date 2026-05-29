@@ -14,7 +14,7 @@ pub use frontmatter::{
 };
 pub use nfd::normalize as normalize_text_nfd;
 pub use processing::{
-    LineSpan, ParsedWikiLink, TOKEN_CHAR_RATIO, estimate_tokens, is_fence_line, is_heading_line,
-    normalize_keyword, normalize_vault_path, parse_wikilink, split_lines, strip_heading_text,
-    strip_outer_quotes,
+    LineSpan, ParsedWikiLink, TOKEN_CHAR_RATIO, YAKE_INPUT_MAX_BYTES, estimate_tokens,
+    is_fence_line, is_heading_line, normalize_keyword, normalize_vault_path, parse_wikilink,
+    split_lines, strip_heading_text, strip_outer_quotes, truncate_on_char_boundary,
 };

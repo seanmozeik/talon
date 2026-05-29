@@ -175,8 +175,16 @@ fn salient_terms(content: &str) -> BTreeSet<String> {
         ..yake_rust::Config::default()
     };
     let stop_words = yake_rust::StopWords::predefined("en").unwrap_or_default();
-    yake_rust::get_n_best(32, &visible, &stop_words, &config)
-        .into_iter()
+    // yake -> segtok -> fancy-regex blows its backtrack limit (panic) on very
+    // large inputs. Bound the input first so the backtrack never triggers, and
+    // keep catch_unwind as a backstop for pathological smaller inputs (TOO-44).
+    let bounded =
+        crate::text::truncate_on_char_boundary(&visible, crate::text::YAKE_INPUT_MAX_BYTES);
+    let best = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        yake_rust::get_n_best(32, bounded, &stop_words, &config)
+    }))
+    .unwrap_or_default();
+    best.into_iter()
         .map(|item| normalize_term(&item.raw))
         .collect()
 }

@@ -192,6 +192,31 @@ pub fn estimate_tokens(text: &str) -> usize {
     len.div_ceil(TOKEN_CHAR_RATIO as usize).max(1)
 }
 
+/// Upper bound on text fed to yake keyword extraction.
+///
+/// Keyword salience plateaus well before this; the cap exists to keep
+/// segtok/fancy-regex from hitting its backtrack limit on large notes (TOO-44).
+/// 64 KiB covers any real note's prose comfortably.
+pub const YAKE_INPUT_MAX_BYTES: usize = 64 * 1024;
+
+/// Truncates `s` to at most `max_bytes`, rounding the cut down to a UTF-8 char
+/// boundary so the returned slice never splits a multibyte character.
+///
+/// Used to bound input to backtracking-heavy text passes (e.g. yake keyword
+/// extraction via segtok/fancy-regex, which can blow its backtrack limit on
+/// very large or pathological inputs).
+#[must_use]
+pub fn truncate_on_char_boundary(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut idx = max_bytes;
+    while idx > 0 && !s.is_char_boundary(idx) {
+        idx -= 1;
+    }
+    &s[..idx]
+}
+
 /// Normalizes a keyword for comparison: NFD normalization + lowercase + trim.
 ///
 /// Matches the TypeScript `normalizeTalonKeyword` behavior exactly.

@@ -159,7 +159,15 @@ fn collect_yake_phrases(input: &str, weighted: &mut HashMap<String, WeightedPhra
         ..yake_rust::Config::default()
     };
     let stop_words = yake_rust::StopWords::predefined("en").unwrap_or_default();
-    for item in yake_rust::get_n_best(12, input, &stop_words, &config) {
+    // yake -> segtok -> fancy-regex blows its backtrack limit (panic) on very
+    // large inputs. Bound the input first so the backtrack never triggers, and
+    // keep catch_unwind as a backstop for pathological smaller inputs (TOO-44).
+    let bounded = crate::text::truncate_on_char_boundary(input, crate::text::YAKE_INPUT_MAX_BYTES);
+    let best = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        yake_rust::get_n_best(12, bounded, &stop_words, &config)
+    }))
+    .unwrap_or_default();
+    for item in best {
         push_phrase(
             weighted,
             &item.raw,
