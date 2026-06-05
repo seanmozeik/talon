@@ -85,12 +85,12 @@ fn build_graph(conn: &Connection) -> Result<BuiltGraph, TalonError> {
         source_citations: graph.source_citations.clone(),
     };
     graph.communities = super::detect_communities(&mut snapshot);
-    graph.missing_links = super::build_suggestions::build_link_suggestions(conn, &snapshot)?;
     graph.nodes = snapshot.nodes;
     Ok(graph)
 }
 
 fn load_nodes(conn: &Connection, graph: &mut BuiltGraph) -> Result<(), TalonError> {
+    let frontmatter = load_graph_frontmatter(conn)?;
     let mut stmt = conn
         .prepare(
             "SELECT id, vault_path, COALESCE(title, vault_path), aliases, tags, scope
@@ -124,7 +124,21 @@ fn load_nodes(conn: &Connection, graph: &mut BuiltGraph) -> Result<(), TalonErro
                 context: "load graph source notes",
                 source,
             })?;
-        let sources = load_sources(conn, note_id, &vault_path)?;
+        let note_frontmatter = frontmatter.get(&note_id);
+        let sources = note_frontmatter
+            .map(|fields| {
+                fields
+                    .sources
+                    .iter()
+                    .filter_map(|source| {
+                        let cleaned = clean_source_reference(&vault_path, source);
+                        (!cleaned.is_empty()).then_some(cleaned)
+                    })
+                    .collect::<BTreeSet<_>>()
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
         for source in &sources {
             graph
                 .source_citations
@@ -141,7 +155,7 @@ fn load_nodes(conn: &Connection, graph: &mut BuiltGraph) -> Result<(), TalonErro
                 aliases: parse_string_vec(&aliases_json),
                 tags: parse_string_vec(&tags_json),
                 scope,
-                note_type: load_frontmatter_value(conn, note_id, "type")?,
+                note_type: note_frontmatter.and_then(|fields| fields.note_type.clone()),
                 sources,
                 outgoing_degree: 0,
                 backlink_degree: 0,
@@ -154,6 +168,54 @@ fn load_nodes(conn: &Connection, graph: &mut BuiltGraph) -> Result<(), TalonErro
         );
     }
     Ok(())
+}
+
+#[derive(Debug, Default)]
+struct GraphFrontmatter {
+    sources: Vec<String>,
+    note_type: Option<String>,
+}
+
+fn load_graph_frontmatter(
+    conn: &Connection,
+) -> Result<BTreeMap<i64, GraphFrontmatter>, TalonError> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT note_id, field, value
+             FROM note_frontmatter_fields
+             WHERE field IN ('sources', 'type')
+             ORDER BY note_id, field, value",
+        )
+        .map_err(|source| TalonError::Sqlite {
+            context: "load graph frontmatter",
+            source,
+        })?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(|source| TalonError::Sqlite {
+            context: "load graph frontmatter",
+            source,
+        })?;
+    let mut frontmatter = BTreeMap::<i64, GraphFrontmatter>::new();
+    for row in rows {
+        let (note_id, field, value) = row.map_err(|source| TalonError::Sqlite {
+            context: "load graph frontmatter",
+            source,
+        })?;
+        let fields = frontmatter.entry(note_id).or_default();
+        match field.as_str() {
+            "sources" => fields.sources.push(value),
+            "type" if fields.note_type.is_none() => fields.note_type = Some(value),
+            _ => {}
+        }
+    }
+    Ok(frontmatter)
 }
 
 fn load_edges(conn: &Connection, graph: &mut BuiltGraph) -> Result<(), TalonError> {
@@ -211,63 +273,6 @@ fn populate_degrees(graph: &mut BuiltGraph) {
         node.outgoing_degree = out.len().try_into().unwrap_or(u32::MAX);
         node.backlink_degree = back.len().try_into().unwrap_or(u32::MAX);
         node.total_degree = total.try_into().unwrap_or(u32::MAX);
-    }
-}
-
-fn load_sources(
-    conn: &Connection,
-    note_id: i64,
-    vault_path: &str,
-) -> Result<Vec<String>, TalonError> {
-    let mut stmt = conn
-        .prepare(
-            "SELECT value FROM note_frontmatter_fields
-             WHERE note_id = ?1 AND field = 'sources'
-             ORDER BY value",
-        )
-        .map_err(|source| TalonError::Sqlite {
-            context: "load graph sources",
-            source,
-        })?;
-    let rows = stmt
-        .query_map([note_id], |row| row.get::<_, String>(0))
-        .map_err(|source| TalonError::Sqlite {
-            context: "load graph sources",
-            source,
-        })?;
-    let mut seen = BTreeSet::new();
-    for row in rows {
-        let source = row.map_err(|source| TalonError::Sqlite {
-            context: "load graph sources",
-            source,
-        })?;
-        let cleaned = clean_source_reference(vault_path, &source);
-        if !cleaned.is_empty() {
-            seen.insert(cleaned);
-        }
-    }
-    Ok(seen.into_iter().collect())
-}
-
-fn load_frontmatter_value(
-    conn: &Connection,
-    note_id: i64,
-    field: &str,
-) -> Result<Option<String>, TalonError> {
-    match conn.query_row(
-        "SELECT value FROM note_frontmatter_fields
-         WHERE note_id = ?1 AND field = ?2
-         ORDER BY value
-         LIMIT 1",
-        (note_id, field),
-        |row| row.get(0),
-    ) {
-        Ok(value) => Ok(Some(value)),
-        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-        Err(source) => Err(TalonError::Sqlite {
-            context: "load graph frontmatter",
-            source,
-        }),
     }
 }
 
