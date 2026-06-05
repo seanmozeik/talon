@@ -7,14 +7,16 @@ use regex::Regex;
 
 use super::nfd;
 
+#[path = "processing_wikilink.rs"]
+mod wikilink;
+
+pub use wikilink::{ParsedWikiLink, parse_wikilink, strip_outer_quotes};
+
 /// Token-to-character ratio for rough token estimation.
 pub const TOKEN_CHAR_RATIO: u8 = 4;
 
 /// Length of a line feed character.
 const LF_LENGTH: usize = 1;
-
-/// Minimum length for outer quote stripping.
-const MIN_QUOTED_LENGTH: usize = 2;
 
 /// Heading pattern: `# ` through `###### `.
 const HEADING_PATTERN: &str = r"(?u)^#{1,6}\s+(.*)$";
@@ -250,107 +252,6 @@ pub fn normalize_keyword(value: &str) -> String {
 #[must_use]
 pub fn normalize_vault_path(value: &str) -> String {
     nfd::normalize(&value.replace('\\', "/"))
-}
-
-/// Parsed components of a wikilink.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParsedWikiLink {
-    /// Display alias (if `[[target|alias]]`).
-    pub alias: Option<String>,
-    /// Section heading anchor (if `[[target#heading]]`).
-    pub heading: Option<String>,
-    /// Raw target part before `|` or `#`.
-    pub raw_target: String,
-    /// The resolved target (without alias or heading).
-    pub target: String,
-}
-
-/// Parses a raw wikilink string into components.
-///
-/// Handles `[[target]]`, `[[target|alias]]`, and `[[target#heading]]`.
-///
-/// # Examples
-///
-/// ```
-/// use talon_core::text::parse_wikilink;
-///
-/// let link = parse_wikilink("My Note");
-/// assert_eq!(link.target, "My Note");
-/// assert_eq!(link.alias, None);
-/// assert_eq!(link.heading, None);
-///
-/// let link = parse_wikilink("Target|alias");
-/// assert_eq!(link.target, "Target");
-/// assert_eq!(link.alias, Some("alias".to_string()));
-///
-/// let link = parse_wikilink("Target#heading");
-/// assert_eq!(link.target, "Target");
-/// assert_eq!(link.heading, Some("heading".to_string()));
-/// ```
-#[must_use]
-pub fn parse_wikilink(raw: &str) -> ParsedWikiLink {
-    // Split on | first to separate target from alias
-    let (target_part, alias_part) = raw
-        .find('|')
-        .map_or((raw, ""), |i| (&raw[..i], &raw[i + 1..]));
-    // Split target on # to separate target from heading
-    let (target, heading) = target_part.find('#').map_or_else(
-        || (target_part.trim(), None),
-        |i| {
-            let t = target_part[..i].trim();
-            let h = target_part[i + 1..].trim();
-            (
-                t,
-                if h.is_empty() {
-                    None
-                } else {
-                    Some(h.to_string())
-                },
-            )
-        },
-    );
-    let alias = if alias_part.is_empty() {
-        None
-    } else {
-        Some(alias_part.trim().to_string())
-    };
-
-    ParsedWikiLink {
-        alias,
-        heading,
-        raw_target: target_part.trim().to_string(),
-        target: target.to_string(),
-    }
-}
-
-/// Strips outer matching quotes from a string.
-///
-/// Only strips if the string starts and ends with the same quote character
-/// (`"` or `'`) and has at least 2 characters after trimming.
-///
-/// # Examples
-///
-/// ```
-/// use talon_core::text::strip_outer_quotes;
-///
-/// assert_eq!(strip_outer_quotes("\"hello\""), "hello");
-/// assert_eq!(strip_outer_quotes("'hello'"), "hello");
-/// assert_eq!(strip_outer_quotes("hello"), "hello");
-/// assert_eq!(strip_outer_quotes("\""), "\"");
-/// ```
-#[must_use]
-pub fn strip_outer_quotes(value: &str) -> String {
-    let trimmed = value.trim();
-    if trimmed.len() < MIN_QUOTED_LENGTH {
-        return trimmed.to_string();
-    }
-    let first = trimmed.chars().next().unwrap_or('\0');
-    let last = trimmed.chars().last().unwrap_or('\0');
-    if (first == '"' || first == '\'') && first == last {
-        trimmed[1..trimmed.len() - 1].to_string()
-    } else {
-        trimmed.to_string()
-    }
 }
 
 #[cfg(test)]

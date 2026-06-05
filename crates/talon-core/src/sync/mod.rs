@@ -22,7 +22,7 @@ use time::OffsetDateTime;
 use crate::TalonError;
 use crate::config::ChunkerConfig;
 use crate::embed::{EmbedPassOptions, EmbedPassStats, run_embed_pass};
-use crate::graph::{GraphBuildInput, rebuild_graph};
+use crate::graph::{GraphBuildInput, rebuild_graph, update_graph_incremental};
 use crate::indexer::{
     IndexerConfig, IndexerStats, reconcile_deletions, reconcile_ignored_notes,
     run_full_scan_with_chunker,
@@ -199,10 +199,14 @@ pub fn run_sync_with_chunker_locked(
     // missing `to_path` and lets the new aliases / new target files satisfy
     // existing references.
     let graph_version_before_relink = graph_db_version(conn).map_err(SyncError::Indexer)?;
-    relink_unresolved(conn).map_err(SyncError::Indexer)?;
+    let relinked = relink_unresolved(conn).map_err(SyncError::Indexer)?;
     profile.mark("relink");
     if graph_version_before_relink != Some(read_db_version(conn)) {
-        stats.graph = Some(rebuild_graph(conn, &GraphBuildInput).map_err(SyncError::Indexer)?);
+        stats.graph = Some(if stats.deleted == 0 && relinked == 0 {
+            update_graph_incremental(conn, &stats.indexed_paths).map_err(SyncError::Indexer)?
+        } else {
+            rebuild_graph(conn, &GraphBuildInput).map_err(SyncError::Indexer)?
+        });
     }
     profile.mark("graph");
 

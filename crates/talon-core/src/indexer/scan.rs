@@ -52,7 +52,7 @@ impl IndexerConfig {
 }
 
 /// Counters returned by a vault scan.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct IndexerStats {
     /// Files (re)indexed during this scan.
     pub indexed: u32,
@@ -62,6 +62,8 @@ pub struct IndexerStats {
     pub deleted: u32,
     /// Graph artifact stats from the post-scan rebuild.
     pub graph: Option<GraphBuildStats>,
+    /// Vault-relative paths indexed during this scan.
+    pub indexed_paths: Vec<String>,
 }
 
 /// Walks `vault_root`, indexes any markdown file that matches the
@@ -183,6 +185,7 @@ pub fn run_full_scan_with_chunker(
         )?;
         *linking_cache = outcome.updated_links_cache;
         stats.indexed = stats.indexed.saturating_add(1);
+        stats.indexed_paths.push(rel_path);
     }
 
     Ok(stats)

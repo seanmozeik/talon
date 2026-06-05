@@ -147,13 +147,6 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
        cohesion     REAL NOT NULL DEFAULT 0.0,
        top_nodes    TEXT NOT NULL DEFAULT '[]'
      )",
-    "CREATE TABLE IF NOT EXISTS graph_missing_links (
-       path       TEXT NOT NULL,
-       target     TEXT NOT NULL,
-       term       TEXT NOT NULL,
-       line       INTEGER,
-       PRIMARY KEY (path, target, term)
-     )",
     "CREATE VIRTUAL TABLE IF NOT EXISTS notes_fts_bm25 USING fts5(
        title, aliases, content,
        content='notes', content_rowid='id',
@@ -177,7 +170,6 @@ pub const SCHEMA_MIGRATIONS: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_graph_edges_to ON graph_edges(to_path)",
     "CREATE INDEX IF NOT EXISTS idx_graph_sources_path ON graph_sources(path)",
     "CREATE INDEX IF NOT EXISTS idx_graph_nodes_community ON graph_nodes(community_id)",
-    "CREATE INDEX IF NOT EXISTS idx_graph_missing_links_path ON graph_missing_links(path)",
     "CREATE INDEX IF NOT EXISTS idx_notes_hash ON notes(hash)",
     "CREATE INDEX IF NOT EXISTS idx_notes_docid ON notes(docid)",
     "CREATE INDEX IF NOT EXISTS idx_chunks_hash ON chunks(chunk_hash)",

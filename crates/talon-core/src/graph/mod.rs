@@ -1,6 +1,7 @@
 //! Persisted vault graph snapshot and graph intelligence helpers.
 
 mod build;
+mod build_incremental;
 pub(crate) mod build_suggestions;
 #[cfg(test)]
 mod build_tests;
@@ -19,6 +20,7 @@ mod suggest;
 mod suggest_tests;
 
 pub use build::{GraphBuildInput, GraphBuildStats, rebuild_graph};
+pub use build_incremental::update_graph_incremental;
 pub use build_suggestions::build_link_suggestions;
 pub use community::{CommunityInfo, detect_communities};
 pub use health::graph_health;

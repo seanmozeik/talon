@@ -33,7 +33,6 @@ pub(super) struct BuiltGraph {
     pub(super) edges: Vec<GraphEdge>,
     pub(super) source_citations: BTreeMap<String, BTreeSet<String>>,
     pub(super) communities: Vec<super::CommunityInfo>,
-    pub(super) missing_links: Vec<super::LinkSuggestion>,
 }
 
 /// Rebuilds graph tables from active notes and active-active resolved links.
@@ -54,7 +53,21 @@ fn rebuild_graph_inner(
 ) -> Result<GraphBuildStats, TalonError> {
     crate::indexing::migrations::run_migrations(conn)?;
     let graph = build_graph(conn)?;
-    let stats = GraphBuildStats {
+    let stats = graph_stats(&graph);
+    let tx = conn.transaction().map_err(|source| TalonError::Sqlite {
+        context: "persist graph transaction",
+        source,
+    })?;
+    super::storage::replace_graph(&tx, &graph)?;
+    tx.commit().map_err(|source| TalonError::Sqlite {
+        context: "persist graph transaction",
+        source,
+    })?;
+    Ok(stats)
+}
+
+pub(super) fn graph_stats(graph: &BuiltGraph) -> GraphBuildStats {
+    GraphBuildStats {
         node_count: graph.nodes.len().try_into().unwrap_or(u32::MAX),
         edge_count: graph.edges.len().try_into().unwrap_or(u32::MAX),
         source_count: graph
@@ -64,12 +77,10 @@ fn rebuild_graph_inner(
             .sum::<usize>()
             .try_into()
             .unwrap_or(u32::MAX),
-    };
-    super::storage::replace_graph(conn, &graph)?;
-    Ok(stats)
+    }
 }
 
-fn build_graph(conn: &Connection) -> Result<BuiltGraph, TalonError> {
+pub(super) fn build_graph(conn: &Connection) -> Result<BuiltGraph, TalonError> {
     let mut graph = BuiltGraph {
         db_version: read_db_version(conn),
         ..BuiltGraph::default()
@@ -171,9 +182,9 @@ fn load_nodes(conn: &Connection, graph: &mut BuiltGraph) -> Result<(), TalonErro
 }
 
 #[derive(Debug, Default)]
-struct GraphFrontmatter {
-    sources: Vec<String>,
-    note_type: Option<String>,
+pub(super) struct GraphFrontmatter {
+    pub(super) sources: Vec<String>,
+    pub(super) note_type: Option<String>,
 }
 
 fn load_graph_frontmatter(
@@ -253,7 +264,7 @@ fn load_edges(conn: &Connection, graph: &mut BuiltGraph) -> Result<(), TalonErro
     Ok(())
 }
 
-fn populate_degrees(graph: &mut BuiltGraph) {
+pub(super) fn populate_degrees(graph: &mut BuiltGraph) {
     let mut outgoing: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     let mut backlinks: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for edge in &graph.edges {
@@ -276,7 +287,7 @@ fn populate_degrees(graph: &mut BuiltGraph) {
     }
 }
 
-fn parse_string_vec(raw: &str) -> Vec<String> {
+pub(super) fn parse_string_vec(raw: &str) -> Vec<String> {
     match serde_json::from_str::<Value>(raw) {
         Ok(Value::Array(values)) => values
             .into_iter()
@@ -286,7 +297,7 @@ fn parse_string_vec(raw: &str) -> Vec<String> {
     }
 }
 
-fn is_structural_page(path: &str) -> bool {
+pub(super) fn is_structural_page(path: &str) -> bool {
     let Some(file_name) = std::path::Path::new(path)
         .file_name()
         .and_then(std::ffi::OsStr::to_str)
