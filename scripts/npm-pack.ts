@@ -287,11 +287,26 @@ async function main() {
     console.log(`  smoke skipped for ${t.label}; run on target OS or install qemu/wine`);
   }
 
+  // ── Copy README into the package dir ───────────────────────────────────
+  // npm only bundles a README that lives in the published package directory,
+  // and publish runs from npm/. Without this copy the npm page is blank.
+
+  const bundledFiles = ["binary.js"];
+  try {
+    await fs.copyFile("README.md", "npm/README.md");
+    bundledFiles.push("README.md");
+    console.log("==> copied README.md into npm/");
+  } catch {
+    console.warn("warning: README.md not found at repo root; npm page will be blank");
+  }
+
   // ── Write main package.json ────────────────────────────────────────────
 
   const mainPkgJson: Record<string, unknown> = {
     bin: { [binaryName]: "binary.js" },
-    files: ["binary.js"],
+    description: cargoMeta.description ?? "Prebuilt binary.",
+    files: bundledFiles,
+    homepage: cargoMeta.homepage ?? cargoMeta.repository,
     name: scopedName(binaryName),
     optionalDependencies: Object.fromEntries(
       targets.map((t) => [scopedName(`${binaryName}-${t.label}`), version]),
