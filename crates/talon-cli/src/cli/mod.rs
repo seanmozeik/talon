@@ -2,6 +2,7 @@
 
 mod ask_args;
 mod changes_args;
+mod hook_args;
 mod init_args;
 mod inspect_args;
 mod meta_args;
@@ -19,6 +20,7 @@ pub use where_clause::parse_where_clause;
 pub use ask_args::AskArgs;
 pub use changes_args::ChangesArgs;
 use clap::{Parser, Subcommand};
+pub use hook_args::{HookArgs, HookRecallArgs, HookSubcommand};
 pub use init_args::InitArgs;
 pub use inspect_args::InspectArgs;
 pub use inspect_args::InspectCheck;
@@ -118,6 +120,9 @@ pub enum Commands {
 
     #[command(about = "Recall relevant vault context for a message.")]
     Recall(RecallArgs),
+
+    #[command(about = "Run agent-host hook commands.")]
+    Hook(HookArgs),
 
     #[command(about = "Manage API keys stored in the OS keychain.")]
     Secrets(SecretsArgs),

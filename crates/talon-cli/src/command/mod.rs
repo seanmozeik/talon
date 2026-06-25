@@ -4,6 +4,7 @@ mod ask;
 mod ask_client;
 mod ask_sources;
 mod changes;
+mod hook;
 mod init;
 mod inspect;
 mod meta;
@@ -83,6 +84,7 @@ pub async fn run(cli: &Cli) -> Result<()> {
         Commands::Changes(args) => changes::emit(args, cli).await,
         Commands::Inspect(args) => inspect::emit(args, cli).await,
         Commands::Recall(args) => recall::emit(args, cli).await,
+        Commands::Hook(args) => hook::emit(args, cli).await,
         Commands::Secrets(args) => secrets::emit(&args.subcommand),
     }
 }

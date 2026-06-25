@@ -17,7 +17,7 @@ use crate::output::format_recall_prompt_xml;
 
 /// Runs recall using a pre-loaded `TalonConfig`, mirroring the logic in
 /// `dispatch.rs`'s `dispatch_recall` but without loading config from disk.
-pub(super) fn dispatch_recall_for_hook(
+pub fn dispatch_recall_for_hook(
     input: &RecallInput,
     config: &TalonConfig,
 ) -> Result<RecallResponse> {
@@ -102,6 +102,15 @@ impl RecallOutputFormat {
     }
 }
 
+pub fn build_host_hook_json_text(
+    recall_response: &RecallResponse,
+    vault: &str,
+    host: &HostKind,
+) -> String {
+    let hook_output = host_hook_json_value(recall_response, vault, host);
+    serde_json::to_string(&hook_output).unwrap_or_else(|_| "{}".to_owned())
+}
+
 /// Formats a `RecallResponse` into the MCP tool result for `talon_hook_recall`.
 pub(super) fn build_recall_output(
     recall_response: &RecallResponse,
@@ -141,6 +150,11 @@ pub(super) fn build_recall_output(
 }
 
 fn host_hook_json(recall_response: &RecallResponse, vault: &str, host: &HostKind) -> Value {
+    let text = build_host_hook_json_text(recall_response, vault, host);
+    json!({ "content": [{ "type": "text", "text": text }] })
+}
+
+fn host_hook_json_value(recall_response: &RecallResponse, vault: &str, host: &HostKind) -> Value {
     match host {
         HostKind::Codex => codex_hook_json(recall_response, vault),
         HostKind::ClaudeCode | HostKind::Hermes | HostKind::Unknown(_) => {
@@ -150,7 +164,7 @@ fn host_hook_json(recall_response: &RecallResponse, vault: &str, host: &HostKind
 }
 
 fn claude_hook_json(recall_response: &RecallResponse, vault: &str) -> Value {
-    let hook_output = if recall_response.skipped {
+    if recall_response.skipped {
         json!({
             "hookSpecificOutput": {
                 "hookEventName": "UserPromptSubmit"
@@ -163,22 +177,18 @@ fn claude_hook_json(recall_response: &RecallResponse, vault: &str) -> Value {
                 "additionalContext": render_prompt_xml(recall_response, vault)
             }
         })
-    };
-    let text = serde_json::to_string(&hook_output).unwrap_or_else(|_| "{}".to_owned());
-    json!({ "content": [{ "type": "text", "text": text }] })
+    }
 }
 
 fn codex_hook_json(recall_response: &RecallResponse, vault: &str) -> Value {
-    let hook_output = if recall_response.skipped {
+    if recall_response.skipped {
         json!({ "continue": true })
     } else {
         json!({
             "continue": true,
             "systemMessage": render_prompt_xml(recall_response, vault)
         })
-    };
-    let text = serde_json::to_string(&hook_output).unwrap_or_else(|_| "{}".to_owned());
-    json!({ "content": [{ "type": "text", "text": text }] })
+    }
 }
 
 /// Renders `recall_response` as prompt XML, returning an empty string on error.

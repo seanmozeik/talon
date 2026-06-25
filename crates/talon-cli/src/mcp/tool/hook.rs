@@ -195,12 +195,7 @@ fn bool_field(arguments: &Value, key: &str) -> Option<bool> {
 }
 
 fn parse_host_kind(host: &str) -> HostKind {
-    match host {
-        "claude-code" | "claudecode" | "ClaudeCode" => HostKind::ClaudeCode,
-        "codex" | "Codex" => HostKind::Codex,
-        "hermes" | "Hermes" => HostKind::Hermes,
-        other => HostKind::Unknown(other.to_owned()),
-    }
+    HostKind::parse(host)
 }
 
 fn touch_session(state: &Arc<McpServerState>, key: &SessionKey) {

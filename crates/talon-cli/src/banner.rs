@@ -20,7 +20,10 @@ pub fn eprint_fancy_prelude_for_run(cli: &Cli) {
     if cli.agent
         || cli.json
         || !human_tty_for_cli_arts()
-        || matches!(cli.command.as_ref(), Some(Commands::Mcp))
+        || matches!(
+            cli.command.as_ref(),
+            Some(Commands::Mcp | Commands::Hook(_))
+        )
     {
         return;
     }

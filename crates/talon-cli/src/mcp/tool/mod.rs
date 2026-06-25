@@ -1,7 +1,7 @@
 mod dispatch;
 mod error;
 pub(super) mod hook;
-mod hook_recall;
+pub(crate) mod hook_recall;
 mod public;
 mod status;
 mod sync;

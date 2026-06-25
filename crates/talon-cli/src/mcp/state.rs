@@ -44,6 +44,18 @@ pub enum HostKind {
     Unknown(String),
 }
 
+impl HostKind {
+    #[must_use]
+    pub fn parse(host: &str) -> Self {
+        match host {
+            "claude-code" | "claudecode" | "ClaudeCode" => Self::ClaudeCode,
+            "codex" | "Codex" => Self::Codex,
+            "hermes" | "Hermes" => Self::Hermes,
+            other => Self::Unknown(other.to_owned()),
+        }
+    }
+}
+
 /// Per-session runtime state.
 #[derive(Debug)]
 pub struct SessionState {
