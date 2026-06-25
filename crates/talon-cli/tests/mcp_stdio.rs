@@ -99,7 +99,9 @@ fn hook_recall_does_not_panic_inside_mcp_loop() -> Result<()> {
             r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#, "\n",
             r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"talon_hook_session_start","arguments":{"host":"claude-code","sessionId":"test","cwd":"/"}}}"#, "\n",
             r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"talon_hook_recall","arguments":{"host":"claude-code","sessionId":"test","turnId":"test:t1","message":"fermented hot sauce co-packer","budgetTokens":200,"format":"hook-json"}}}"#, "\n",
-            r#"{"jsonrpc":"2.0","id":4,"method":"shutdown"}"#, "\n",
+            r#"{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"talon_hook_session_start","arguments":{"host":"codex","sessionId":"test","cwd":"/"}}}"#, "\n",
+            r#"{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"talon_hook_recall","arguments":{"host":"codex","sessionId":"test","turnId":"test:t1","message":"fermented hot sauce co-packer","budgetTokens":200,"format":"hook-json"}}}"#, "\n",
+            r#"{"jsonrpc":"2.0","id":6,"method":"shutdown"}"#, "\n",
         )
         .as_bytes(),
     )?;
@@ -117,8 +119,8 @@ fn hook_recall_does_not_panic_inside_mcp_loop() -> Result<()> {
     let responses = parse_json_lines(&output.stdout)?;
     assert_eq!(
         responses.len(),
-        4,
-        "expected init + session_start + recall + shutdown responses"
+        6,
+        "expected init + two session_start calls + two recall calls + shutdown response"
     );
     // recall response must be present and contain hookSpecificOutput
     let recall_text = responses[2]["result"]["content"][0]["text"]
@@ -129,6 +131,16 @@ fn hook_recall_does_not_panic_inside_mcp_loop() -> Result<()> {
     assert!(
         recall_output.get("hookSpecificOutput").is_some(),
         "recall result should contain hookSpecificOutput"
+    );
+    let codex_recall_text = responses[4]["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("");
+    let codex_recall_output: Value = serde_json::from_str(codex_recall_text)
+        .unwrap_or_else(|e| panic!("codex recall result not valid JSON: {e}\n{codex_recall_text}"));
+    assert_eq!(codex_recall_output["continue"], true);
+    assert!(
+        codex_recall_output.get("systemMessage").is_some(),
+        "codex recall result should contain systemMessage"
     );
     Ok(())
 }

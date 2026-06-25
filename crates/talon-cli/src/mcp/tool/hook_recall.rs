@@ -12,7 +12,7 @@ use talon_core::{
 use crate::mcp::session::chunk_id::derive_chunk_id;
 use crate::mcp::session::ledger::{InjectedChunk, TurnLedger, TurnRecord};
 use crate::mcp::session::suppression::{RecallCandidate, apply_suppression, to_injected_chunk};
-use crate::mcp::state::{McpServerState, SessionKey};
+use crate::mcp::state::{HostKind, McpServerState, SessionKey};
 use crate::output::format_recall_prompt_xml;
 
 /// Runs recall using a pre-loaded `TalonConfig`, mirroring the logic in
@@ -107,29 +107,10 @@ pub(super) fn build_recall_output(
     recall_response: &RecallResponse,
     format: RecallOutputFormat,
     vault: &str,
+    host: &HostKind,
 ) -> Value {
     match format {
-        RecallOutputFormat::HookJson => {
-            if recall_response.skipped {
-                let hook_output = json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": "UserPromptSubmit"
-                    }
-                });
-                let text = serde_json::to_string(&hook_output).unwrap_or_else(|_| "{}".to_owned());
-                json!({ "content": [{ "type": "text", "text": text }] })
-            } else {
-                let xml_string = render_prompt_xml(recall_response, vault);
-                let hook_output = json!({
-                    "hookSpecificOutput": {
-                        "hookEventName": "UserPromptSubmit",
-                        "additionalContext": xml_string
-                    }
-                });
-                let text = serde_json::to_string(&hook_output).unwrap_or_else(|_| "{}".to_owned());
-                json!({ "content": [{ "type": "text", "text": text }] })
-            }
-        }
+        RecallOutputFormat::HookJson => host_hook_json(recall_response, vault, host),
         RecallOutputFormat::PromptXml => {
             let xml_string = render_prompt_xml(recall_response, vault);
             json!({ "content": [{ "type": "text", "text": xml_string }] })
@@ -157,6 +138,47 @@ pub(super) fn build_recall_output(
             json!({ "content": [{ "type": "text", "text": text }] })
         }
     }
+}
+
+fn host_hook_json(recall_response: &RecallResponse, vault: &str, host: &HostKind) -> Value {
+    match host {
+        HostKind::Codex => codex_hook_json(recall_response, vault),
+        HostKind::ClaudeCode | HostKind::Hermes | HostKind::Unknown(_) => {
+            claude_hook_json(recall_response, vault)
+        }
+    }
+}
+
+fn claude_hook_json(recall_response: &RecallResponse, vault: &str) -> Value {
+    let hook_output = if recall_response.skipped {
+        json!({
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit"
+            }
+        })
+    } else {
+        json!({
+            "hookSpecificOutput": {
+                "hookEventName": "UserPromptSubmit",
+                "additionalContext": render_prompt_xml(recall_response, vault)
+            }
+        })
+    };
+    let text = serde_json::to_string(&hook_output).unwrap_or_else(|_| "{}".to_owned());
+    json!({ "content": [{ "type": "text", "text": text }] })
+}
+
+fn codex_hook_json(recall_response: &RecallResponse, vault: &str) -> Value {
+    let hook_output = if recall_response.skipped {
+        json!({ "continue": true })
+    } else {
+        json!({
+            "continue": true,
+            "systemMessage": render_prompt_xml(recall_response, vault)
+        })
+    };
+    let text = serde_json::to_string(&hook_output).unwrap_or_else(|_| "{}".to_owned());
+    json!({ "content": [{ "type": "text", "text": text }] })
 }
 
 /// Renders `recall_response` as prompt XML, returning an empty string on error.

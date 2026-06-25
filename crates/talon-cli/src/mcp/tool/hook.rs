@@ -16,7 +16,7 @@ pub fn hook_tools_list_entries() -> Vec<Value> {
     vec![
         json!({
             "name": "talon_hook_session_start",
-            "description": "hook-only — not for model use. Called by Claude Code hooks when a new agent session begins. Registers the session in the MCP server state.",
+            "description": "hook-only — not for model use. Called by agent host hooks when a new agent session begins. Registers the session in the MCP server state.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -30,7 +30,7 @@ pub fn hook_tools_list_entries() -> Vec<Value> {
         }),
         json!({
             "name": "talon_hook_recall",
-            "description": "hook-only — not for model use. Called by Claude Code hooks at UserPromptSubmit to inject vault recall context into the conversation.",
+            "description": "hook-only — not for model use. Called by agent host hooks at UserPromptSubmit to inject vault recall context into the conversation.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -48,7 +48,7 @@ pub fn hook_tools_list_entries() -> Vec<Value> {
         }),
         json!({
             "name": "talon_hook_session_end",
-            "description": "hook-only — not for model use. Called by Claude Code hooks when a session ends. Marks the session last-seen timestamp for TTL eviction.",
+            "description": "hook-only — not for model use. Called by agent host hooks when a session ends. Marks the session last-seen timestamp for TTL eviction.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -161,7 +161,7 @@ fn handle_recall(arguments: &Value, state: &Arc<McpServerState>) -> Value {
                 turn_id,
             );
             let fmt = super::hook_recall::RecallOutputFormat::from_str(&format);
-            super::hook_recall::build_recall_output(&filtered, fmt, &vault)
+            super::hook_recall::build_recall_output(&filtered, fmt, &vault, &key.host)
         }
         Err(err) => {
             touch_session(state, &key);
@@ -197,6 +197,7 @@ fn bool_field(arguments: &Value, key: &str) -> Option<bool> {
 fn parse_host_kind(host: &str) -> HostKind {
     match host {
         "claude-code" | "claudecode" | "ClaudeCode" => HostKind::ClaudeCode,
+        "codex" | "Codex" => HostKind::Codex,
         "hermes" | "Hermes" => HostKind::Hermes,
         other => HostKind::Unknown(other.to_owned()),
     }

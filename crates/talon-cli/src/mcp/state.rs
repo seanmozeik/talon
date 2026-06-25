@@ -39,6 +39,7 @@ pub struct SessionKey {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HostKind {
     ClaudeCode,
+    Codex,
     Hermes,
     Unknown(String),
 }
